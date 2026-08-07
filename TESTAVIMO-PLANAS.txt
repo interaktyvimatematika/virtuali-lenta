@@ -1,0 +1,11 @@
+P7.7.2 RANKINIO TESTAVIMO PLANAS
+
+1. Sukurti teksto lauką ir pirmoje eilutėje įrašyti formulę.
+2. Nieko po formulės nerašant formulėje paspausti Enter.
+3. Naujos eilutės pradžioje Matematikos juosta įterpti kitą formulę.
+4. Patikrinti, kad pirmos formulės LaTeX nepakito, o antra formulė yra atskiras mazgas.
+5. Tą pačią seką pakartoti 3–5 eilutėse iš eilės.
+6. Po Enter iškart spausti trupmenos, šaknies, sistemos, integralo ir matricos mygtukus.
+7. Sugrįžti į pirmą formulę, ją redaguoti, vėl Enter ir kurti naują formulę.
+8. Patikrinti Backspace/Delete formulės ribas, Tab/Shift+Tab ir P7.6.5 Matematinį režimą.
+9. Pakartoti kompiuteryje ir Android planšetėje.

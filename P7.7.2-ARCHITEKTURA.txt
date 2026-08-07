@@ -1,0 +1,11 @@
+P7.7.2 ARCHITEKTŪRA
+
+Enter iš mišrios formulės vykdomas per exitMixedFormulaToNewLine():
+1. senajam MathLive laukui trumpam uždraudžiama reaktyvuoti formulės sesiją;
+2. formulės turinys sinchronizuojamas, sesija išvaloma ir laukas praranda fokusą;
+3. po formulės įterpiamas BR bei tekstinis žymeklio tiltas;
+4. modelyje išsaugomas break mazgas;
+5. Matematikos juosta lieka susieta su aktyviu mišriu teksto lauku, bet ne su sena formule;
+6. kita struktūra arba simbolis dabartinėje teksto vietoje sukuria naują stabilaus ID formulės mazgą.
+
+P7.7.1 ikonografija, P7.7 struktūros ir P7.6.5 mišraus redaktoriaus logika nekeičiamos.

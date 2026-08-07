@@ -1,0 +1,17 @@
+P7.7.2 ONLINE-P1 — GREITAS TESTAVIMO PLANAS
+
+1. Išskleisk ZIP ir atidaryk index.html Chrome.
+2. Viršuje turi atsirasti sesijos kodas ir būsena „Prisijungta“.
+3. Atidaryk nukopijuotą tą pačią nuorodą kitame Chrome lange / inkognito lange.
+   Abiejuose adresuose turi būti tas pats ?room=XXXXXXX.
+4. Patikrink, kad prisijungusių langų skaičius tampa 2.
+5. Pirmame lange pasirink Pieštukas ir nubrėžk lėtą brūkšnį.
+   Kitame lange brūkšnys turi matytis beveik gyvai ir likti pakėlus pelę.
+6. Pirmame lange įterpk Teksto lauką, įrašyk tekstą ir formulę.
+   Po trumpos pauzės jis turi atsirasti kitame lange.
+7. Perkelk teksto/formulės lauką. Jo padėtis turi pasikeisti ir kitame lange.
+8. Bibliotekoje įterpk vieną pavienę užduotį arba pratybų objektą į lentą.
+   Objektas turi atsirasti ir kitame lange.
+
+PASTABA
+P1 dar nėra galutinis „įkelti atskirą HTML pratybų dokumentą“ etapas. Čia pirmiausia tikriname, ar pati P7.7.2 lenta patikimai bendra abiem dalyviams.

@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "contract": "interactive-practice-package@1",
+  "id": "p5-kvadratines-demo",
+  "title": "Kvadratinių lygčių pratybos",
+  "eyebrow": "DI SUGENERUOTOS PRATYBOS · P7.7.2",
+  "generationNotes": "Visos trys užduotys atitinka P7.7.2 kvadratinių lygčių modulio ribas.",
+  "tasks": [
+    {
+      "id": "p5-ai-q1",
+      "title": "Du racionalūs sprendiniai",
+      "instruction": "Išspręsk kvadratinę lygtį, parodydamas sprendimo eigą.",
+      "difficulty": "Pagrindai",
+      "prompt": {
+        "kind": "equation",
+        "value": "x^2 - 7x + 12 = 0"
+      },
+      "note": "Paskutinėje eilutėje įrašyk abu sprendinius.",
+      "hint": "Išskaidyk daugianarį dauginamaisiais.",
+      "response": {
+        "renderer": "math-step-list",
+        "valueType": "equation",
+        "label": "Sprendimo eiga",
+        "placeholder": "Pvz., (x - 3)(x - 4) = 0",
+        "validator": "quadratic-equation-chain",
+        "options": {
+          "minimumSteps": 2
+        }
+      }
+    },
+    {
+      "id": "p5-ai-q2",
+      "title": "Dvigubas sprendinys",
+      "instruction": "Išspręsk kvadratinę lygtį, parodydamas sprendimo eigą.",
+      "difficulty": "Vidutinė",
+      "prompt": {
+        "kind": "equation",
+        "value": "x^2 + 8x + 16 = 0"
+      },
+      "note": "Lygtis turi vieną dvigubą sprendinį.",
+      "hint": "Atpažink pilnąjį kvadratą.",
+      "response": {
+        "renderer": "math-step-list",
+        "valueType": "equation",
+        "label": "Sprendimo eiga",
+        "placeholder": "Pvz., (x + 4)^2 = 0",
+        "validator": "quadratic-equation-chain",
+        "options": {
+          "minimumSteps": 2
+        }
+      }
+    },
+    {
+      "id": "p5-ai-q3",
+      "title": "Realiųjų sprendinių nėra",
+      "instruction": "Ištirk lygtį ir pagrįsk, kodėl realiųjų sprendinių nėra.",
+      "difficulty": "Vidutinė",
+      "prompt": {
+        "kind": "equation",
+        "value": "x^2 + 4 = 0"
+      },
+      "note": "Sprendžiama realiųjų skaičių aibėje.",
+      "hint": "Kvadratas negali būti neigiamas.",
+      "response": {
+        "renderer": "math-step-list",
+        "valueType": "equation",
+        "label": "Sprendimo eiga",
+        "placeholder": "Pvz., x^2 = -4",
+        "validator": "quadratic-equation-chain",
+        "options": {
+          "minimumSteps": 1
+        }
+      }
+    }
+  ]
+}
