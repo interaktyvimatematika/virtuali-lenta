@@ -655,6 +655,9 @@ function renderTask(){
   }
 
   updateProgress();
+  // Kiekviena užduotis perkuria .main turinį per innerHTML, todėl MathJax turi būti
+  // paleistas iš naujo būtent po sąlygos/grafiko/atsakymo UI įterpimo.
+  setTimeout(()=>typesetMath(main),0);
 }
 function bindTask(task){
   document.getElementById("prevBtn").onclick=()=>{if(currentIndex>0){currentIndex--;renderTask();publishEmbeddedState();}};
@@ -1022,13 +1025,17 @@ if(EMBEDDED){
 }
 
 
-function typesetMath(root=document){
+function typesetMath(root=document, retry=0){
   if(window.MathJax && typeof MathJax.typesetPromise==="function"){
     try{
       if(typeof MathJax.typesetClear==="function") MathJax.typesetClear([root]);
       MathJax.typesetPromise([root]).catch(()=>{});
     }catch(e){}
+    return;
   }
+  // MathJax kraunamas su defer. Jei tėvinė lenta iškart atkuria jau atvertą užduotį,
+  // duodame bibliotekai trumpą laiką užsibaigti, o ne paliekame neapdorotą LaTeX.
+  if(retry < 20) setTimeout(()=>typesetMath(root, retry+1),50);
 }
 window.addEventListener("load",()=>typesetMath(document.body));
 

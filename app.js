@@ -4062,9 +4062,17 @@
   }
 
   function boardPracticePixelRect(instance, boardRect = getBoardWorldRect()) {
-    const maxWidth = instance?.kind === 'external-module' ? 980 : 760;
-    const width = Math.min(boardRect.width, Math.max(470, Math.min(maxWidth, Number(instance.width || 0.5) * boardRect.width)));
-    const height = Math.min(boardRect.height, Math.max(560, Math.min(980, Number(instance.height || 0.86) * boardRect.height)));
+    const external = instance?.kind === 'external-module';
+    const requestedWidth = Number(instance.width || 0.5) * boardRect.width;
+    const requestedHeight = Number(instance.height || 0.86) * boardRect.height;
+    // Išorinis pratybų modulis yra tikras keičiamo dydžio langas: jo vartotojo
+    // nustatytas dydis neturi būti nukerpamas iki seno puslapinių pratybų 760/980 px limito.
+    const width = external
+      ? Math.min(boardRect.width, Math.max(520, requestedWidth))
+      : Math.min(boardRect.width, Math.max(470, Math.min(760, requestedWidth)));
+    const height = external
+      ? Math.min(boardRect.height, Math.max(560, requestedHeight))
+      : Math.min(boardRect.height, Math.max(560, Math.min(980, requestedHeight)));
     return { x: Number(instance.x || 0) * boardRect.width, y: Number(instance.y || 0) * boardRect.height, width, height };
   }
 
@@ -6910,7 +6918,8 @@ KOKYBĖS REIKALAVIMAI:
     handle.addEventListener('pointermove', event => {
       if (!resize || event.pointerId !== resize.pointerId) return;
       const zoom = currentBoardZoom();
-      const width = Math.max(470, Math.min(resize.maxWidth, resize.width + (event.clientX - resize.startX) / zoom));
+      const minWidth = model.kind === 'external-module' ? 520 : 470;
+      const width = Math.max(minWidth, Math.min(resize.maxWidth, resize.width + (event.clientX - resize.startX) / zoom));
       const height = Math.max(560, Math.min(resize.maxHeight, resize.height + (event.clientY - resize.startY) / zoom));
       element.style.width = `${width}px`;
       element.style.height = `${height}px`;
@@ -7364,8 +7373,8 @@ KOKYBĖS REIKALAVIMAI:
     object.dataset.boardObjectId = instance.id;
     object.style.left = `${instance.x * boardRect.width}px`;
     object.style.top = `${instance.y * boardRect.height}px`;
-    object.style.width = `${Math.max(520, Math.min(980, instance.width * boardRect.width))}px`;
-    if (!instance.collapsed) object.style.height = `${Math.max(560, Math.min(980, instance.height * boardRect.height))}px`;
+    object.style.width = `${Math.min(boardRect.width, Math.max(520, instance.width * boardRect.width))}px`;
+    if (!instance.collapsed) object.style.height = `${Math.min(boardRect.height, Math.max(560, instance.height * boardRect.height))}px`;
 
     const chrome = document.createElement('header');
     chrome.className = 'board-practice-page-chrome external-practice-module-chrome';
@@ -7418,7 +7427,7 @@ KOKYBĖS REIKALAVIMAI:
       frame.className = 'external-practice-module-frame';
       frame.dataset.externalPracticeId = instance.id;
       const joiner = instance.moduleUrl.includes('?') ? '&' : '?';
-      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}`;
+      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.2`;
       frame.title = instance.title;
       frame.setAttribute('allow', 'clipboard-write');
       frame.addEventListener('load', () => syncExternalPracticeFrame(instance));
@@ -7838,8 +7847,9 @@ KOKYBĖS REIKALAVIMAI:
     for (const instance of state.boardPractices) {
       const element = refs.objectsLayer.querySelector(`[data-board-practice-id="${instance.id}"]`);
       if (!element) continue;
-      const width = Math.min(boardRect.width, Math.max(470, Math.min(760, instance.width * boardRect.width)));
-      const height = instance.collapsed ? element.offsetHeight : Math.min(boardRect.height, Math.max(560, Math.min(980, instance.height * boardRect.height)));
+      const rect = boardPracticePixelRect(instance, boardRect);
+      const width = rect.width;
+      const height = instance.collapsed ? element.offsetHeight : rect.height;
       element.style.width = `${width}px`;
       if (!instance.collapsed) element.style.height = `${height}px`; else element.style.removeProperty('height');
       const left = Math.max(0, Math.min(boardRect.width - width, instance.x * boardRect.width));
@@ -8176,7 +8186,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.8.1',
+    version: 'P7.7.2-ONLINE-P1.1.8.2',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
