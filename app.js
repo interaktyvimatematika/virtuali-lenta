@@ -5715,7 +5715,21 @@ KOKYBĖS REIKALAVIMAI:
   function continueDrawing(event) {
     if (!drawingActive || !activeStroke) return;
     event.preventDefault();
-    activeStroke.points.push(pointFromEvent(event));
+
+    // Stylus / touch naršyklės dažnai turi kelis tarpinius taškus tarp dviejų
+    // pointermove įvykių. Juos paimame, kad tiek vietinis, tiek nuotolinis
+    // brūkšnys augtų tolygiau, o ne dideliais šuoliais.
+    const samples = typeof event.getCoalescedEvents === 'function'
+      ? event.getCoalescedEvents()
+      : [event];
+
+    for (const sample of samples.length ? samples : [event]) {
+      const point = pointFromEvent(sample);
+      const previous = activeStroke.points[activeStroke.points.length - 1];
+      if (!previous || Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y) > 0.00003) {
+        activeStroke.points.push(point);
+      }
+    }
     redrawCanvas();
     emitLiveStroke('update');
   }
@@ -7817,7 +7831,7 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  // -------------------- ONLINE-P1.1 bendros lentos tiltas --------------------
+  // -------------------- ONLINE-P1.2 bendros lentos tiltas --------------------
 
   function ensureSharedIds() {
     state.drawing.forEach((stroke, index) => {
@@ -7869,7 +7883,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1',
+    version: 'P7.7.2-ONLINE-P1.2',
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {
