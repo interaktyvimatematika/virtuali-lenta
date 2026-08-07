@@ -4131,7 +4131,10 @@
     resetResponsesForCurrentTasks({}, {});
     editorDirty = false;
     renderTask(); renderAuthoringTaskList(); populateEditor();
-    setMode(onlineAccessRole === 'teacher' ? 'teacher' : 'student', { force: true, allowEmpty: true });
+    // ONLINE-P1.1.7: pratybų atvaizdavimas nebėra tapatinamas su prisijungimo role.
+    // Ir mokytojas, ir mokinys pagal nutylėjimą mato tas pačias sprendžiamas pratybas.
+    // Rengyklė atidaroma tik aiškiu mokytojo veiksmu iš Bibliotekos.
+    setMode('student', { force: true, allowEmpty: true });
     requestAnimationFrame(centerPracticeWindow);
     scheduleSave();
     return true;
@@ -4753,10 +4756,11 @@ KOKYBĖS REIKALAVIMAI:
         showToast('Užduotis dar neparuošta mokiniui');
         return;
       }
-      if (onlineAccessRole === 'teacher') {
-        window.P772OnlineBridge?.openStudentPreview?.();
-        showToast('Mokinio vaizdas atidarytas naujame lange');
-      }
+      // ONLINE-P1.1.7: rengyklėje mokytojas grįžta į tas pačias sprendžiamas pratybas.
+      // Tikslų mokinio sąsajos vaizdą atskirame lange ir toliau atidaro viršutinis „Mokinio vaizdas“.
+      setMode('student', { force: true, allowEmpty: true });
+      renderTask();
+      showToast('Rodomos sprendžiamos pratybos');
     });
     refs.discardEditorChangesButton.addEventListener('click', populateEditor);
     refs.copyJsonButton.addEventListener('click', copyCurrentTaskJson);
@@ -7905,7 +7909,9 @@ KOKYBĖS REIKALAVIMAI:
     if (modeSwitch) modeSwitch.hidden = true;
 
     if (isTeacher) {
-      setMode('teacher', { force: true, allowEmpty: true });
+      // Mokytojo teisės lieka mokytojo, tačiau pagrindiniame lange rodomos pačios pratybos.
+      // Mokytojo rengyklė nėra numatytasis vaizdas.
+      setMode('student', { force: true, allowEmpty: true });
     } else {
       closeLibrary();
       setMode('student', { force: true, allowEmpty: true });
@@ -7916,7 +7922,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.5',
+    version: 'P7.7.2-ONLINE-P1.1.7',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
