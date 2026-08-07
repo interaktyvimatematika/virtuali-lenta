@@ -7427,7 +7427,7 @@ KOKYBĖS REIKALAVIMAI:
       frame.className = 'external-practice-module-frame';
       frame.dataset.externalPracticeId = instance.id;
       const joiner = instance.moduleUrl.includes('?') ? '&' : '?';
-      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.2`;
+      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.3`;
       frame.title = instance.title;
       frame.setAttribute('allow', 'clipboard-write');
       frame.addEventListener('load', () => syncExternalPracticeFrame(instance));
@@ -8186,7 +8186,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.8.2',
+    version: 'P7.7.2-ONLINE-P1.1.8.3',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

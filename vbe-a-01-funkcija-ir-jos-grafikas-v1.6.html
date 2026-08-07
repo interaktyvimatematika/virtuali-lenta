@@ -605,6 +605,106 @@ function answerUI(task){
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 }
+function restoreTaskAnswerUI(task, st){
+  const ans=Array.isArray(st?.answer) ? st.answer : [];
+  if(!ans.length) return;
+
+  if(task.type==="number" || task.type==="text" || task.type==="mainGraphNumber"){
+    const input=document.getElementById("answerInput");
+    if(input) input.value=ans[0] ?? "";
+    return;
+  }
+  if(task.type==="choice"){
+    selectedChoice=String(ans[0] ?? "");
+    document.querySelectorAll("[data-choice]").forEach(btn=>{
+      btn.classList.toggle("selected", btn.dataset.choice===selectedChoice);
+    });
+    return;
+  }
+  if(task.type==="lineGraphs"){
+    selectedChoice=String(ans[0] ?? "");
+    document.querySelectorAll("[data-lg]").forEach(btn=>{
+      btn.classList.toggle("selected", btn.dataset.lg===selectedChoice);
+    });
+    return;
+  }
+  if(task.type==="multigraph"){
+    const selected=new Set(ans.map(value=>String(value)));
+    document.querySelectorAll("[data-mg]").forEach(btn=>{
+      btn.classList.toggle("selected", selected.has(String(btn.dataset.mg)));
+    });
+    return;
+  }
+  if(task.type==="graphZeros"){
+    graphZeroClicks=ans.map(Number).filter(Number.isFinite);
+    drawZeroClicks();
+    return;
+  }
+  if(task.type==="dual"){
+    document.querySelectorAll(".dualInput").forEach((input,i)=>{ input.value=ans[i] ?? ""; });
+    return;
+  }
+  if(task.type==="table"){
+    document.querySelectorAll(".tableInput").forEach((input,i)=>{ input.value=ans[i] ?? ""; });
+    return;
+  }
+  if(task.type==="scenario"){
+    document.querySelectorAll(".scenarioInput").forEach((input,i)=>{ input.value=ans[i] ?? ""; });
+  }
+}
+
+function restoreTaskResultUI(task, st){
+  if(st.solutionShown){
+    showFeedback("bad","Sprendimas jau buvo parodytas. Ši užduotis lieka pažymėta „Kartoti“.");
+    showHint(task.hint2);
+    freezeTaskInputs();
+    document.getElementById("solutionBtn").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+    return;
+  }
+
+  if(st.status==="repeat" && st.corrected){
+    showFeedback(
+      "good",
+      "✓ Dabar teisingai. Užduotis vis tiek lieka pažymėta „Kartoti“, nes prieš tai buvo du nesėkmingi bandymai."
+    );
+    document.getElementById("solutionBtn").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+    return;
+  }
+
+  if(st.status==="repeat"){
+    showFeedback("bad","Ši užduotis pažymėta „Kartoti“. Gali ją taisyti, parodyti sprendimą arba eiti toliau.");
+    showHint("Peržiūrėk pirmąją užuominą ir dar kartą patikrink savo veiksmus.");
+    document.getElementById("checkBtn").textContent="Patikrinti pataisymą";
+    document.getElementById("solutionBtn").classList.remove("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+    return;
+  }
+
+  if(st.completed && (st.status==="independent" || st.status==="with_help")){
+    showFeedback(
+      "good",
+      st.status==="independent"
+        ? "✓ Teisingai – išspręsta savarankiškai."
+        : "✓ Teisingai. Šį kartą buvo parodyta pagalba – prie šio gebėjimo dar grįšime."
+    );
+    document.getElementById("solutionBtn").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+    return;
+  }
+
+  // Pirmas neteisingas bandymas anksčiau gyveno tik DOM'e. Po Firebase sinchronizacijos
+  // iframe galėjo būti perpieštas ir geltonas pranešimas bei užuomina dingdavo.
+  if(st.attempts===1 && !st.completed){
+    showFeedback("warn","Dar ne. Pabandyk dar kartą.");
+    showHint(task.hint1);
+  }
+}
+
 function renderTask(){
   moduleView="task";
   const tasks=activeTasks();
@@ -639,20 +739,10 @@ function renderTask(){
     </section>`;
   bindTask(task);
 
-  if(st.solutionShown){
-    showFeedback("bad","Sprendimas jau buvo parodytas. Ši užduotis lieka pažymėta „Kartoti“.");
-    showHint(task.hint2);
-    freezeTaskInputs();
-    document.getElementById("solutionBtn").classList.add("hidden");
-    document.getElementById("checkBtn").classList.add("hidden");
-    document.getElementById("nextBtn").classList.remove("hidden");
-  }else if(st.status==="repeat" && !st.corrected){
-    showFeedback("bad","Ši užduotis pažymėta „Kartoti“. Gali ją taisyti, parodyti sprendimą arba eiti toliau.");
-    showHint("Peržiūrėk pirmąją užuominą ir dar kartą patikrink savo veiksmus.");
-    document.getElementById("checkBtn").textContent="Patikrinti pataisymą";
-    document.getElementById("solutionBtn").classList.remove("hidden");
-    document.getElementById("nextBtn").classList.remove("hidden");
-  }
+  // Firebase / kito įrenginio sinchronizacija gali atkurti iframe turinį.
+  // Todėl ne tik rezultatas, bet ir pats pasirinktas / įrašytas atsakymas atkuriamas iš state.
+  restoreTaskAnswerUI(task, st);
+  restoreTaskResultUI(task, st);
 
   updateProgress();
   // Kiekviena užduotis perkuria .main turinį per innerHTML, todėl MathJax turi būti
@@ -1007,12 +1097,27 @@ window.addEventListener("message", event=>{
   if(!EMBEDDED || event.origin!==location.origin) return;
   const data=event.data||{};
   if(data.type!=="p772:external-practice-load" || data.practiceId!==EMBED_PRACTICE_ID || data.moduleId!==MODULE_ID) return;
+  const incomingState=data.state && typeof data.state==="object" ? JSON.parse(JSON.stringify(data.state)) : {};
+  const incomingMode=data.mode==="self" ? "self" : "class";
+  const incomingIndex=Math.max(0, Number(data.currentIndex)||0);
+  const incomingView=["start","task","end"].includes(data.view) ? data.view : "start";
+
+  // Savo ką tik paskelbtos būsenos Firebase aidas neturi perkurti užduoties DOM.
+  // Būtent toks perpiešimas anksčiau trumpam parodydavo žalią / geltoną pranešimą,
+  // o po akimirkos vėl palikdavo „švarią“ pirmo klausimo išvaizdą.
+  if(
+    incomingMode===mode &&
+    incomingIndex===currentIndex &&
+    incomingView===moduleView &&
+    JSON.stringify(incomingState)===JSON.stringify(state)
+  ) return;
+
   applyingParentSync=true;
   try{
-    state=data.state && typeof data.state==="object" ? JSON.parse(JSON.stringify(data.state)) : {};
-    mode=data.mode==="self" ? "self" : "class";
-    currentIndex=Math.max(0, Number(data.currentIndex)||0);
-    moduleView=["start","task","end"].includes(data.view) ? data.view : "start";
+    state=incomingState;
+    mode=incomingMode;
+    currentIndex=incomingIndex;
+    moduleView=incomingView;
     selectedChoice=null; graphZeroClicks=[];
     renderEmbeddedView();
   }finally{ applyingParentSync=false; }
