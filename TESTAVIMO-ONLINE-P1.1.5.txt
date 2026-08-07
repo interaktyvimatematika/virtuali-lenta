@@ -1,0 +1,8 @@
+P1.1.5 greitas testas
+
+1. Atidaryti mokytojo nuorodą kompiuteryje.
+2. Patikrinti, kad viršuje aiškiai matomi: kambario kodas, dalyvių skaičius, Mokinio nuoroda, Mokinio vaizdas, Nauja sesija, Biblioteka, Tik pratybos, Išvalyti.
+3. Patikrinti, kad nebėra „Rengyklės prototipas“ mygtuko ir rolės perjungiklio.
+4. Patikrinti, kad viršutinė juosta 1700–1900 px pločio ekrane neprasideda nukirsta ir nereikalauja horizontalaus paslinkimo.
+5. Patikrinti mokinio nuorodą: mokinio sąsaja turi likti tokia pati kaip P1.1.4.
+6. Trumpai patikrinti piešimą kompiuteris ↔ telefonas / planšetė. Šiame etape piešimo kodas nekeistas.

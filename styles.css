@@ -2713,3 +2713,90 @@ body[data-online-role="student"] #previewStudentButton,
 body[data-online-role="student"] #newSessionButton {
   display: none !important;
 }
+
+/* P7.7.2-ONLINE-P1.1.5 — kompaktiška mokytojo viršutinė juosta.
+   Sesijos būsena atskirta nuo veiksmų, kad valdikliai nebesusispaustų ir
+   plačiame ekrane nereikėtų horizontaliai paslinkti viršutinės juostos. */
+body[data-online-role="teacher"] .topbar-actions {
+  gap: 6px;
+}
+body[data-online-role="teacher"] .online-session {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 4px 8px;
+  gap: 6px;
+  background: #f8fafc;
+}
+body[data-online-role="teacher"] .online-status,
+body[data-online-role="teacher"] .online-role {
+  display: none !important;
+}
+body[data-online-role="teacher"] .online-room {
+  padding-inline: 8px;
+}
+body[data-online-role="teacher"] .online-users {
+  position: relative;
+  min-width: 27px;
+}
+body[data-online-role="teacher"] #copySessionLinkButton,
+body[data-online-role="teacher"] #previewStudentButton,
+body[data-online-role="teacher"] #newSessionButton,
+body[data-online-role="teacher"] #libraryButton,
+body[data-online-role="teacher"] #practiceOnlyButton,
+body[data-online-role="teacher"] #resetButton {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 11px !important;
+  font-size: 12px !important;
+  white-space: nowrap;
+}
+body[data-online-role="teacher"] #copySessionLinkButton,
+body[data-online-role="teacher"] #previewStudentButton,
+body[data-online-role="teacher"] #newSessionButton {
+  background: #f8fafc;
+}
+body[data-online-role="teacher"] #libraryButton,
+body[data-online-role="teacher"] #practiceOnlyButton {
+  background: #f5f7fb;
+}
+body[data-online-role="teacher"] #resetButton {
+  padding-inline: 12px !important;
+}
+/* Šis senas prototipo mygtukas tik centravo pagrindinį pratybų langą ir
+   be reikalo užimdavo svarbiausią mokytojo valdymo vietą. */
+body[data-online-role="teacher"] #centerPracticeButton {
+  display: none !important;
+}
+
+@media (min-width: 1280px) {
+  body[data-online-role="teacher"] .topbar-actions {
+    overflow-x: visible;
+    scrollbar-width: none;
+  }
+  body[data-online-role="teacher"] .topbar-actions::-webkit-scrollbar { display: none; }
+}
+@media (max-width: 1279px) {
+  body[data-online-role="teacher"] .topbar-actions {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
+  }
+}
+@media (max-width: 760px) {
+  body[data-online-role="teacher"] .topbar-actions {
+    gap: 5px;
+  }
+  body[data-online-role="teacher"] #copySessionLinkButton,
+  body[data-online-role="teacher"] #previewStudentButton,
+  body[data-online-role="teacher"] #newSessionButton,
+  body[data-online-role="teacher"] #libraryButton,
+  body[data-online-role="teacher"] #practiceOnlyButton,
+  body[data-online-role="teacher"] #resetButton {
+    min-height: 36px;
+    padding-inline: 9px !important;
+    font-size: 11px !important;
+  }
+}
