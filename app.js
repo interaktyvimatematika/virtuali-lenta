@@ -347,6 +347,7 @@
   let drawingContext = null;
   let drawingActive = false;
   let activeStroke = null;
+  let activeDrawingPointerId = null;
   let remoteLiveStrokes = [];
   let lastCanvasSize = { width: 0, height: 0 };
   let editorDirty = false;
@@ -5697,10 +5698,53 @@ KOKYBĖS REIKALAVIMAI:
     }));
   }
 
+  function appendActiveStrokeSamples(samples) {
+    if (!activeStroke) return 0;
+    const before = activeStroke.points.length;
+    for (const sample of samples || []) {
+      if (!sample || !Number.isFinite(Number(sample.clientX)) || !Number.isFinite(Number(sample.clientY))) continue;
+      const point = pointFromEvent(sample);
+      const previous = activeStroke.points[activeStroke.points.length - 1];
+      // Dubliuoti pointermove / pointerrawupdate / touchmove taškai atmetami.
+      // Slenkstis labai mažas, todėl ranka išlieka sklandi, bet neapkrauname telefono.
+      if (!previous || Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y) > 0.000018) {
+        activeStroke.points.push(point);
+      }
+    }
+    return activeStroke.points.length - before;
+  }
+
+  function drawStrokeRange(stroke, fromIndex = 0) {
+    if (!drawingContext || !stroke?.points?.length) return;
+    const rect = getBoardWorldRect();
+    const start = Math.max(0, Math.min(stroke.points.length - 1, Number(fromIndex) || 0) - 1);
+    drawingContext.save();
+    drawingContext.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
+    drawingContext.strokeStyle = '#27364f';
+    drawingContext.lineWidth = stroke.width;
+    drawingContext.lineCap = 'round';
+    drawingContext.lineJoin = 'round';
+    drawingContext.beginPath();
+    for (let index = start; index < stroke.points.length; index += 1) {
+      const point = stroke.points[index];
+      const x = point.x * rect.width;
+      const y = point.y * rect.height;
+      if (index === start) drawingContext.moveTo(x, y); else drawingContext.lineTo(x, y);
+    }
+    if (stroke.points.length === 1) {
+      const point = stroke.points[0];
+      drawingContext.lineTo(point.x * rect.width + 0.01, point.y * rect.height + 0.01);
+    }
+    drawingContext.stroke();
+    drawingContext.restore();
+  }
+
   function startDrawing(event) {
     if (!['pen', 'eraser'].includes(state.activeTool)) return;
-    event.preventDefault();
-    refs.canvas.setPointerCapture(event.pointerId);
+    if (drawingActive) return;
+    if (event.cancelable) event.preventDefault();
+    activeDrawingPointerId = event.pointerId;
+    try { refs.canvas.setPointerCapture(event.pointerId); } catch (_) { /* kai kurios mobilios naršyklės capture riboja */ }
     drawingActive = true;
     activeStroke = {
       id: createStrokeId(),
@@ -5708,41 +5752,57 @@ KOKYBĖS REIKALAVIMAI:
       width: state.activeTool === 'eraser' ? 22 : 2.6,
       points: [pointFromEvent(event)]
     };
-    redrawCanvas();
+    // ONLINE-P1.3: nebeperpiešiame visos didelės lentos kiekvienam telefono
+    // judesiui. Naują brūkšnį piešiame inkrementiškai – tai smarkiai sumažina
+    // mobiliojo CPU apkrovą ir leidžia live paketams išeiti laiku.
+    drawStrokeRange(activeStroke, 0);
     emitLiveStroke('start');
   }
 
   function continueDrawing(event) {
     if (!drawingActive || !activeStroke) return;
-    event.preventDefault();
+    if (activeDrawingPointerId != null && event.pointerId != null && event.pointerId !== activeDrawingPointerId) return;
+    if (event.cancelable) event.preventDefault();
 
-    // Stylus / touch naršyklės dažnai turi kelis tarpinius taškus tarp dviejų
-    // pointermove įvykių. Juos paimame, kad tiek vietinis, tiek nuotolinis
-    // brūkšnys augtų tolygiau, o ne dideliais šuoliais.
+    // pointerrawupdate telefone gali ateiti dažniau už pointermove. Coalesced
+    // taškai užpildo tarpelius, o dublius atmeta appendActiveStrokeSamples().
     const samples = typeof event.getCoalescedEvents === 'function'
       ? event.getCoalescedEvents()
       : [event];
+    const before = activeStroke.points.length;
+    const added = appendActiveStrokeSamples(samples?.length ? samples : [event]);
+    if (!added) return;
+    drawStrokeRange(activeStroke, before);
+    emitLiveStroke('update');
+  }
 
-    for (const sample of samples.length ? samples : [event]) {
-      const point = pointFromEvent(sample);
-      const previous = activeStroke.points[activeStroke.points.length - 1];
-      if (!previous || Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y) > 0.00003) {
-        activeStroke.points.push(point);
-      }
-    }
-    redrawCanvas();
+  function continueDrawingFromTouch(event) {
+    if (!drawingActive || !activeStroke) return;
+    if (event.cancelable) event.preventDefault();
+    const touches = event.changedTouches ? Array.from(event.changedTouches) : [];
+    if (!touches.length) return;
+    const before = activeStroke.points.length;
+    const added = appendActiveStrokeSamples(touches);
+    if (!added) return;
+    drawStrokeRange(activeStroke, before);
     emitLiveStroke('update');
   }
 
   function stopDrawing(event) {
     if (!drawingActive || !activeStroke) return;
+    if (activeDrawingPointerId != null && event?.pointerId != null && event.pointerId !== activeDrawingPointerId) return;
     const committedStroke = activeStroke;
+    const pointerId = activeDrawingPointerId;
     drawingActive = false;
     activeStroke = null;
+    activeDrawingPointerId = null;
     state.drawing.push(committedStroke);
+    // Vienas pilnas perpiešimas tik brūkšnio pabaigoje suvienodina galutinę būseną.
     redrawCanvas();
     emitLiveStroke('end', committedStroke);
-    try { refs.canvas.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
+    if (pointerId != null) {
+      try { refs.canvas.releasePointerCapture(pointerId); } catch (_) { /* nieko */ }
+    }
     scheduleSave();
   }
 
@@ -5756,21 +5816,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function drawStroke(stroke) {
-    if (!drawingContext || !stroke.points.length) return;
-    const rect = getBoardWorldRect();
-    drawingContext.save();
-    drawingContext.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    drawingContext.strokeStyle = '#27364f';
-    drawingContext.lineWidth = stroke.width;
-    drawingContext.beginPath();
-    stroke.points.forEach((point, index) => {
-      const x = point.x * rect.width;
-      const y = point.y * rect.height;
-      if (index === 0) drawingContext.moveTo(x, y); else drawingContext.lineTo(x, y);
-    });
-    if (stroke.points.length === 1) drawingContext.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
-    drawingContext.stroke();
-    drawingContext.restore();
+    drawStrokeRange(stroke, 0);
   }
 
   function mixedEditorFromNode(node) {
@@ -7831,7 +7877,7 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  // -------------------- ONLINE-P1.2 bendros lentos tiltas --------------------
+  // -------------------- ONLINE-P1.3 bendros lentos tiltas --------------------
 
   function ensureSharedIds() {
     state.drawing.forEach((stroke, index) => {
@@ -7883,7 +7929,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.2',
+    version: 'P7.7.2-ONLINE-P1.3',
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {
@@ -7939,10 +7985,21 @@ KOKYBĖS REIKALAVIMAI:
     requestAnimationFrame(() => { centerPracticeWindow(); renderTask(); });
     showToast('P7.7.2 būsena, biblioteka, užduotys ir pratybų puslapiai išvalyti');
   });
-  refs.canvas.addEventListener('pointerdown', startDrawing);
-  refs.canvas.addEventListener('pointermove', continueDrawing);
-  refs.canvas.addEventListener('pointerup', stopDrawing);
-  refs.canvas.addEventListener('pointercancel', stopDrawing);
+  refs.canvas.addEventListener('pointerdown', startDrawing, { passive: false });
+  // pointerrawupdate yra aukšto dažnio Pointer Events srautas (kai naršyklė jį palaiko).
+  // Paliekame ir pointermove: dubliuoti taškai saugiai atmetami pagal koordinates.
+  refs.canvas.addEventListener('pointermove', continueDrawing, { passive: false });
+  if ('onpointerrawupdate' in window) {
+    refs.canvas.addEventListener('pointerrawupdate', continueDrawing, { passive: false });
+  }
+  // Touch fallback ypač naudingas telefonuose / planšetėse, kurios judesį į
+  // pointermove pateikia retesnėmis porcijomis.
+  refs.canvas.addEventListener('touchmove', continueDrawingFromTouch, { passive: false });
+  refs.canvas.addEventListener('pointerup', stopDrawing, { passive: false });
+  refs.canvas.addEventListener('pointercancel', stopDrawing, { passive: false });
+  refs.canvas.addEventListener('lostpointercapture', event => {
+    if (drawingActive && activeDrawingPointerId === event.pointerId) stopDrawing(event);
+  });
 
   new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas(); layoutBoardObjects(); }).observe(refs.board);
   window.addEventListener('beforeunload', () => {
