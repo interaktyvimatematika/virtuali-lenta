@@ -1,0 +1,15 @@
+P7.7.2 AUTOMATINĖ PATIKRA
+
+Patikrinta:
+- JavaScript sintaksė;
+- P7.7.1 būsenos migracijos raktas;
+- Enter įvykio sustabdymas formulei;
+- atominis senos formulės deaktyvavimas;
+- BR ir naujos tekstinės žymeklio vietos sukūrimas;
+- uždelstų senos formulės įvykių blokavimas;
+- seka formulė 1 → Enter → formulė 2 → Enter → formulė 3;
+- ankstesnių formulių LaTeX nekintamumas;
+- P7.7.1 ikonų, P7.7 struktūrų ir 1024–1920 px sąsajos regresijos;
+- vieno failo planšetės paketo sukūrimas.
+
+Tikras MathLive Shadow DOM ir Android ekraninės klaviatūros elgesys lieka vartotojo rankiniam bandymui.

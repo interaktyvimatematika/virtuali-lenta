@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f8fb" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 ONLINE-P1.1.2</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar" aria-label="Virtualios lentos įrankiai">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">VL</span>
+        <div>
+          <strong>Virtuali lenta</strong>
+          <span>Interaktyvios pratybos P7.7.2 · ONLINE-P1.1.2</span>
+        </div>
+      </div>
+
+      <nav class="tools" aria-label="Lentos įrankiai">
+        <button class="tool is-active" data-tool="select" title="Žymėjimas ir langų perkėlimas">
+          <span aria-hidden="true">↖</span><span>Žymėti</span>
+        </button>
+        <button class="tool" data-tool="pen" title="Rašyti lentoje">
+          <span aria-hidden="true">✎</span><span>Pieštukas</span>
+        </button>
+        <button class="tool" data-tool="eraser" title="Trinti lentos rašymą">
+          <span aria-hidden="true">⌫</span><span>Trintukas</span>
+        </button>
+        <button class="tool" id="addNoteButton" title="Įterpti vieningą teksto ir formulių lauką">
+          <span aria-hidden="true">T</span><span>Tekstas</span>
+        </button>
+      </nav>
+
+      <div class="topbar-actions">
+        <div class="online-session" id="onlineSession" aria-label="Bendros lentos sesija">
+          <span class="online-dot" id="onlineDot" aria-hidden="true"></span>
+          <span class="online-status" id="onlineStatus">Jungiamasi…</span>
+          <span class="online-role" id="onlineRoleBadge" title="Prisijungimo rolė">—</span>
+          <code class="online-room" id="onlineRoomCode" title="Pamokos kambario kodas">—</code>
+          <span class="online-users" id="onlineUsers" title="Prisijungusių langų skaičius">0</span>
+          <button class="ghost-button online-copy" id="copySessionLinkButton" type="button" title="Kopijuoti mokiniui skirtą šios bendros lentos nuorodą">Kopijuoti mokinio nuorodą</button>
+          <button class="ghost-button online-preview" id="previewStudentButton" type="button" title="Atidaryti tą pačią sesiją naujame lange taip, kaip ją mato mokinys">Peržiūrėti kaip mokinys</button>
+          <button class="ghost-button online-new" id="newSessionButton" type="button" title="Sukurti naują tuščią bendros lentos sesiją ir perkelti į ją visus dalyvius">Nauja sesija</button>
+        </div>
+        <button class="ghost-button library-open-button" id="libraryButton" type="button"><span aria-hidden="true">▦</span><span>Biblioteka</span></button>
+        <button class="ghost-button practice-only-open-button" id="practiceOnlyButton" type="button" title="Atverti pasirinktas pratybas atskirame režime"><span aria-hidden="true">⛶</span><span>Tik pratybos</span></button>
+        <div class="mode-switch" role="group" aria-label="Vidinis darbo režimas" hidden>
+          <button class="mode-button is-active" id="studentModeButton" type="button">Mokinys</button>
+          <button class="mode-button" id="teacherModeButton" type="button">Mokytojas</button>
+        </div>
+        <button class="ghost-button" id="centerPracticeButton" hidden>Rengyklės prototipas</button>
+        <button class="ghost-button danger" id="resetButton">Išvalyti P7.7.2</button>
+      </div>
+    </header>
+
+    <section class="universal-math-toolbar is-inactive" id="universalMathToolbar" aria-label="Universali formulių juosta">
+      <div class="universal-math-context">
+        <span class="universal-math-icon" aria-hidden="true">∑</span>
+        <div>
+          <strong>Matematikos juosta</strong>
+          <span id="universalMathStatus">Aktyvuok teksto arba matematinį lauką</span>
+        </div>
+      </div>
+      <div class="universal-math-panel">
+        <div class="math-category-tabs" id="universalMathCategories" role="tablist" aria-label="Matematikos juostos kategorijos"></div>
+        <div class="universal-math-keyboard" id="universalMathKeyboard" aria-label="Matematinių simbolių ir struktūrų mygtukai"></div>
+      </div>
+    </section>
+
+    <main class="board-shell">
+      <section class="board" id="board" aria-label="Virtualios lentos darbo plotas">
+        <div class="board-camera-stage" id="boardCameraStage">
+          <div class="board-world" id="boardWorld">
+            <canvas id="drawingCanvas" aria-label="Rašymo sluoksnis"></canvas>
+            <div class="objects-layer" id="objectsLayer"></div>
+
+        <article class="practice-window" id="practiceWindow" aria-label="Interaktyvios pratybos">
+          <header class="window-header" id="practiceDragHandle">
+            <span class="practice-object-grip" aria-hidden="true">⠿</span>
+            <div class="practice-object-heading">
+              <h1 id="packageTitle">Universalios matematikos pratybos</h1>
+              <span class="eyebrow" id="packageEyebrow">DI TINKAMAS PRATYBŲ MODELIS · P7.7.2</span>
+            </div>
+            <div class="window-header-actions">
+              <span class="save-state" id="saveState" aria-live="polite">Išsaugota</span>
+              <button class="icon-button" id="collapseButton" aria-label="Sutraukti arba išskleisti pratybas">—</button>
+            </div>
+          </header>
+
+          <div class="practice-body" id="practiceBody">
+            <div class="progress-row">
+              <div>
+                <strong id="taskCounter">1 iš 6</strong>
+                <span id="scoreLabel">Atlikta 0 iš 6</span>
+              </div>
+              <div class="progress-track" aria-hidden="true"><span id="progressFill"></span></div>
+            </div>
+
+            <section class="task-card" aria-labelledby="taskTitle">
+              <div class="task-heading">
+                <span class="task-number" id="taskNumber">1</span>
+                <div class="task-heading-copy">
+                  <h2 id="taskTitle"></h2>
+                  <p class="instruction" id="instructionText"></p>
+                </div>
+                <details class="hint compact-hint" id="hintBox">
+                  <summary aria-label="Rodyti užuominą"><span aria-hidden="true">💡</span><span>Užuomina</span></summary>
+                  <p id="hintText"></p>
+                </details>
+                <div class="task-badges">
+                  <span class="response-badge" id="responseBadge"></span>
+                  <span class="difficulty" id="difficultyLabel"></span>
+                </div>
+              </div>
+              <div class="formula-display" id="formulaDisplay" aria-label="Užduoties matematinis turinys"></div>
+              <p class="domain-note" id="domainNote"></p>
+
+              <div class="response-host" id="responseHost"></div>
+
+              <div class="feedback" id="feedback" hidden>
+                <div class="feedback-icon" id="feedbackIcon" aria-hidden="true"></div>
+                <div>
+                  <strong id="feedbackTitle"></strong>
+                  <p id="feedbackText"></p>
+                </div>
+              </div>
+
+
+            </section>
+
+            <footer class="practice-footer">
+              <button class="secondary-button" id="previousButton" aria-label="Ankstesnė užduotis">←</button>
+              <div class="task-dots" id="taskDots" aria-label="Užduočių pasirinkimas"></div>
+              <button class="secondary-button" id="nextButton" aria-label="Kita užduotis">→</button>
+            </footer>
+          </div>
+          <div class="authoring-body" id="authoringBody" hidden>
+            <aside class="authoring-sidebar">
+              <div class="authoring-sidebar-heading">
+                <div>
+                  <span class="task-number">MOKYTOJO REŽIMAS</span>
+                  <h2>Užduotys</h2>
+                </div>
+                <button class="icon-button authoring-add-button" id="addTaskButton" type="button" aria-label="Pridėti užduotį">+</button>
+              </div>
+              <div class="authoring-task-list" id="authoringTaskList"></div>
+              <div class="authoring-sidebar-actions">
+                <button class="secondary-button" id="duplicateTaskButton" type="button">Dubliuoti</button>
+                <button class="secondary-button danger-text" id="deleteTaskButton" type="button">Pašalinti</button>
+              </div>
+            </aside>
+
+            <section class="authoring-editor">
+              <header class="authoring-editor-header">
+                <div>
+                  <span class="eyebrow">STRUKTŪRIZUOTAS UŽDUOTIES MODELIS</span>
+                  <h2 id="authoringEditorTitle">Redaguoti užduotį</h2>
+                  <p>Šiuos pačius laukus ateityje galės užpildyti DI arba mokytojas.</p>
+                </div>
+                <div class="authoring-header-actions">
+                  <button class="secondary-button ai-button" id="aiWorkflowButton" type="button">✦ Kurti su DI</button>
+                  <button class="secondary-button" id="checkTaskButton" type="button">Patikrinti užduotį</button>
+                  <button class="primary-button" id="testAsStudentButton" type="button" disabled>Išbandyti kaip mokiniui</button>
+                </div>
+              </header>
+
+              <form class="authoring-form" id="taskEditorForm" novalidate>
+                <fieldset class="authoring-fieldset">
+                  <legend>Pratybų rinkinys</legend>
+                  <div class="authoring-grid two-columns">
+                    <label class="authoring-field">
+                      <span>Rinkinio pavadinimas</span>
+                      <input id="packageTitleInput" type="text" />
+                    </label>
+                    <label class="authoring-field">
+                      <span>Trumpa žyma</span>
+                      <input id="packageEyebrowInput" type="text" />
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="authoring-fieldset">
+                  <legend>Užduoties turinys</legend>
+                  <div class="authoring-grid two-columns">
+                    <label class="authoring-field">
+                      <span>Pavadinimas</span>
+                      <input id="editorTaskTitle" type="text" required />
+                    </label>
+                    <label class="authoring-field">
+                      <span>Sudėtingumo žyma</span>
+                      <input id="editorDifficulty" type="text" />
+                    </label>
+                  </div>
+                  <label class="authoring-field">
+                    <span>Instrukcija mokiniui</span>
+                    <textarea id="editorInstruction" rows="3" required></textarea>
+                  </label>
+                  <label class="authoring-field">
+                    <span>Užduoties matematinis turinys</span>
+                    <input id="editorPromptValue" type="text" required spellcheck="false" />
+                    <small>Programa pati atpažįsta reiškinį, tiesinę arba palaikomą kvadratinę lygtį ir parenka suderinamą tikrinimą.</small>
+                  </label>
+                  <div class="authoring-preview" id="authoringMathPreview">Matematinė peržiūra</div>
+                  <label class="authoring-field">
+                    <span>Pastaba / apibrėžimo sąlyga</span>
+                    <textarea id="editorNote" rows="2"></textarea>
+                  </label>
+                  <label class="authoring-field">
+                    <span>Užuomina</span>
+                    <textarea id="editorHint" rows="2"></textarea>
+                  </label>
+                </fieldset>
+
+                <fieldset class="authoring-fieldset">
+                  <legend>Mokinio atsakymas ir tikrinimas</legend>
+                  <div class="authoring-grid two-columns">
+                    <label class="authoring-field">
+                      <span>Atsakymo būdas</span>
+                      <select id="editorRenderer">
+                        <option value="single-math-input">Vienas matematinis atsakymas</option>
+                        <option value="math-step-list">Sprendimo žingsniai</option>
+                      </select>
+                    </label>
+                    <label class="authoring-field equation-main-setting" id="minimumStepsField" hidden>
+                      <span>Mažiausiai sprendimo žingsnių</span>
+                      <input id="editorMinimumSteps" type="number" min="1" max="20" />
+                    </label>
+                  </div>
+                  <div class="authoring-grid two-columns">
+                    <label class="authoring-field">
+                      <span>Lauko pavadinimas</span>
+                      <input id="editorResponseLabel" type="text" />
+                    </label>
+                    <label class="authoring-field">
+                      <span>Įvesties pavyzdys</span>
+                      <input id="editorPlaceholder" type="text" />
+                    </label>
+                  </div>
+
+                  <section class="automatic-analysis" id="automaticAnalysisPanel" aria-live="polite">
+                    <div class="automatic-analysis-heading">
+                      <div>
+                        <span class="task-number">AUTOMATINĖ ANALIZĖ</span>
+                        <strong id="automaticAnalysisTitle">Laukiama matematinio turinio</strong>
+                      </div>
+                      <span class="analysis-status" id="automaticAnalysisStatus">—</span>
+                    </div>
+                    <p id="automaticAnalysisText">Įrašius užduoties matematinį turinį čia bus parodyta, ką programa nustatė pati.</p>
+                    <div class="analysis-math" id="automaticAnalysisMath" hidden></div>
+                  </section>
+
+                  <section class="quality-gate is-stale" id="qualityGatePanel" aria-live="polite">
+                    <div class="quality-gate-heading">
+                      <div>
+                        <span class="task-number">PATIKIMUMO VARTAI · P7.7.2</span>
+                        <strong id="qualityGateTitle">Užduotis dar nepatikrinta</strong>
+                      </div>
+                      <span class="quality-gate-status" id="qualityGateStatus">Reikia patikrinti</span>
+                    </div>
+                    <p id="qualityGateSummary">Paspausk „Patikrinti užduotį“. Tik paruošta užduotis galės būti atidaryta mokinio režime.</p>
+                    <ul class="quality-check-list" id="qualityGateChecklist"></ul>
+                  </section>
+
+                  <div class="validator-panel" id="expressionValidatorPanel">
+                    <div class="authoring-grid two-columns">
+                      <label class="authoring-field">
+                        <span>Teisingas atsakymas</span>
+                        <input id="editorExpectedExpression" type="text" spellcheck="false" />
+                        <small>Reiškinio užduotyje mokytojas arba DI dar turi nurodyti tikslinę formą.</small>
+                      </label>
+                      <label class="authoring-field">
+                        <span>Rodomas atsakymas (nebūtina)</span>
+                        <input id="editorExpectedExpressionDisplay" type="text" />
+                      </label>
+                    </div>
+                    <div class="authoring-grid two-columns">
+                      <label class="authoring-field">
+                        <span>Apibrėžimo sąlyga tikrintuvo žinutei</span>
+                        <input id="editorDomain" type="text" />
+                      </label>
+                      <label class="authoring-field">
+                        <span>Skaitiniai patikros taškai, atskirti „;“</span>
+                        <input id="editorSamples" type="text" spellcheck="false" />
+                      </label>
+                    </div>
+                    <label class="authoring-checkbox">
+                      <input id="editorRequireSimplified" type="checkbox" />
+                      <span>Reikalauti kuo paprastesnės galutinės formos</span>
+                    </label>
+                  </div>
+
+                  <div class="validator-panel equation-summary" id="equationValidatorPanel" hidden>
+                    <p><strong>Lygties atsakymo ranka įrašyti nereikia.</strong> Programa pati apskaičiuoja tiesinės arba palaikomos kvadratinės lygties sprendinių aibę ir tuo pačiu rezultatu tikrina mokinio žingsnius. Kvadratinei lygčiai galutinę eilutę galima rašyti <b>x = 2; x = 3</b>, <b>{2; 3}</b> arba <b>sprendinių nėra</b>.</p>
+                  </div>
+
+                  <details class="advanced-settings" id="advancedSettings">
+                    <summary>Išplėstiniai techniniai duomenys</summary>
+                    <p class="advanced-settings-note">Šie laukai užpildomi automatiškai. Jie rodomi architektūros patikrai ir būsimos DI integracijos skaidrumui.</p>
+                    <div class="authoring-grid two-columns">
+                      <label class="authoring-field">
+                        <span>Atpažinta matematinė struktūra</span>
+                        <select id="editorPromptKind" disabled>
+                          <option value="expression">Reiškinys</option>
+                          <option value="equation">Lygtis</option>
+                        </select>
+                      </label>
+                      <label class="authoring-field">
+                        <span>Automatiškai parinktas tikrinimo modulis</span>
+                        <select id="editorValidator" disabled></select>
+                      </label>
+                    </div>
+                    <div class="authoring-grid two-columns equation-technical-fields" id="equationTechnicalFields">
+                      <label class="authoring-field">
+                        <span>Pradinė lygtis</span>
+                        <input id="editorInitialEquation" type="text" spellcheck="false" readonly />
+                      </label>
+                      <label class="authoring-field">
+                        <span>Kintamasis</span>
+                        <input id="editorExpectedVariable" type="text" readonly />
+                      </label>
+                      <label class="authoring-field">
+                        <span>Automatiškai apskaičiuoti sprendiniai</span>
+                        <input id="editorExpectedValue" type="text" spellcheck="false" readonly />
+                      </label>
+                      <label class="authoring-field">
+                        <span>Rodoma sprendinių aibė</span>
+                        <input id="editorExpectedValueDisplay" type="text" readonly />
+                      </label>
+                    </div>
+                  </details>
+                </fieldset>
+
+                <details class="json-preview-box">
+                  <summary>Užduoties JSON struktūra</summary>
+                  <div class="json-preview-toolbar">
+                    <span>Tokį objektą galės grąžinti DI generatorius.</span>
+                    <button class="secondary-button compact" id="copyJsonButton" type="button">Kopijuoti JSON</button>
+                  </div>
+                  <pre id="taskJsonPreview"></pre>
+                </details>
+
+                <div class="authoring-validation" id="authoringValidation" role="status" aria-live="polite"></div>
+                <footer class="authoring-form-actions">
+                  <button class="secondary-button" id="discardEditorChangesButton" type="button">Atšaukti pakeitimus</button>
+                  <button class="secondary-button" id="saveTaskToLibraryButton" type="button">Išsaugoti bibliotekoje</button>
+                  <button class="primary-button" id="saveTaskButton" type="submit">Išsaugoti užduotį</button>
+                </footer>
+              </form>
+            </section>
+          </div>
+          <div class="resize-handle" id="practiceResizeHandle" aria-label="Keisti pratybų lango dydį"></div>
+        </article>
+          </div>
+        </div>
+      </section>
+      <div class="board-camera-controls" id="boardCameraControls" aria-label="Lentos mastelis">
+        <button type="button" id="boardZoomOutButton" aria-label="Atitolinti lentą">−</button>
+        <output id="boardZoomLabel" aria-live="polite">72 %</output>
+        <button type="button" id="boardZoomInButton" aria-label="Priartinti lentą">+</button>
+        <button type="button" id="boardZoomActualButton">100 %</button>
+        <button type="button" id="boardZoomFitButton">Rodyti viską</button>
+        <button type="button" id="boardFocusObjectButton">Priartinti objektą</button>
+      </div>
+    </main>
+
+    <section class="practice-only-overlay" id="practiceOnlyOverlay" hidden aria-label="Tik pratybų režimas">
+      <header class="practice-only-header">
+        <div>
+          <span>TIK PRATYBOS</span>
+          <strong id="practiceOnlyTitle">Pratybos</strong>
+        </div>
+        <button type="button" id="exitPracticeOnlyButton">Grįžti į lentą</button>
+      </header>
+      <div class="practice-only-host" id="practiceOnlyHost"></div>
+    </section>
+
+
+
+    <div class="library-modal" id="libraryModal" hidden>
+      <div class="library-backdrop" data-library-close="true"></div>
+      <section class="library-panel" role="dialog" aria-modal="true" aria-labelledby="libraryTitle">
+        <header class="library-header">
+          <div>
+            <span class="eyebrow">VIETINĖ UŽDUOČIŲ BIBLIOTEKA · P7.7.2</span>
+            <h2 id="libraryTitle">Užduočių biblioteka</h2>
+            <p>Vieną ar kelias pasirinktas užduotis įterpk tiesiai į lentą kaip savarankiškus sprendimo objektus.</p>
+          </div>
+          <button class="icon-button" id="closeLibraryButton" type="button" aria-label="Uždaryti biblioteką">×</button>
+        </header>
+
+        <div class="library-tabs" role="tablist" aria-label="Bibliotekos skyriai">
+          <button class="library-tab is-active" id="libraryTasksTab" type="button" role="tab" aria-selected="true">Užduotys <span id="libraryTaskCount">0</span></button>
+          <button class="library-tab" id="libraryPracticesTab" type="button" role="tab" aria-selected="false">Pratybų juodraščiai <span id="libraryPracticeCount">0</span></button>
+        </div>
+
+        <section class="library-tasks-view" id="libraryTasksView">
+          <div class="library-filters">
+            <label class="library-search">
+              <span class="sr-only">Ieškoti užduočių</span>
+              <input id="librarySearch" type="search" placeholder="Ieškoti pagal pavadinimą, temą ar formulę…" />
+            </label>
+            <label><span>Klasė</span><select id="libraryClassFilter"><option value="">Visos</option></select></label>
+            <label><span>Tema</span><select id="libraryTopicFilter"><option value="">Visos</option></select></label>
+            <label><span>Tipas</span><select id="libraryTypeFilter"><option value="">Visi</option></select></label>
+            <label><span>Sudėtingumas</span><select id="libraryDifficultyFilter"><option value="">Visi</option></select></label>
+            <label><span>Būsena</span><select id="libraryStatusFilter"><option value="">Visos</option><option value="ready">Paruošta</option><option value="attention">Reikia dėmesio</option><option value="unsupported">Nepalaikoma</option></select></label>
+          </div>
+          <div class="library-summary-row">
+            <span id="libraryResultsLabel">Rodoma 0 užduočių</span>
+            <button class="library-link-button" id="libraryClearFiltersButton" type="button">Išvalyti filtrus</button>
+          </div>
+          <div class="library-task-grid" id="libraryTaskGrid"></div>
+          <div class="library-empty" id="libraryEmpty" hidden>Pagal pasirinktus filtrus užduočių nerasta.</div>
+          <footer class="library-selection-bar">
+            <strong id="librarySelectionLabel">Nepasirinkta užduočių</strong>
+            <div>
+              <button class="secondary-button" id="libraryInsertSelectedButton" type="button" disabled>Įterpti pasirinktas į lentą</button>
+              <button class="primary-button" id="libraryBuildPracticeButton" type="button" disabled>Sudaryti pratybas</button>
+            </div>
+          </footer>
+        </section>
+
+        <section class="library-practices-view" id="libraryPracticesView" hidden>
+          <div class="library-practice-heading">
+            <div>
+              <h3>Pratybų juodraščiai</h3>
+              <p>Juodraštis saugo nuorodas į bibliotekos užduotis ir užfiksuotas jų versijas.</p>
+            </div>
+          </div>
+          <div class="library-practice-list" id="libraryPracticeList"></div>
+          <div class="library-empty" id="libraryPracticesEmpty" hidden>Dar nesudarytos jokios pratybos.</div>
+        </section>
+      </section>
+    </div>
+
+
+    <div class="ai-workflow" id="aiWorkflowModal" hidden>
+      <div class="ai-workflow-backdrop" data-ai-close="true"></div>
+      <section class="ai-workflow-panel" role="dialog" aria-modal="true" aria-labelledby="aiWorkflowTitle">
+        <header class="ai-workflow-header">
+          <div>
+            <span class="eyebrow">VIETINIS DI DARBO SRAUTAS · P7.7.2</span>
+            <h2 id="aiWorkflowTitle">Kurti pratybas su DI</h2>
+            <p>Programa nelaiko DI rakto. Užklausą nukopijuok į DI pokalbį, o gautą JSON grąžink čia patikrai.</p>
+          </div>
+          <button class="icon-button" id="closeAiWorkflowButton" type="button" aria-label="Uždaryti DI darbo srautą">×</button>
+        </header>
+
+        <div class="ai-workflow-body">
+          <section class="ai-step">
+            <div class="ai-step-number">1</div>
+            <div class="ai-step-content">
+              <h3>Aprašyk, kokių pratybų reikia</h3>
+              <label class="authoring-field">
+                <span>Mokytojo prašymas DI</span>
+                <textarea id="aiTeacherRequest" rows="4" placeholder="Pvz., sukurk 5 palaipsniui sunkėjančias tiesinių lygčių užduotis 8 klasei. Reikalauk sprendimo eigos."></textarea>
+              </label>
+              <div class="ai-inline-actions">
+                <button class="primary-button" id="generateAiPromptButton" type="button">Parengti DI užklausą</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="ai-step">
+            <div class="ai-step-number">2</div>
+            <div class="ai-step-content">
+              <h3>Nukopijuok struktūrizuotą užklausą</h3>
+              <p class="ai-help">Užklausoje yra dabartinio P7.7.2 modelio sutartis, palaikymo ribos ir reikalavimas grąžinti tik JSON.</p>
+              <label class="authoring-field">
+                <span>DI skirta užklausa</span>
+                <textarea id="aiPromptOutput" rows="11" readonly placeholder="Pirmiausia įrašyk mokytojo prašymą ir paspausk „Parengti DI užklausą“."></textarea>
+              </label>
+              <div class="ai-inline-actions">
+                <button class="secondary-button" id="copyAiPromptButton" type="button" disabled>Kopijuoti DI užklausą</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="ai-step">
+            <div class="ai-step-number">3</div>
+            <div class="ai-step-content">
+              <h3>Įkelk DI sugeneruotą JSON</h3>
+              <p class="ai-help">Galima įklijuoti visą pratybų paketą, užduočių masyvą arba vieną užduotį. Importas nieko nepaskelbia be P3.2 patikimumo vartų.</p>
+              <label class="authoring-field">
+                <span>DI atsakymas</span>
+                <textarea id="aiJsonInput" rows="11" spellcheck="false" placeholder='{"schemaVersion":1,"contract":"interactive-practice-package@1","title":"...","tasks":[...]}'></textarea>
+              </label>
+              <div class="ai-import-controls">
+                <label class="authoring-field compact-field">
+                  <span>Importavimo būdas</span>
+                  <select id="aiImportMode">
+                    <option value="append">Pridėti prie dabartinio rinkinio</option>
+                    <option value="replace">Pakeisti visą dabartinį rinkinį</option>
+                  </select>
+                </label>
+                <label class="secondary-button file-button" for="aiJsonFileInput">Pasirinkti JSON failą</label>
+                <input id="aiJsonFileInput" type="file" accept="application/json,.json" hidden />
+                <button class="secondary-button" id="previewAiImportButton" type="button">Patikrinti JSON</button>
+                <button class="primary-button" id="applyAiImportButton" type="button" disabled>Importuoti patikrintas užduotis</button>
+              </div>
+              <div class="ai-import-status" id="aiImportStatus" role="status" aria-live="polite"></div>
+              <section class="ai-import-preview" id="aiImportPreview" hidden>
+                <div class="ai-import-summary" id="aiImportSummary"></div>
+                <p class="ai-generation-notes" id="aiGenerationNotes" hidden></p>
+                <div class="ai-import-task-list" id="aiImportTaskList"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="ai-export-box">
+            <div>
+              <strong>Dabartinio rinkinio atsarginė kopija</strong>
+              <span>Prieš didesnį importą gali atsisiųsti visą dabartinį struktūrizuotą paketą.</span>
+            </div>
+            <button class="secondary-button" id="exportPackageButton" type="button">Atsisiųsti rinkinio JSON</button>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathlive@0.110.0/mathlive.min.js"></script>
+  <script>
+    if (window.MathfieldElement) {
+      MathfieldElement.fontsDirectory = "https://cdn.jsdelivr.net/npm/mathlive@0.110.0/fonts/";
+      MathfieldElement.soundsDirectory = null;
+    }
+  </script>
+  <script src="tasks.js"></script>
+  <script src="app.js"></script>
+  <script type="module" src="online-sync.js"></script>
+</body>
+</html>

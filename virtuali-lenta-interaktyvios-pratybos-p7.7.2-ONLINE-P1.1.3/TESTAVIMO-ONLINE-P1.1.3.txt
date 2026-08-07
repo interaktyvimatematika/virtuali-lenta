@@ -1,0 +1,8 @@
+P1.1.3 tikrinimas
+
+1. Atidaryk pagrindinę GitHub Pages nuorodą. Turi rodyti „Mokytojas“. Mokinys/Mokytojas perjungiklio neturi būti.
+2. Spausk „Kopijuoti mokinio nuorodą“, įklijuok ją telefone / planšetėje / inkognito lange. Adrese turi būti role=student, viršuje – „Mokinys“.
+3. Mokinio lange neturi būti Bibliotekos, Išvalyti P7.7.2, Nauja sesija, Kopijuoti mokinio nuorodą, Peržiūrėti kaip mokinys ir mokytojo rengyklės valdymo.
+4. Mokytojo lange spausk „Peržiūrėti kaip mokinys“. Naujas skirtukas turi būti mokinio rolės, o pradinis mokytojo langas turi likti mokytojo rolės.
+5. Mokytojas paspaudžia „Nauja sesija“. Visi langai turi persikelti į tą patį naują room, mokytojas likti Mokytojas, mokinio langai – Mokinys.
+6. Patikrink piešimą/trynimą kompiuteris↔telefonas↔planšetė. Sklandumas turi išlikti toks pats kaip P1.1.1.
