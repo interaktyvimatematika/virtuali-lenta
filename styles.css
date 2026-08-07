@@ -2979,3 +2979,10 @@ body[data-online-role="teacher"] .tools::-webkit-scrollbar { display: none; }
   }
   body[data-online-role="teacher"] .topbar-actions::-webkit-scrollbar { display: none; }
 }
+
+/* ONLINE-P1.1.8 – atskirai įkeliamų interaktyvių pratybų modulis */
+.external-practice-module-object { background: #eef2f7; }
+.external-practice-module-host { min-height: 0; overflow: hidden; background: #f5f7fb; }
+.external-practice-module-frame { display: block; width: 100%; height: 100%; min-height: 0; border: 0; background: #f5f7fb; }
+.external-practice-module-object.is-practice-only .external-practice-module-host { min-height: 0; }
+.external-practice-module-object.is-practice-only .external-practice-module-frame { height: 100%; }

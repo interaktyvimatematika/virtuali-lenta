@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VBE A kursas · Funkcija ir jos grafikas · 1 modulis v1.6</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['\\(','\\)']],
+    displayMath: [['\\[','\\]']]
+  },
+  svg: { fontCache: 'local' }
+};
+</script>
+<script defer src="mathjax-tex-svg.js"></script>
+<style>
+  :root{
+    --bg:#f5f7fb;
+    --panel:#ffffff;
+    --ink:#1f2937;
+    --muted:#667085;
+    --line:#d8dee9;
+    --accent:#3157d5;
+    --accent-soft:#eef2ff;
+    --good:#18794e;
+    --good-bg:#edfdf4;
+    --warn:#9a6700;
+    --warn-bg:#fff8e1;
+    --bad:#b42318;
+    --bad-bg:#fff1f0;
+    --shadow:0 12px 34px rgba(31,41,55,.10);
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  button,input,select{font:inherit}
+  button{cursor:pointer}
+  .app{max-width:1060px;margin:0 auto;padding:18px}
+  .topbar{
+    position:sticky;top:0;z-index:20;
+    background:rgba(245,247,251,.94);backdrop-filter:blur(10px);
+    padding:10px 0 12px;border-bottom:1px solid rgba(216,222,233,.8);
+  }
+  .toprow{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .brand{display:flex;gap:10px;align-items:center;min-width:260px}
+  .badge{width:38px;height:38px;border-radius:12px;background:var(--accent);color:white;display:grid;place-items:center;font-weight:800}
+  .brand h1{font-size:17px;margin:0}
+  .brand small{display:block;color:var(--muted);margin-top:2px}
+  .mode-switch{display:flex;gap:6px;background:#e9edf5;border-radius:12px;padding:4px}
+  .mode-switch button{border:0;background:transparent;padding:8px 11px;border-radius:9px;color:#475467}
+  .mode-switch button.active{background:white;color:var(--accent);box-shadow:0 1px 4px rgba(31,41,55,.12);font-weight:700}
+  .top-actions{display:flex;gap:8px;align-items:center}
+  .ghost{border:1px solid var(--line);background:white;color:#344054;border-radius:10px;padding:9px 11px}
+  .ghost:hover{background:#f8fafc}
+  .progress-wrap{margin-top:12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+  .progress{height:8px;background:#e6eaf2;border-radius:99px;overflow:hidden}
+  .progress > div{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+  .progress-label{font-size:13px;color:var(--muted);min-width:72px;text-align:right}
+  .lesson-title{margin:30px 0 10px;color:var(--muted);font-weight:700;font-size:14px;letter-spacing:.02em}
+  .card{background:var(--panel);border:1px solid #e4e8f0;border-radius:var(--radius);box-shadow:var(--shadow);padding:26px}
+  .task-head{display:flex;gap:16px;align-items:flex-start;justify-content:space-between}
+  .task-num{font-weight:800;color:var(--accent);font-size:14px}
+  .skill-chip{font-size:12px;color:#475467;background:#f2f4f7;padding:6px 9px;border-radius:999px}
+  .prompt{font-size:19px;line-height:1.55;margin:18px 0}
+  .math{
+    display:inline-block;font-family:"Cambria Math","STIX Two Math","Times New Roman",serif;
+    font-size:1.16em;letter-spacing:.01em
+  }
+  .math.block{display:block;text-align:center;font-size:1.32em;margin:18px 0}
+  .answers{display:grid;gap:10px;margin:18px 0}
+  .choice{
+    display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;background:white;text-align:left;
+  }
+  .choice:hover{border-color:#a9b5d6;background:#fbfcff}
+  .choice.selected{border-color:var(--accent);background:var(--accent-soft)}
+  .choice .letter{font-weight:800;color:#475467;min-width:20px}
+  .inline-inputs{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
+  .input{
+    min-width:130px;max-width:100%;
+    border:1.5px solid #b9c2d0;border-radius:10px;padding:11px 12px;background:white;
+    outline:none;
+  }
+  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(49,87,213,.12)}
+  .input.math-input{font-family:"Cambria Math","STIX Two Math","Times New Roman",serif;font-size:18px}
+  .mini-table{border-collapse:collapse;margin:12px 0}
+  .mini-table th,.mini-table td{border:1px solid var(--line);padding:10px 12px;text-align:center}
+  .mini-table input{width:74px}
+  .controls{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:20px}
+  .primary{border:0;background:var(--accent);color:white;border-radius:11px;padding:11px 17px;font-weight:700}
+  .primary:hover{filter:brightness(.96)}
+  .secondary{border:1px solid var(--line);background:white;color:#344054;border-radius:11px;padding:10px 14px}
+  .secondary[disabled],.primary[disabled]{opacity:.45;cursor:not-allowed}
+  .feedback{border-radius:12px;padding:12px 14px;margin-top:16px;line-height:1.45;display:none}
+  .feedback.show{display:block}
+  .feedback.good{background:var(--good-bg);color:var(--good);border:1px solid #b7ebd0}
+  .feedback.warn{background:var(--warn-bg);color:#7a5300;border:1px solid #f4d783}
+  .feedback.bad{background:var(--bad-bg);color:var(--bad);border:1px solid #fac5c1}
+  .hintbox{background:#f8fafc;border:1px dashed #b9c2d0;border-radius:12px;padding:12px 14px;margin-top:12px;display:none}
+  .hintbox.show{display:block}
+  .scaffold{display:grid;gap:8px;margin-top:10px}
+  .scaffold div{padding:9px 10px;background:white;border:1px solid #e6eaf2;border-radius:9px}
+  .graph-wrap{display:grid;gap:12px;margin:16px 0}
+  .graph{width:100%;max-width:720px;height:auto;border:1px solid #e1e6ef;border-radius:14px;background:#fff;touch-action:manipulation}
+  .mini-graphs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .mini-graph-option{border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+  .mini-graph-option.selected{border-color:var(--accent);background:var(--accent-soft)}
+  .mini-graph-option svg{width:100%;height:auto}
+  .teacher{display:none;margin-top:22px}
+  .teacher.show{display:block}
+  .teacher-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+  .metric{background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:12px}
+  .metric b{display:block;font-size:22px;margin-top:4px}
+  .summary-table{width:100%;border-collapse:collapse;margin-top:12px}
+  .summary-table th,.summary-table td{border-bottom:1px solid #e5e7eb;padding:10px;text-align:left}
+  .summary-table th{font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.04em}
+  .end-card{text-align:center;padding:30px 10px}
+  .end-card h2{font-size:28px;margin:0 0 8px}
+  .skill-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:22px auto;max-width:720px;text-align:left}
+  .skill-list div{border:1px solid #e5e7eb;border-radius:12px;padding:11px 13px;background:#fff}
+  .tiny{font-size:12px;color:var(--muted)}
+  .hidden{display:none !important}
+  .start-card{max-width:820px;margin:54px auto 0}
+  .start-card h2{font-size:30px;margin:0 0 12px}
+  .start-card p{color:#475467;line-height:1.6}
+  .outcomes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0}
+  .outcomes div{background:#f8fafc;border:1px solid #e7ebf2;border-radius:12px;padding:11px 13px}
+  .start-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .lesson-nav{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0}
+  .lesson-pill{font-size:12px;padding:7px 9px;border-radius:999px;background:#f2f4f7;color:#667085}
+  .lesson-pill.current{background:var(--accent-soft);color:var(--accent);font-weight:700}
+  .result-pill{display:inline-block;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:700}
+  .result-pill.ok{background:var(--good-bg);color:var(--good)}
+  .result-pill.help{background:var(--warn-bg);color:var(--warn)}
+  .result-pill.repeat{background:var(--bad-bg);color:var(--bad)}
+  @media (max-width:760px){
+    .app{padding:10px}
+    .card{padding:18px}
+    .mini-graphs{grid-template-columns:1fr}
+    .teacher-grid{grid-template-columns:repeat(2,1fr)}
+    .skill-list,.outcomes{grid-template-columns:1fr}
+    .brand{min-width:0}
+    .mode-switch{width:100%}
+    .mode-switch button{flex:1}
+    .top-actions{width:100%}
+    .top-actions button{flex:1}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="toprow">
+      <div class="brand">
+        <div class="badge">ƒ</div>
+        <div>
+          <h1>Funkcija ir jos grafikas</h1>
+          <small>VBE A kursas · 1 modulis · v1.6</small>
+        </div>
+      </div>
+      <div class="mode-switch" aria-label="Režimas">
+        <button id="mode-class" class="active" type="button">Pamokoje</button>
+        <button id="mode-self" type="button">Savarankiškai</button>
+      </div>
+      <div class="top-actions">
+        <button id="teacherBtn" class="ghost" type="button">Mokytojo suvestinė</button>
+        <button id="resetBtn" class="ghost" type="button">Iš naujo</button>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress"><div id="progressBar"></div></div>
+      <div id="progressLabel" class="progress-label">0 / 20</div>
+    </div>
+  </div>
+
+  <main id="main"></main>
+  <section id="teacherPanel" class="teacher"></section>
+</div>
+
+<script>
+const MODULE_ID = "vbe-funkcija-grafikas-v1-6";
+const EMBED_PARAMS = new URLSearchParams(location.search);
+const EMBEDDED = EMBED_PARAMS.get("embed") === "1";
+const EMBED_ROLE = EMBED_PARAMS.get("role") === "student" ? "student" : "teacher";
+const EMBED_PRACTICE_ID = EMBED_PARAMS.get("practiceId") || "";
+const letters = ["A","B","C","D","E","F"];
+const skills = {
+  "Funkcijos sąvoka":"Funkcijos sąvoka",
+  "f(x)":"f(x) supratimas",
+  "Taškas ir grafikas":"Taško priklausymas grafikui",
+  "Grafiko skaitymas":"Grafiko skaitymas",
+  "Terminija":"Terminija",
+  "Intervalai":"Intervalai",
+  "Tiesinė funkcija":"Tiesinė funkcija",
+  "Algebra":"Algebra",
+  "Kvadratinė bazė":"Kvadratinės funkcijos bazė",
+  "Modeliavimas":"Modeliavimas",
+  "Uždavinio analizė":"Uždavinio analizė"
+};
+
+const taskData = [
+  {id:1,lesson:1,mode:"class",skill:"Funkcijos sąvoka",type:"multigraph",
+   prompt:"Pažymėk visus grafikus, kurie gali būti funkcijos \\(y=f(x)\\) grafikais.",
+   correct:["A","C"], hint1:"Kiekvienai pasirinktai x reikšmei funkcija gali priskirti tik vieną y reikšmę.",
+   hint2:"Mintyse brauk vertikalią tiesę. Jei ji grafiką kerta daugiau nei vieną kartą, toks grafikas nėra funkcijos y=f(x) grafikas."},
+  {id:2,lesson:1,mode:"class",skill:"f(x)",type:"number",
+   prompt:"Duota \\(f(x)=2x+3\\). Apskaičiuok \\(f(4)\\).",
+   correct:["11"], hint1:"f(4) reiškia, kad visur vietoje x reikia įrašyti 4.", hint2:"Pradėk taip: \\(f(4)=2\\cdot 4+3\\)."},
+  {id:3,lesson:1,mode:"class",skill:"Algebra",type:"number",
+   prompt:"Duota \\(f(x)=x^2-1\\). Apskaičiuok \\(f(-2)\\).",
+   correct:["3"], hint1:"Nepamiršk skliaustų: čia kvadratu keliama visa reikšmė −2.", hint2:"Pradėk: \\(f(-2)=(-2)^2-1=4-1\\)."},
+  {id:4,lesson:1,mode:"class",skill:"Taškas ir grafikas",type:"choice",
+   prompt:"Duota \\(f(x)=x^2-1\\). Ar taškas \\((2;3)\\) priklauso šios funkcijos grafikui?",
+   options:["Taip","Ne"], correct:["Taip"], hint1:"Patikrink, kokią reikšmę gauni apskaičiavęs f(2).", hint2:"\\(f(2)=2^2-1=3\\). Palygink ją su taško y koordinate."},
+  {id:5,lesson:1,mode:"class",skill:"Terminija",type:"choice",
+   prompt:"Ką reiškia užrašas \\(f(3)=7\\)?",
+   options:["Kai x=7, funkcijos reikšmė yra 3.","Kai x=3, funkcijos reikšmė yra 7.","Funkcijos nulis yra 7.","Funkcijos formulė yra 3x=7."],
+   correct:["Kai x=3, funkcijos reikšmė yra 7."], hint1:"Skaičius skliaustuose yra argumento x reikšmė.", hint2:"Užrašas f(3)=7 sako: į funkciją įvedus x=3, gaunama reikšmė 7."},
+
+  {id:6,lesson:1,mode:"self",skill:"f(x)",type:"number",
+   prompt:"Duota \\(g(x)=5-3x\\). Rask \\(g(2)\\).",
+   correct:["-1","−1"], hint1:"Įrašyk 2 vietoje x.", hint2:"\\(g(2)=5-3\\cdot 2\\)."},
+  {id:7,lesson:1,mode:"self",skill:"Algebra",type:"number",
+   prompt:"Duota \\(h(x)=\\frac{x+4}{2}\\). Rask \\(h(-2)\\).",
+   correct:["1"], hint1:"Pirmiausia įrašyk −2 vietoje x skliaustuose.", hint2:"\\(h(-2)=\\frac{-2+4}{2}=\\frac22\\)."},
+  {id:8,lesson:1,mode:"self",skill:"Taškas ir grafikas",type:"choice",
+   prompt:"Duota \\(f(x)=2x+3\\). Ar taškas \\((-1;0)\\) priklauso grafikui?",
+   options:["Taip","Ne"], correct:["Ne"], hint1:"Apskaičiuok f(−1).", hint2:"\\(f(-1)=2\\cdot(-1)+3=1\\), o taško y koordinatė yra 0."},
+
+  {id:9,lesson:2,mode:"class",skill:"Grafiko skaitymas",type:"mainGraphNumber",
+   prompt:"Pagal grafiką rask \\(f(0)\\).",
+   correct:["3"], hint1:"Surask x=0 ir pažiūrėk, kokiame aukštyje yra grafikas.", hint2:"Kai x=0, grafikas yra ties y=3."},
+  {id:10,lesson:2,mode:"class",skill:"Terminija",type:"graphZeros",
+   prompt:"Spustelėk abu funkcijos nulius grafike.",
+   correct:["-3","2"], hint1:"Funkcijos nulis yra tokia x reikšmė, kuriai f(x)=0.", hint2:"Ieškok grafiko sankirtų su horizontaliąja x ašimi."},
+  {id:11,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
+   prompt:"Kada \\(f(x)>0\\)? Užrašyk intervalą.",
+   correct:["(-3;2)","(-3,2)"], hint1:"Ieškok tos grafiko dalies, kuri yra virš x ašies.", hint2:"Grafikas virš x ašies yra tarp nulių −3 ir 2; patys nuliai netinka, nes nelygybė griežta."},
+  {id:12,lesson:2,showMainGraph:true,mode:"class",skill:"Grafiko skaitymas",type:"choice",
+   prompt:"Kuriame intervale funkcija didėja?",
+   options:["Nuo x=−4 iki x=−1","Nuo x=−1 iki x=1","Nuo x=1 iki x=4","Visame intervale [−4;4]"],
+   correct:["Nuo x=−4 iki x=−1"], hint1:"Didėjant x, stebėk, kur grafikas kyla aukštyn.", hint2:"Grafikas kyla nuo taško (−4;−1) iki (−1;3)."},
+  {id:13,lesson:2,showMainGraph:true,mode:"class",skill:"Grafiko skaitymas",type:"number",
+   prompt:"Kokia didžiausia pavaizduotos funkcijos reikšmė?",
+   correct:["3"], hint1:"Funkcijos reikšmė yra y, ne x.", hint2:"Aukščiausia grafiko vieta yra ties y=3."},
+
+  {id:33,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
+   prompt:"Funkcijos <b>apibrėžimo sritis</b> \\(D(f)\\) – visos argumento \\(x\\) reikšmės, kurioms funkcija apibrėžta. Pagal grafiką užrašyk \\(D(f)\\).",
+   correct:["[-4;4]","[-4,4]"], hint1:"Žiūrėk, nuo kurios iki kurios x reikšmės yra nubrėžtas grafikas.", hint2:"Grafikas prasideda ties \\(x=-4\\) ir baigiasi ties \\(x=4\\); abu galai įtraukti, todėl \\(D(f)=[-4;4]\\)."},
+  {id:34,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
+   prompt:"Funkcijos <b>reikšmių sritis</b> \\(E(f)\\) – visos galimos funkcijos reikšmės \\(y=f(x)\\). Pagal grafiką užrašyk \\(E(f)\\).",
+   correct:["[-2;3]","[-2,3]"], hint1:"Žiūrėk į žemiausią ir aukščiausią grafiko y reikšmę.", hint2:"Mažiausia reikšmė yra \\(-2\\), didžiausia – \\(3\\), todėl \\(E(f)=[-2;3]\\)."},
+
+  {id:14,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
+   prompt:"Pagal tą patį grafiką užrašyk funkcijos apibrėžimo sritį \\(D(f)\\).",
+   correct:["[-5;5]","[-5,5]"], hint1:"Kokias x reikšmes apima visas pavaizduotas grafikas?", hint2:"Grafikas prasideda ties \(x=-5\) ir baigiasi ties \(x=5\); abu galai priklauso grafikui, todėl \(D(f)=[-5;5]\)."},
+  {id:15,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
+   prompt:"Užrašyk funkcijos reikšmių sritį \\(E(f)\\).",
+   correct:["[-2;2]","[-2,2]"], hint1:"Dabar žiūrėk į visas galimas \(y=f(x)\) reikšmes.", hint2:"Mažiausia pavaizduota reikšmė yra \(-2\), didžiausia – \(2\), todėl \(E(f)=[-2;2]\)."},
+  {id:16,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
+   prompt:"Kada \\(f(x)<0\\)?",
+   correct:["[-5;-4)∪(3;5]","[-5,-4)∪(3,5]","[-5;-4)u(3;5]","[-5,-4)u(3,5]"],
+   hint1:"Ieškok grafiko dalių žemiau \(x\) ašies.", hint2:"Žemiau \(x\) ašies grafikas yra nuo \(-5\) iki \(-4\) ir nuo \(3\) iki \(5\); ties nuliais \(f(x)=0\), todėl \(-4\) ir \(3\) neįtraukiami."},
+
+  {id:17,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"dual",
+   prompt:"Duota \\(f(x)=2x-1\\). Įrašyk koeficientą prie x ir reikšmę \\(f(0)\\).",
+   labels:["Koeficientas prie x","f(0)"], correct:["2","-1"], hint1:"Koeficientas prie x yra skaičius, iš kurio x dauginamas.", hint2:"Čia a=2, o <span class='math'>f(0)=2·0−1=−1</span>."},
+  {id:18,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"lineGraphs",
+   prompt:"Pasirink grafiką funkcijos \\(f(x)=2x-1\\).",
+   correct:["C"], hint1:"Koeficientas 2 yra teigiamas, todėl tiesė kyla; kai x=0, y=−1.", hint2:"Ieškok kylančios tiesės, kuri y ašį kerta ties −1. Šiame paveiksle tai grafikas C."},
+  {id:19,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"table",
+   prompt:"Duota \\(f(x)=2x-1\\). Užpildyk lentelę.",
+   xs:["0","1","2"], correct:["-1","1","3"], hint1:"Kiekvieną x reikšmę paeiliui įstatyk į formulę.", hint2:"Gauname: f(0)=−1, f(1)=1, f(2)=3."},
+  {id:20,lesson:3,mode:"class",skill:"Algebra",type:"number",
+   prompt:"Duota \\(f(x)=2x-4\\). Rask funkcijos nulį.",
+   correct:["2"], hint1:"Funkcijos nuliui f(x)=0.", hint2:"Spręsk lygtį \\(2x-4=0\\)."},
+  {id:21,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"text",
+   prompt:"Tiesė eina per taškus \\((0;3)\\) ir \\((2;7)\\). Užrašyk jos formulę.",
+   correct:["f(x)=2x+3","y=2x+3","2x+3"], hint1:"Pirmiausia rask, kiek y pasikeičia, kai x padidėja 2 vienetais.", hint2:"Nuolydis yra (7−3)/(2−0)=2, o kai x=0, y=3."},
+
+  {id:22,lesson:3,mode:"self",skill:"Tiesinė funkcija",type:"choice",
+   prompt:"Duota \\(f(x)=-\\frac12x+4\\). Funkcija didėja ar mažėja?",
+   options:["Didėja","Mažėja"], correct:["Mažėja"], hint1:"Pažiūrėk į koeficiento prie x ženklą.", hint2:"Koeficientas −1/2 yra neigiamas, todėl tiesinė funkcija mažėja."},
+  {id:23,lesson:3,mode:"self",skill:"Algebra",type:"number",
+   prompt:"Duota \\(f(x)=-\\frac12x+4\\). Rask x, jeigu \\(f(x)=1\\).",
+   correct:["6"], hint1:"Sudaryk lygtį: −(1/2)x+4=1.", hint2:"Atėmus 4 gauni −(1/2)x=−3, todėl x=6."},
+  {id:24,lesson:3,mode:"self",skill:"Modeliavimas",type:"choice",
+   prompt:"Taksi kelionės kaina aprašoma \\(K(x)=3+2x\\), kur x – nuvažiuotų kilometrų skaičius. Ką modelyje reiškia skaičius 2?",
+   options:["Pradinį 3 € mokestį","Kainą už vieną papildomą kilometrą","Kelionės kilometrų skaičių","Didžiausią kelionės kainą"],
+   correct:["Kainą už vieną papildomą kilometrą"], hint1:"Pagalvok, kuris dėmuo kinta kartu su x.", hint2:"Dėmuo 2x reiškia, kad už kiekvieną x kilometrą pridedama po 2 €."},
+
+  {id:25,lesson:4,mode:"class",skill:"Modeliavimas",type:"number",
+   prompt:"Įmonė A taiko \\(A(x)=5+2x\\), o įmonė B – \\(B(x)=11+x\\). Kada kainos vienodos? Rask x.",
+   correct:["6"], hint1:"Kai kainos vienodos, A(x)=B(x).", hint2:"Spręsk lygtį \\(5+2x=11+x\\)."},
+  {id:26,lesson:4,mode:"class",skill:"Modeliavimas",type:"choice",
+   prompt:"Kuri įmonė pigesnė, kai \\(x=10\\)?",
+   options:["A","B","Kainos vienodos"], correct:["B"], hint1:"Apskaičiuok A(10) ir B(10).", hint2:"A(10)=25, B(10)=21."},
+  {id:27,lesson:4,mode:"class",skill:"Uždavinio analizė",type:"number",
+   prompt:"Duota \\(f(x)=4x-3\\). Rask \\(f(5)\\).",
+   correct:["17"], hint1:"Ko prašoma? Funkcijos reikšmės, kai x=5.", hint2:"\\(f(5)=4\\cdot5-3=20-3\\)",
+   scaffold:["Ko prašoma? → funkcijos reikšmės","Kokia x reikšmė duota? → 5","Ką reikia padaryti? → įstatyti 5 vietoje x"]},
+  {id:28,lesson:4,mode:"class",skill:"Kvadratinė bazė",type:"number",
+   prompt:"Duota \\(g(x)=x^2-4x+3\\). Rask \\(g(2)\\).",
+   correct:["-1","−1"], hint1:"Įstatyk 2 vietoje x į visą formulę.", hint2:"\\(g(2)=2^2-4\\cdot2+3=4-8+3\\)."},
+  {id:29,lesson:4,mode:"class",skill:"Kvadratinė bazė",type:"dual",
+   prompt:"Rask funkcijos \\(g(x)=x^2-4x+3\\) nulius.",
+   labels:["Pirmas nulis","Antras nulis"], correct:["1","3"], unordered:true,
+   hint1:"Funkcijos nuliai tenkina lygtį x²−4x+3=0.", hint2:"Išskaidyk: \\((x-1)(x-3)=0\\)."},
+
+  {id:30,lesson:4,mode:"self",skill:"Algebra",type:"number",
+   prompt:"Duota \\(g(x)=3x-6\\). Rask funkcijos nulį.",
+   correct:["2"], hint1:"Funkcijos nuliui \\(g(x)=0\\).", hint2:"Spręsk lygtį \\(3x-6=0\\)."},
+  {id:31,lesson:4,mode:"self",skill:"Modeliavimas",type:"choice",
+   prompt:"Automobilių stovėjimo kaina aprašoma formule \\(K(x)=4+1{,}5x\\), kur \\(x\\) – stovėjimo valandų skaičius. Ką reiškia skaičius \\(1{,}5\\)?",
+   options:["Pradinį 4 € mokestį","Vienos stovėjimo valandos kainą","Didžiausią stovėjimo laiką","Bendrą kelionės kainą"],
+   correct:["Vienos stovėjimo valandos kainą"], hint1:"Pažiūrėk, kuris skaičius dauginamas iš kintamojo \\(x\\).", hint2:"Dėmuo \\(1{,}5x\\) reiškia po 1,5 € už kiekvieną stovėjimo valandą."},
+  {id:32,lesson:4,mode:"self",skill:"Modeliavimas",type:"scenario",
+   prompt:"Grafikas vaizduoja žmogaus atstumą nuo namų priklausomai nuo laiko.",
+   correct:["10–15 min.","Atstumas nuo namų nekito.","25"], hint1:"Žiūrėk į didžiausią atstumą, horizontaliąją dalį ir momentą, kai atstumas vėl tampa 0.",
+   hint2:"Didžiausias atstumas 2 km išlieka 10–15 min.; horizontali dalis reiškia nekintantį atstumą; namo grįžtama po 25 min."}
+];
+
+const lessonNames = {
+  1:"1 pamoka · Funkcija ir f(x)",
+  2:"2 pamoka · Skaitome grafiką",
+  3:"3 pamoka · Tiesinė funkcija",
+  4:"4 pamoka · Funkcija kaip problemų sprendimo įrankis"
+};
+
+let mode = EMBEDDED ? "class" : (localStorage.getItem(MODULE_ID+":mode") || "class");
+let currentIndex = 0;
+let state = EMBEDDED ? {} : loadState();
+let selectedChoice = null;
+let graphZeroClicks = [];
+let moduleView = "start";
+let applyingParentSync = false;
+
+function loadState(){
+  try{
+    return JSON.parse(localStorage.getItem(MODULE_ID+":state") || "{}");
+  }catch(e){ return {}; }
+}
+function publishEmbeddedState(){
+  if(!EMBEDDED || applyingParentSync || window.parent===window) return;
+  window.parent.postMessage({
+    type:"p772:external-practice-state",
+    practiceId:EMBED_PRACTICE_ID,
+    moduleId:MODULE_ID,
+    state, mode, currentIndex, view:moduleView
+  }, location.origin);
+}
+function saveState(){
+  if(!EMBEDDED){
+    localStorage.setItem(MODULE_ID+":state", JSON.stringify(state));
+    localStorage.setItem(MODULE_ID+":mode", mode);
+  }
+  publishEmbeddedState();
+}
+function activeTasks(){ return taskData.filter(t=>t.mode===mode); }
+function currentTask(){ return activeTasks()[currentIndex]; }
+
+function norm(s){
+  return String(s ?? "")
+    .trim().toLowerCase()
+    .replace(/\s+/g,"")
+    .replace(/−/g,"-")
+    .replace(/²/g,"^2")
+    .replace(/×/g,"*");
+}
+function flexibleTextNorm(s){
+  return norm(s).replace(/,/g,";").replace(/∪/g,"u");
+}
+function taskState(id){
+  if(!state[id]) state[id]={
+    attempts:0,
+    firstCorrect:null,
+    hints:0,
+    helpUsed:false,
+    corrected:false,
+    solutionShown:false,
+    completed:false,
+    status:null,
+    answer:null
+  };
+  // Backward-safe normalization inside this version.
+  if(typeof state[id].helpUsed!=="boolean") state[id].helpUsed=false;
+  if(typeof state[id].corrected!=="boolean") state[id].corrected=false;
+  if(typeof state[id].solutionShown!=="boolean") state[id].solutionShown=false;
+  return state[id];
+}
+function lessonDots(task){
+  return [1,2,3,4].map(n=>`<span class="lesson-pill ${n===task.lesson?'current':''}">${lessonNames[n]}</span>`).join("");
+}
+function setMode(newMode){
+  mode=newMode; currentIndex=0; selectedChoice=null; graphZeroClicks=[]; saveState();
+  document.getElementById("mode-class").classList.toggle("active", mode==="class");
+  document.getElementById("mode-self").classList.toggle("active", mode==="self");
+  render();
+}
+document.getElementById("mode-class").onclick=()=>setMode("class");
+document.getElementById("mode-self").onclick=()=>setMode("self");
+
+function taskCompletedCount(){
+  return activeTasks().filter(t=>taskState(t.id).completed).length;
+}
+function updateProgress(){
+  const total=activeTasks().length;
+  const done=taskCompletedCount();
+  document.getElementById("progressBar").style.width=(total?done/total*100:0)+"%";
+  document.getElementById("progressLabel").textContent=`${done} / ${total}`;
+}
+function startScreen(){
+  moduleView="start";
+  const main=document.getElementById("main");
+  main.innerHTML=`
+    <section class="card start-card">
+      <div class="task-num">VBE A KURSAS · 1 MODULIS</div>
+      <h2>Funkcija ir jos grafikas</h2>
+      <p>Šis modulis skirtas ne vien pasitikrinti. Jame trumpai prisiminsime funkcijos kalbą, taisyklingai skaitysime funkcijų grafikus, jungsime formulę su grafiku ir spręsime pirmas VBE tipo situacijas.</p>
+      <div class="outcomes">
+        <div>✓ suprasti, ką reiškia \\(f(x)\\)</div>
+        <div>✓ apskaičiuoti funkcijos reikšmę</div>
+        <div>✓ rasti funkcijos nulius ir ženklą</div>
+        <div>✓ skaityti didėjimą, mažėjimą ir sritis</div>
+        <div>✓ suprasti tiesinės funkcijos formulę</div>
+        <div>✓ pereiti nuo situacijos prie funkcijos modelio</div>
+      </div>
+      <p class="tiny">Režimas <b>${mode==="class"?"Pamokoje":"Savarankiškai"}</b>: ${activeTasks().length} užduočių. Rezultatas saugomas šiame naršyklės įrenginyje.</p>
+      <div class="start-actions">
+        <button class="primary" id="startNow">Pradėti</button>
+        <button class="secondary" id="continueBtn">Tęsti nuo pirmos nebaigtos</button>
+      </div>
+    </section>`;
+  document.getElementById("startNow").onclick=()=>{currentIndex=0;renderTask();publishEmbeddedState()};
+  document.getElementById("continueBtn").onclick=()=>{
+    const tasks=activeTasks();
+    const idx=tasks.findIndex(t=>!taskState(t.id).completed);
+    currentIndex=idx===-1?0:idx; renderTask(); publishEmbeddedState();
+  };
+  updateProgress();
+  setTimeout(()=>typesetMath(main),0);
+}
+
+function miniAxes(linePath="", curvePath="", vertical=false, circle=false){
+  return `<svg viewBox="0 0 220 135" aria-hidden="true">
+    <line x1="18" y1="67.5" x2="205" y2="67.5" stroke="#98a2b3" stroke-width="1.4"/>
+    <line x1="110" y1="10" x2="110" y2="125" stroke="#98a2b3" stroke-width="1.4"/>
+    ${linePath}${curvePath}
+  </svg>`;
+}
+function renderMultigraph(task){
+  const gs = {
+    A: miniAxes(`<line x1="35" y1="105" x2="185" y2="30" stroke="#3157d5" stroke-width="3"/>`),
+    B: miniAxes(`<ellipse cx="110" cy="67.5" rx="58" ry="40" fill="none" stroke="#3157d5" stroke-width="3"/>`),
+    C: miniAxes("",`<path d="M45 110 Q110 10 175 110" fill="none" stroke="#3157d5" stroke-width="3"/>`),
+    D: miniAxes(`<line x1="145" y1="18" x2="145" y2="118" stroke="#3157d5" stroke-width="3"/>`)
+  };
+  return `<div class="mini-graphs">${Object.keys(gs).map(k=>`
+    <button type="button" class="mini-graph-option" data-mg="${k}">
+      <b>${k}</b>${gs[k]}
+    </button>`).join("")}</div>`;
+}
+function renderLineGraphs(){
+  const axesWithMarks = (linePath) => `<svg viewBox="0 0 220 135" aria-hidden="true">
+    <line x1="18" y1="67.5" x2="205" y2="67.5" stroke="#98a2b3" stroke-width="1.4"/>
+    <line x1="110" y1="10" x2="110" y2="125" stroke="#98a2b3" stroke-width="1.4"/>
+    <line x1="106" y1="79" x2="114" y2="79" stroke="#667085" stroke-width="1.2"/>
+    <text x="101" y="64" text-anchor="end" font-size="10" fill="#667085">0</text>
+    <text x="101" y="82" text-anchor="end" font-size="10" fill="#667085">−1</text>
+    ${linePath}
+  </svg>`;
+  const lines = [
+    ["A", `<line x1="35" y1="28" x2="185" y2="102" stroke="#3157d5" stroke-width="3"/>`],
+    ["B", `<line x1="45" y1="112" x2="170" y2="24" stroke="#3157d5" stroke-width="3"/>`],
+    ["C", `<line x1="45" y1="98" x2="185" y2="52" stroke="#3157d5" stroke-width="3"/>`],
+    ["D", `<line x1="45" y1="40" x2="180" y2="98" stroke="#3157d5" stroke-width="3"/>`]
+  ];
+  return `<div class="mini-graphs">${lines.map(([k,p])=>`
+    <button type="button" class="mini-graph-option" data-lg="${k}">
+      <b>${k}</b>${axesWithMarks(p)}
+    </button>`).join("")}</div>`;
+}
+function mainGraphSvg(clickable=false){
+  const pts=[[-4,-1],[-3,0],[-1,3],[1,3],[2,0],[4,-2]];
+  const sx=x=>55+(x+4)*72.5;
+  const sy=y=>250-(y+2)*44;
+  const poly=pts.map(p=>`${sx(p[0])},${sy(p[1])}`).join(" ");
+  const ticksX=[-4,-3,-2,-1,0,1,2,3,4].map(x=>`
+    <line x1="${sx(x)}" y1="${sy(0)-4}" x2="${sx(x)}" y2="${sy(0)+4}" stroke="#667085"/>
+    <text x="${sx(x)}" y="${sy(0)+19}" text-anchor="middle" font-size="12" fill="#667085">${x}</text>`).join("");
+  const ticksY=[-2,-1,1,2,3].map(y=>`
+    <line x1="${sx(0)-4}" y1="${sy(y)}" x2="${sx(0)+4}" y2="${sy(y)}" stroke="#667085"/>
+    <text x="${sx(0)-10}" y="${sy(y)+4}" text-anchor="end" font-size="12" fill="#667085">${y}</text>`).join("");
+  return `<svg id="mainGraph" class="graph" viewBox="0 0 690 300" role="${clickable?'button':'img'}" aria-label="Funkcijos grafikas">
+    <rect x="0" y="0" width="690" height="300" fill="#fff"/>
+    <g stroke="#eef1f5" stroke-width="1">
+      ${[-4,-3,-2,-1,0,1,2,3,4].map(x=>`<line x1="${sx(x)}" y1="28" x2="${sx(x)}" y2="260"/>`).join("")}
+      ${[-2,-1,0,1,2,3].map(y=>`<line x1="42" y1="${sy(y)}" x2="650" y2="${sy(y)}"/>`).join("")}
+    </g>
+    <line x1="42" y1="${sy(0)}" x2="650" y2="${sy(0)}" stroke="#667085" stroke-width="1.6"/>
+    <line x1="${sx(0)}" y1="28" x2="${sx(0)}" y2="260" stroke="#667085" stroke-width="1.6"/>
+    ${ticksX}${ticksY}
+    <polyline points="${poly}" fill="none" stroke="#3157d5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${[pts[0],pts[pts.length-1]].map(p=>`<circle cx="${sx(p[0])}" cy="${sy(p[1])}" r="4.5" fill="#3157d5"/>`).join("")}
+    <text x="656" y="${sy(0)-8}" font-size="13" fill="#475467">x</text>
+    <text x="${sx(0)+9}" y="23" font-size="13" fill="#475467">y</text>
+    <g id="clickMarks"></g>
+  </svg>`;
+}
+
+function practiceGraphSvg(){
+  // Different graph for independent practice. Internal construction points are
+  // deliberately not shown; only the two included endpoints are marked.
+  const pts=[[-5,-1],[-4,0],[-2,2],[1,2],[3,0],[5,-2]];
+  const sx=x=>55+(x+5)*58;
+  const sy=y=>238-(y+2)*46;
+  const poly=pts.map(p=>`${sx(p[0])},${sy(p[1])}`).join(" ");
+  const ticksX=[-5,-4,-3,-2,-1,0,1,2,3,4,5].map(x=>`
+    <line x1="${sx(x)}" y1="${sy(0)-4}" x2="${sx(x)}" y2="${sy(0)+4}" stroke="#667085"/>
+    <text x="${sx(x)}" y="${sy(0)+19}" text-anchor="middle" font-size="12" fill="#667085">${x}</text>`).join("");
+  const ticksY=[-2,-1,1,2].map(y=>`
+    <line x1="${sx(0)-4}" y1="${sy(y)}" x2="${sx(0)+4}" y2="${sy(y)}" stroke="#667085"/>
+    <text x="${sx(0)-10}" y="${sy(y)+4}" text-anchor="end" font-size="12" fill="#667085">${y}</text>`).join("");
+  return `<svg class="graph" viewBox="0 0 690 300" role="img" aria-label="Savarankiškos užduoties funkcijos grafikas">
+    <rect x="0" y="0" width="690" height="300" fill="#fff"/>
+    <g stroke="#eef1f5" stroke-width="1">
+      ${[-5,-4,-3,-2,-1,0,1,2,3,4,5].map(x=>`<line x1="${sx(x)}" y1="28" x2="${sx(x)}" y2="260"/>`).join("")}
+      ${[-2,-1,0,1,2].map(y=>`<line x1="42" y1="${sy(y)}" x2="650" y2="${sy(y)}"/>`).join("")}
+    </g>
+    <line x1="42" y1="${sy(0)}" x2="650" y2="${sy(0)}" stroke="#667085" stroke-width="1.6"/>
+    <line x1="${sx(0)}" y1="28" x2="${sx(0)}" y2="260" stroke="#667085" stroke-width="1.6"/>
+    ${ticksX}${ticksY}
+    <polyline points="${poly}" fill="none" stroke="#3157d5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${[pts[0],pts[pts.length-1]].map(p=>`<circle cx="${sx(p[0])}" cy="${sy(p[1])}" r="4.5" fill="#3157d5"/>`).join("")}
+    <text x="656" y="${sy(0)-8}" font-size="13" fill="#475467">x</text>
+    <text x="${sx(0)+9}" y="23" font-size="13" fill="#475467">y</text>
+  </svg>`;
+}
+
+function scenarioSvg(){
+  const sx=t=>45+t*22;
+  const sy=d=>225-d*85;
+  const pts=[[0,0],[10,2],[15,2],[25,0]].map(p=>`${sx(p[0])},${sy(p[1])}`).join(" ");
+  return `<svg class="graph" viewBox="0 0 650 270" aria-label="Atstumo nuo namų grafikas">
+    <line x1="45" y1="225" x2="615" y2="225" stroke="#667085" stroke-width="1.5"/>
+    <line x1="45" y1="28" x2="45" y2="225" stroke="#667085" stroke-width="1.5"/>
+    <polyline points="${pts}" fill="none" stroke="#3157d5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${sx(0)}" cy="${sy(0)}" r="4.5" fill="#3157d5"/>
+    <circle cx="${sx(25)}" cy="${sy(0)}" r="4.5" fill="#3157d5"/>
+    <g fill="#667085" font-size="12">
+      <text x="${sx(0)}" y="245" text-anchor="middle">0</text>
+      <text x="${sx(10)}" y="245" text-anchor="middle">10</text>
+      <text x="${sx(15)}" y="245" text-anchor="middle">15</text>
+      <text x="${sx(25)}" y="245" text-anchor="middle">25</text>
+      <text x="27" y="${sy(2)+4}" text-anchor="end">2</text>
+      <text x="330" y="262" text-anchor="middle">laikas, min.</text>
+      <text x="13" y="110" transform="rotate(-90 13 110)" text-anchor="middle">atstumas, km</text>
+    </g>
+  </svg>`;
+}
+
+function answerUI(task){
+  if(task.type==="number" || task.type==="text"){
+    return `<div class="inline-inputs"><input id="answerInput" class="input math-input" autocomplete="off" placeholder="Įrašyk atsakymą"></div>`;
+  }
+  if(task.type==="choice"){
+    return `<div class="answers">${task.options.map((o,i)=>`
+      <button class="choice" type="button" data-choice="${escapeHtml(o)}"><span class="letter">${letters[i]}</span><span>${o}</span></button>
+    `).join("")}</div>`;
+  }
+  if(task.type==="multigraph") return renderMultigraph(task);
+  if(task.type==="mainGraphNumber"){
+    return `<div class="graph-wrap">${mainGraphSvg(false)}<input id="answerInput" class="input math-input" autocomplete="off" placeholder="f(0) ="></div>`;
+  }
+  if(task.type==="graphZeros"){
+    return `<div class="graph-wrap">${mainGraphSvg(true)}<div class="tiny">Spustelėk dvi grafiko sankirtas su x ašimi.</div></div>`;
+  }
+  if(task.type==="dual"){
+    return `<div class="inline-inputs">${task.labels.map((lab,i)=>`
+      <label>${lab}<br><input class="input math-input dualInput" data-i="${i}" autocomplete="off"></label>`).join("")}</div>`;
+  }
+  if(task.type==="lineGraphs") return renderLineGraphs();
+  if(task.type==="table"){
+    return `<table class="mini-table"><tr><th>x</th>${task.xs.map(x=>`<th>${x}</th>`).join("")}</tr>
+      <tr><th>f(x)</th>${task.xs.map((x,i)=>`<td><input class="input math-input tableInput" data-i="${i}" autocomplete="off"></td>`).join("")}</tr></table>`;
+  }
+  if(task.type==="scenario"){
+    return `<div class="graph-wrap">${scenarioSvg()}</div>
+      <div class="answers">
+        <label>a) Kada žmogus buvo toliausiai nuo namų?<br><input class="input scenarioInput" data-i="0" placeholder="pvz., 10–15 min."></label>
+        <label>b) Ką reiškia horizontalioji grafiko dalis?<br>
+          <select class="input scenarioInput" data-i="1">
+            <option value="">Pasirink...</option>
+            <option>Atstumas nuo namų nekito.</option>
+            <option>Žmogus judėjo vis greičiau.</option>
+            <option>Žmogus grįžo namo.</option>
+          </select>
+        </label>
+        <label>c) Po kiek minučių žmogus grįžo namo?<br><input class="input scenarioInput" data-i="2" placeholder="min."></label>
+      </div>`;
+  }
+  return "";
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+function renderTask(){
+  moduleView="task";
+  const tasks=activeTasks();
+  if(currentIndex>=tasks.length){ renderEnd(); return; }
+  const task=tasks[currentIndex];
+  selectedChoice=null; graphZeroClicks=[];
+  const st=taskState(task.id);
+  const main=document.getElementById("main");
+  main.innerHTML=`
+    <div class="lesson-title">${lessonNames[task.lesson]}</div>
+    <section class="card">
+      <div class="task-head">
+        <div class="task-num">${currentIndex+1} užduotis iš ${tasks.length}</div>
+        <div class="skill-chip">${skills[task.skill] || task.skill}</div>
+      </div>
+      <div class="lesson-nav">${lessonDots(task)}</div>
+      <div class="prompt">${task.prompt}</div>
+      ${task.showMainGraph ? `<div class="graph-wrap">${mainGraphSvg(false)}</div>` : ""}
+      ${task.showPracticeGraph ? `<div class="graph-wrap">${practiceGraphSvg()}</div>` : ""}
+      ${answerUI(task)}
+      ${task.scaffold?`<button id="scaffoldBtn" class="secondary" type="button">Nežinau, nuo ko pradėti</button><div id="scaffoldBox" class="hintbox"><div class="scaffold">${task.scaffold.map(s=>`<div>${s}</div>`).join("")}</div></div>`:""}
+      <div id="feedback" class="feedback"></div>
+      <div id="hintbox" class="hintbox"></div>
+      <div class="controls">
+        <button id="prevBtn" class="secondary" type="button" ${currentIndex===0?"disabled":""}>← Atgal</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button id="solutionBtn" class="secondary hidden" type="button">Rodyti sprendimą</button>
+          <button id="checkBtn" class="primary" type="button">Tikrinti</button>
+          <button id="nextBtn" class="primary hidden" type="button">Toliau →</button>
+        </div>
+      </div>
+    </section>`;
+  bindTask(task);
+
+  if(st.solutionShown){
+    showFeedback("bad","Sprendimas jau buvo parodytas. Ši užduotis lieka pažymėta „Kartoti“.");
+    showHint(task.hint2);
+    freezeTaskInputs();
+    document.getElementById("solutionBtn").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+  }else if(st.status==="repeat" && !st.corrected){
+    showFeedback("bad","Ši užduotis pažymėta „Kartoti“. Gali ją taisyti, parodyti sprendimą arba eiti toliau.");
+    showHint("Peržiūrėk pirmąją užuominą ir dar kartą patikrink savo veiksmus.");
+    document.getElementById("checkBtn").textContent="Patikrinti pataisymą";
+    document.getElementById("solutionBtn").classList.remove("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+  }
+
+  updateProgress();
+}
+function bindTask(task){
+  document.getElementById("prevBtn").onclick=()=>{if(currentIndex>0){currentIndex--;renderTask();publishEmbeddedState();}};
+  document.getElementById("checkBtn").onclick=()=>checkAnswer(task);
+  document.getElementById("nextBtn").onclick=()=>{currentIndex++;renderTask();publishEmbeddedState()};
+  document.getElementById("solutionBtn").onclick=()=>showFullSolution(task);
+  const inp=document.getElementById("answerInput");
+  if(inp) inp.addEventListener("keydown",e=>{if(e.key==="Enter") checkAnswer(task)});
+  document.querySelectorAll("[data-choice]").forEach(btn=>{
+    btn.onclick=()=>{
+      selectedChoice=btn.dataset.choice;
+      document.querySelectorAll("[data-choice]").forEach(b=>b.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+  });
+  document.querySelectorAll("[data-mg]").forEach(btn=>{
+    btn.onclick=()=>{
+      btn.classList.toggle("selected");
+    };
+  });
+  document.querySelectorAll("[data-lg]").forEach(btn=>{
+    btn.onclick=()=>{
+      selectedChoice=btn.dataset.lg;
+      document.querySelectorAll("[data-lg]").forEach(b=>b.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+  });
+  if(task.type==="graphZeros"){
+    const g=document.getElementById("mainGraph");
+    g.addEventListener("click",ev=>{
+      if(graphZeroClicks.length>=2) graphZeroClicks=[];
+      const rect=g.getBoundingClientRect();
+      const xSvg=(ev.clientX-rect.left)/rect.width*690;
+      const xVal=(xSvg-55)/72.5-4;
+      graphZeroClicks.push(xVal);
+      drawZeroClicks();
+    });
+  }
+  const sc=document.getElementById("scaffoldBtn");
+  if(sc){
+    sc.onclick=()=>{
+      document.getElementById("scaffoldBox").classList.add("show");
+      const st=taskState(task.id);
+      st.hints=Math.max(st.hints,1);
+      st.helpUsed=true;
+      saveState();
+    }
+  }
+}
+function drawZeroClicks(){
+  const marks=document.getElementById("clickMarks");
+  if(!marks) return;
+  const sx=x=>55+(x+4)*72.5, sy=()=>250-(0+2)*44;
+  marks.innerHTML=graphZeroClicks.map(x=>`<circle cx="${sx(x)}" cy="${sy()}" r="8" fill="rgba(49,87,213,.20)" stroke="#3157d5" stroke-width="2"/>`).join("");
+}
+function collectAnswer(task){
+  if(task.type==="number"||task.type==="text"||task.type==="mainGraphNumber") return [document.getElementById("answerInput")?.value||""];
+  if(task.type==="choice"||task.type==="lineGraphs") return [selectedChoice||""];
+  if(task.type==="multigraph") return [...document.querySelectorAll("[data-mg].selected")].map(b=>b.dataset.mg).sort();
+  if(task.type==="graphZeros") return graphZeroClicks.slice();
+  if(task.type==="dual") return [...document.querySelectorAll(".dualInput")].map(i=>i.value);
+  if(task.type==="table") return [...document.querySelectorAll(".tableInput")].map(i=>i.value);
+  if(task.type==="scenario") return [...document.querySelectorAll(".scenarioInput")].map(i=>i.value);
+  return [];
+}
+function isCorrect(task, ans){
+  if(task.type==="graphZeros"){
+    if(ans.length!==2) return false;
+    const sorted=ans.slice().sort((a,b)=>a-b);
+    return Math.abs(sorted[0]-(-3))<0.35 && Math.abs(sorted[1]-2)<0.35;
+  }
+  if(task.type==="multigraph"){
+    return JSON.stringify(ans.map(norm).sort())===JSON.stringify(task.correct.map(norm).sort());
+  }
+  if(task.type==="dual"){
+    const a=ans.map(norm), c=task.correct.map(norm);
+    if(task.unordered) return JSON.stringify(a.sort())===JSON.stringify(c.sort());
+    return a.every((v,i)=>v===c[i]);
+  }
+  if(task.type==="table"||task.type==="scenario"){
+    const a=ans.map(norm), c=task.correct.map(norm);
+    return a.every((v,i)=>v===c[i]);
+  }
+  if(task.type==="text"){
+    const a=flexibleTextNorm(ans[0]);
+    return task.correct.some(c=>flexibleTextNorm(c)===a);
+  }
+  const a=norm(ans[0]);
+  return task.correct.some(c=>norm(c)===a);
+}
+function showFeedback(kind, html){
+  const fb=document.getElementById("feedback");
+  fb.className=`feedback show ${kind}`;
+  fb.innerHTML=html;
+  setTimeout(()=>typesetMath(fb),0);
+}
+function showHint(html){
+  const hb=document.getElementById("hintbox");
+  hb.innerHTML=html; hb.classList.add("show");
+  setTimeout(()=>typesetMath(hb),0);
+}
+
+function freezeTaskInputs(){
+  document.querySelectorAll(
+    "#answerInput,.dualInput,.tableInput,.scenarioInput,[data-choice],[data-mg],[data-lg]"
+  ).forEach(el=>{
+    if("disabled" in el) el.disabled=true;
+    el.style.pointerEvents="none";
+    el.style.opacity="0.72";
+  });
+  const g=document.getElementById("mainGraph");
+  if(g) g.style.pointerEvents="none";
+  const sc=document.getElementById("scaffoldBtn");
+  if(sc){ sc.disabled=true; sc.style.display="none"; }
+}
+
+function showFullSolution(task){
+  const st=taskState(task.id);
+  st.solutionShown=true;
+  st.helpUsed=true;
+  st.completed=true;
+  st.status="repeat";
+  saveState();
+
+  showFeedback(
+    "bad",
+    "Sprendimas parodytas. Ši užduotis lieka pažymėta „Kartoti“."
+  );
+  showHint(task.hint2);
+
+  freezeTaskInputs();
+
+  document.getElementById("solutionBtn").classList.add("hidden");
+  document.getElementById("checkBtn").classList.add("hidden");
+  const next=document.getElementById("nextBtn");
+  next.textContent="Toliau →";
+  next.classList.remove("hidden");
+
+  updateProgress();
+  renderTeacher();
+}
+
+function checkAnswer(task){
+  const st=taskState(task.id);
+
+  // Once a full solution has been shown, this task is no longer answerable.
+  if(st.solutionShown){
+    return;
+  }
+
+  const ans=collectAnswer(task);
+  const hasAny=ans.some(a=>String(a).trim()!=="");
+  if(!hasAny){
+    showFeedback("warn","Pirmiausia pateik atsakymą.");
+    return;
+  }
+
+  const ok=isCorrect(task,ans);
+
+  // The task is already in "repeat" state after two failed attempts.
+  // The learner may still correct it before choosing to reveal the solution.
+  if(st.status==="repeat"){
+    st.answer=ans;
+    if(ok){
+      st.corrected=true;
+      st.completed=true;
+      showFeedback(
+        "good",
+        "✓ Dabar teisingai. Užduotis vis tiek lieka pažymėta „Kartoti“, nes prieš tai buvo du nesėkmingi bandymai."
+      );
+      document.getElementById("solutionBtn").classList.add("hidden");
+      document.getElementById("checkBtn").classList.add("hidden");
+      document.getElementById("nextBtn").classList.remove("hidden");
+    }else{
+      showFeedback(
+        "warn",
+        "Dar ne. Gali mėginti pataisyti dar kartą, parodyti sprendimą arba eiti toliau."
+      );
+      // Do NOT reveal hint2 here: it may contain the final answer.
+      showHint("Peržiūrėk pirmąją užuominą ir dar kartą patikrink savo veiksmus.");
+      const btn=document.getElementById("checkBtn");
+      btn.textContent="Patikrinti pataisymą";
+      btn.classList.remove("hidden");
+      document.getElementById("solutionBtn").classList.remove("hidden");
+      document.getElementById("nextBtn").classList.remove("hidden");
+    }
+    saveState(); updateProgress(); renderTeacher();
+    return;
+  }
+
+  st.attempts++;
+  if(st.firstCorrect===null) st.firstCorrect=ok;
+  st.answer=ans;
+
+  if(ok){
+    st.completed=true;
+    st.status = st.helpUsed ? "with_help" : "independent";
+    showFeedback(
+      "good",
+      st.status==="independent"
+        ? "✓ Teisingai – išspręsta savarankiškai."
+        : "✓ Teisingai. Šį kartą buvo parodyta pagalba – prie šio gebėjimo dar grįšime."
+    );
+    document.getElementById("solutionBtn").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+  }else{
+    if(st.attempts===1){
+      st.hints=Math.max(st.hints,1);
+      st.helpUsed=true;
+      showFeedback("warn","Dar ne. Pabandyk dar kartą.");
+      showHint(task.hint1);
+    }else{
+      st.hints=Math.max(st.hints,1);
+      st.helpUsed=true;
+      st.completed=true;
+      st.status="repeat";
+      showFeedback(
+        "bad",
+        "Šią užduotį pažymėjau „reikia pakartoti“. Gali taisyti atsakymą, pasirinkti „Rodyti sprendimą“ arba eiti toliau."
+      );
+      // Important: after the second error we do NOT expose hint2/final solution.
+      showHint("Dar kartą peržiūrėk pirmąją užuominą. Jei vis tiek neaišku, gali pasirinkti „Rodyti sprendimą“.");
+      const btn=document.getElementById("checkBtn");
+      btn.textContent="Patikrinti pataisymą";
+      btn.classList.remove("hidden");
+      document.getElementById("solutionBtn").classList.remove("hidden");
+      document.getElementById("nextBtn").classList.remove("hidden");
+    }
+  }
+  saveState(); updateProgress(); renderTeacher();
+}
+function renderEnd(){
+  const tasks=activeTasks();
+  const skillAgg=aggregate(tasks);
+  const good=skillAgg
+    .filter(x=>x.independent>0 && x.repeat===0)
+    .sort((a,b)=>b.independent-a.independent)
+    .slice(0,6);
+  const repeat=skillAgg
+    .filter(x=>x.repeat>0 || x.help>0)
+    .sort((a,b)=>(b.repeat+b.help)-(a.repeat+a.help))
+    .slice(0,6);
+  document.getElementById("main").innerHTML=`
+    <section class="card start-card end-card">
+      <div class="task-num">MODULIO DALIS BAIGTA</div>
+      <h2>${mode==="class"?"Pamokos":"Savarankiška"} dalis baigta</h2>
+      <p>Rezultatas saugomas šiame įrenginyje. Svarbiausia ne bendras procentas, o tai, kurie gebėjimai jau savarankiški ir ką verta pakartoti.</p>
+      <div class="skill-list">
+        ${good.map(x=>`<div><span class="result-pill ok">Gerai</span> ${skills[x.skill]||x.skill}</div>`).join("") || `<div>Dar per mažai duomenų stiprybėms išskirti.</div>`}
+        ${repeat.map(x=>`<div><span class="result-pill repeat">Pakartoti</span> ${skills[x.skill]||x.skill}</div>`).join("") || `<div><span class="result-pill ok">Puiku</span> Šioje dalyje nėra aiškių silpnų vietų.</div>`}
+      </div>
+      <button class="primary" id="showTeacherEnd">Atverti mokytojo suvestinę</button>
+    </section>`;
+  document.getElementById("showTeacherEnd").onclick=()=>{
+    document.getElementById("teacherPanel").classList.add("show");
+    renderTeacher(); document.getElementById("teacherPanel").scrollIntoView({behavior:"smooth"});
+  };
+  updateProgress();
+}
+function aggregate(tasks){
+  const map={};
+  tasks.forEach(t=>{
+    const s=taskState(t.id);
+    if(!map[t.skill]) map[t.skill]={skill:t.skill,independent:0,help:0,repeat:0,total:0};
+    const m=map[t.skill]; m.total++;
+    if(s.status==="independent") m.independent++;
+    else if(s.status==="with_help") m.help++;
+    else if(s.status==="repeat") m.repeat++;
+  });
+  return Object.values(map);
+}
+function renderTeacher(){
+  const panel=document.getElementById("teacherPanel");
+  const all=taskData;
+  const completed=all.filter(t=>taskState(t.id).completed).length;
+  const independent=all.filter(t=>taskState(t.id).status==="independent").length;
+  const help=all.filter(t=>taskState(t.id).status==="with_help").length;
+  const repeat=all.filter(t=>taskState(t.id).status==="repeat").length;
+  const corrected=all.filter(t=>taskState(t.id).status==="repeat" && taskState(t.id).corrected).length;
+  const solutionsShown=all.filter(t=>taskState(t.id).solutionShown).length;
+  const agg=aggregate(all).filter(x=>x.independent+x.help+x.repeat>0);
+  panel.innerHTML=`
+    <section class="card">
+      <div class="task-head"><div><div class="task-num">MOKYTOJO SUVESTINĖ</div><h2 style="margin:6px 0 0">Mokymosi profilis</h2></div>
+      <button id="closeTeacher" class="ghost" type="button">Uždaryti</button></div>
+      <div class="teacher-grid">
+        <div class="metric">Atlikta<b>${completed}/${taskData.length}</b></div>
+        <div class="metric">Iš pirmo karto<b>${independent}</b></div>
+        <div class="metric">Su pagalba<b>${help}</b></div>
+        <div class="metric">Kartoti<b>${repeat}</b></div>
+      </div>
+      ${corrected>0 ? `<p class="tiny"><b>${corrected}</b> iš „Kartoti“ užduočių vėliau buvo pataisytos teisingai.</p>` : ""}
+      ${solutionsShown>0 ? `<p class="tiny"><b>${solutionsShown}</b> užduočių buvo pasirinkta „Rodyti sprendimą“.</p>` : ""}
+      <table class="summary-table">
+        <thead><tr><th>Gebėjimas</th><th>Savarankiškai</th><th>Su pagalba</th><th>Kartoti</th></tr></thead>
+        <tbody>${agg.map(x=>`<tr><td>${skills[x.skill]||x.skill}</td><td>${x.independent}</td><td>${x.help}</td><td>${x.repeat}</td></tr>`).join("") || `<tr><td colspan="4">Dar nėra atliktų užduočių.</td></tr>`}</tbody>
+      </table>
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="copySummary" class="secondary" type="button">Kopijuoti suvestinę</button>
+      </div>
+      <p class="tiny">Pastaba: „Savarankiškai“ reiškia teisingą atsakymą be parodytos užuominos ar pagalbinės struktūros. „Su pagalba“ rodoma tik tada, kai šiame sprendime buvo parodyta užuomina arba pasirinkta „Nežinau, nuo ko pradėti“. „Kartoti“ – po dviejų nesėkmingų bandymų. Tada galima taisyti, eiti toliau arba pasirinkti „Rodyti sprendimą“. Parodžius sprendimą įvedimo laukai užrakinami ir paliekamas tik „Toliau“; istorinė žyma „Kartoti“ išlieka.</p>
+    </section>`;
+  document.getElementById("closeTeacher").onclick=()=>panel.classList.remove("show");
+  document.getElementById("copySummary").onclick=()=>{
+    const lines=["Funkcija ir jos grafikas · mokytojo suvestinė",
+      `Atlikta: ${completed}/${taskData.length}`, `Savarankiškai: ${independent}`, `Su pagalba: ${help}`, `Kartoti: ${repeat}`,"",
+      ...agg.map(x=>`${skills[x.skill]||x.skill}: savarankiškai ${x.independent}, su pagalba ${x.help}, kartoti ${x.repeat}`)];
+    navigator.clipboard?.writeText(lines.join("\n")).then(()=>alert("Suvestinė nukopijuota."));
+  };
+}
+document.getElementById("teacherBtn").onclick=()=>{
+  const p=document.getElementById("teacherPanel");
+  p.classList.toggle("show"); renderTeacher();
+  if(p.classList.contains("show")) p.scrollIntoView({behavior:"smooth"});
+};
+document.getElementById("resetBtn").onclick=()=>{
+  if(confirm(EMBEDDED ? "Ar tikrai ištrinti bendrus šio modulio rezultatus?" : "Ar tikrai ištrinti šio modulio išsaugotus rezultatus šiame įrenginyje?")){
+    if(!EMBEDDED) localStorage.removeItem(MODULE_ID+":state");
+    state={}; currentIndex=0; startScreen(); renderTeacher(); saveState();
+  }
+};
+
+
+function applyEmbeddedRole(){
+  if(!EMBEDDED) return;
+  document.body.classList.add("embedded-practice");
+  if(EMBED_ROLE==="student"){
+    const teacherBtn=document.getElementById("teacherBtn");
+    const resetBtn=document.getElementById("resetBtn");
+    const switcher=document.querySelector(".mode-switch");
+    if(teacherBtn) teacherBtn.hidden=true;
+    if(resetBtn) resetBtn.hidden=true;
+    if(switcher) switcher.hidden=true;
+  }
+}
+function renderEmbeddedView(){
+  document.getElementById("mode-class").classList.toggle("active", mode==="class");
+  document.getElementById("mode-self").classList.toggle("active", mode==="self");
+  if(moduleView==="task") renderTask();
+  else if(moduleView==="end") renderEnd();
+  else startScreen();
+  renderTeacher();
+  applyEmbeddedRole();
+}
+window.addEventListener("message", event=>{
+  if(!EMBEDDED || event.origin!==location.origin) return;
+  const data=event.data||{};
+  if(data.type!=="p772:external-practice-load" || data.practiceId!==EMBED_PRACTICE_ID || data.moduleId!==MODULE_ID) return;
+  applyingParentSync=true;
+  try{
+    state=data.state && typeof data.state==="object" ? JSON.parse(JSON.stringify(data.state)) : {};
+    mode=data.mode==="self" ? "self" : "class";
+    currentIndex=Math.max(0, Number(data.currentIndex)||0);
+    moduleView=["start","task","end"].includes(data.view) ? data.view : "start";
+    selectedChoice=null; graphZeroClicks=[];
+    renderEmbeddedView();
+  }finally{ applyingParentSync=false; }
+});
+if(EMBEDDED){
+  window.addEventListener("load",()=>{
+    applyEmbeddedRole();
+    window.parent.postMessage({type:"p772:external-practice-ready",practiceId:EMBED_PRACTICE_ID,moduleId:MODULE_ID}, location.origin);
+  });
+}
+
+
+function typesetMath(root=document){
+  if(window.MathJax && typeof MathJax.typesetPromise==="function"){
+    try{
+      if(typeof MathJax.typesetClear==="function") MathJax.typesetClear([root]);
+      MathJax.typesetPromise([root]).catch(()=>{});
+    }catch(e){}
+  }
+}
+window.addEventListener("load",()=>typesetMath(document.body));
+
+function render(){ startScreen(); renderTeacher(); }
+document.getElementById("mode-class").classList.toggle("active", mode==="class");
+document.getElementById("mode-self").classList.toggle("active", mode==="self");
+render();
+applyEmbeddedRole();
+</script>
+</body>
+</html>

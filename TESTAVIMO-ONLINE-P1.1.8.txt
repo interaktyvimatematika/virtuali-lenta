@@ -1,0 +1,17 @@
+P7.7.2 ONLINE-P1.1.8 – VBE modulio bibliotekoje testas
+
+1. Mokytojo nuorodoje atidaryk „Biblioteka“.
+2. Pasirink skirtuką „Pratybos“.
+3. Turi būti kortelė „VBE A · Funkcija ir jos grafikas“ su 34 užduotimis.
+4. Spausk „Įterpti pratybas“.
+5. Lentoje turi atsirasti atskiras pratybų langas su v1.6 moduliu.
+6. Kitame įrenginyje, atidarytame per mokinio nuorodą, tas pats modulis turi atsirasti automatiškai.
+7. Mokytojas modulyje gali pasirinkti „Pamokoje“ arba „Savarankiškai“; mokinio įrenginyje režimo jungiklis paslėptas ir rodoma mokytojo parinkta dalis.
+8. Mokinys pradeda užduotis ir įveda atsakymą. Mokytojo modulyje turi persiduoti ta pati modulio būsena.
+9. Patikrink „Tik pratybos“ – aktyvus VBE modulis turi išsiskleisti per ekraną.
+10. Grįžus į lentą turi išlikti modulio eiga.
+
+Regresijos patikra:
+- Pieštukas ir trintukas turi veikti taip pat sklandžiai kaip P1.1.7.
+- Nauja sesija turi perkelti abu įrenginius.
+- Mokinio sąsajoje neturi atsirasti Biblioteka ar mokytojo administravimo mygtukai.

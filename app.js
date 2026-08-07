@@ -3337,11 +3337,35 @@
     };
   }
 
+  const BUILTIN_PRACTICE_SETS = Object.freeze([
+    {
+      id: 'builtin-vbe-a-01-funkcija-grafikas-v1-6',
+      kind: 'external-module',
+      title: 'VBE A · Funkcija ir jos grafikas',
+      description: '1 modulis · 4 pamokų turinys · Pamokoje ir Savarankiškai',
+      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html',
+      moduleId: 'vbe-funkcija-grafikas-v1-6',
+      moduleVersion: '1.6',
+      taskCount: 34,
+      classTaskCount: 22,
+      selfTaskCount: 12,
+      builtIn: true,
+      createdAt: '2026-08-07T18:39:00.000Z',
+      updatedAt: '2026-08-07T18:39:00.000Z',
+      taskRefs: [],
+      snapshots: []
+    }
+  ]);
+
+  function builtInPracticeSetCopies() {
+    return BUILTIN_PRACTICE_SETS.map(item => deepClone(item));
+  }
+
   function createInitialLibrary() {
     return {
       schemaVersion: 1,
       tasks: tasks.map(task => createLibraryEntry(task, 'pradinis rinkinys')),
-      practiceSets: []
+      practiceSets: builtInPracticeSetCopies()
     };
   }
 
@@ -3361,14 +3385,31 @@
       normalized.updatedAt = entry?.updatedAt || normalized.updatedAt;
       return normalized;
     }).filter(Boolean);
-    const practiceSets = Array.isArray(source.practiceSets) ? source.practiceSets.map((set, index) => ({
-      id: String(set?.id || `practice-set-${index + 1}`),
-      title: String(set?.title || `Pratybos ${index + 1}`),
-      createdAt: set?.createdAt || new Date().toISOString(),
-      updatedAt: set?.updatedAt || set?.createdAt || new Date().toISOString(),
-      taskRefs: Array.isArray(set?.taskRefs) ? set.taskRefs : [],
-      snapshots: Array.isArray(set?.snapshots) ? set.snapshots.map(task => upgradeTaskRequirements(deepClone(task))) : []
-    })) : [];
+    const practiceSets = Array.isArray(source.practiceSets) ? source.practiceSets.map((set, index) => {
+      const external = set?.kind === 'external-module';
+      return {
+        id: String(set?.id || `practice-set-${index + 1}`),
+        kind: external ? 'external-module' : 'native',
+        title: String(set?.title || `Pratybos ${index + 1}`),
+        description: String(set?.description || ''),
+        createdAt: set?.createdAt || new Date().toISOString(),
+        updatedAt: set?.updatedAt || set?.createdAt || new Date().toISOString(),
+        taskRefs: Array.isArray(set?.taskRefs) ? set.taskRefs : [],
+        snapshots: external ? [] : (Array.isArray(set?.snapshots) ? set.snapshots.map(task => upgradeTaskRequirements(deepClone(task))) : []),
+        moduleUrl: external ? String(set?.moduleUrl || '') : '',
+        moduleId: external ? String(set?.moduleId || '') : '',
+        moduleVersion: external ? String(set?.moduleVersion || '') : '',
+        taskCount: external ? Math.max(0, Number(set?.taskCount) || 0) : 0,
+        classTaskCount: external ? Math.max(0, Number(set?.classTaskCount) || 0) : 0,
+        selfTaskCount: external ? Math.max(0, Number(set?.selfTaskCount) || 0) : 0,
+        builtIn: Boolean(set?.builtIn)
+      };
+    }) : [];
+    for (const builtin of builtInPracticeSetCopies()) {
+      const existingIndex = practiceSets.findIndex(item => item.id === builtin.id);
+      if (existingIndex < 0) practiceSets.unshift(builtin);
+      else practiceSets[existingIndex] = { ...practiceSets[existingIndex], ...builtin };
+    }
     return { schemaVersion: 1, tasks: normalizedTasks.length ? normalizedTasks : createInitialLibrary().tasks, practiceSets };
   }
 
@@ -3747,6 +3788,27 @@
   function normalizeBoardPracticeInstance(instance) {
     if (!instance || typeof instance !== 'object') return null;
     const id = String(instance.id || `board-practice-${Date.now()}`);
+    if (instance.kind === 'external-module') {
+      return {
+        id,
+        kind: 'external-module',
+        practiceSetId: String(instance.practiceSetId || ''),
+        title: String(instance.title || 'Interaktyvios pratybos'),
+        subtitle: String(instance.subtitle || 'Išorinis pratybų modulis'),
+        moduleUrl: String(instance.moduleUrl || ''),
+        moduleId: String(instance.moduleId || ''),
+        moduleVersion: String(instance.moduleVersion || ''),
+        moduleState: instance.moduleState && typeof instance.moduleState === 'object' ? deepClone(instance.moduleState) : {},
+        moduleMode: instance.moduleMode === 'self' ? 'self' : 'class',
+        moduleCurrentIndex: Math.max(0, Number(instance.moduleCurrentIndex) || 0),
+        moduleView: ['start', 'task', 'end'].includes(instance.moduleView) ? instance.moduleView : 'start',
+        x: Number.isFinite(instance.x) ? instance.x : 0.025,
+        y: Number.isFinite(instance.y) ? instance.y : 0.035,
+        width: Number.isFinite(instance.width) ? instance.width : 0.62,
+        height: Number.isFinite(instance.height) ? instance.height : 0.86,
+        collapsed: Boolean(instance.collapsed)
+      };
+    }
     const sourceTasks = Array.isArray(instance.tasks)
       ? instance.tasks
       : Array.isArray(instance.snapshots)
@@ -3926,10 +3988,13 @@
       const card = document.createElement('article');
       card.className = 'library-practice-card';
       card.dataset.practiceSetId = set.id;
+      const practiceMeta = set.kind === 'external-module'
+        ? `${set.taskCount || 0} užduotys · ${escapeHtml(set.description || `v${set.moduleVersion || ''}`)}`
+        : `${set.snapshots.length} užduotys · versijos užfiksuotos ${new Date(set.createdAt).toLocaleDateString('lt-LT')}`;
       card.innerHTML = `
         <div class="library-practice-card-copy">
-          <span class="library-practice-icon" aria-hidden="true">▤</span>
-          <div><h3>${escapeHtml(set.title)}</h3><p>${set.snapshots.length} užduotys · versijos užfiksuotos ${new Date(set.createdAt).toLocaleDateString('lt-LT')}</p></div>
+          <span class="library-practice-icon" aria-hidden="true">${set.kind === 'external-module' ? 'ƒ' : '▤'}</span>
+          <div><h3>${escapeHtml(set.title)}</h3><p>${practiceMeta}</p></div>
         </div>
         <div class="library-practice-card-actions"></div>
       `;
@@ -3937,14 +4002,17 @@
       const open = document.createElement('button');
       open.type = 'button'; open.className = 'primary-button compact'; open.textContent = 'Įterpti pratybas';
       open.addEventListener('click', () => insertPracticeSetIntoBoard(set));
-      const remove = document.createElement('button');
-      remove.type = 'button'; remove.className = 'secondary-button compact danger-text'; remove.textContent = 'Pašalinti';
-      remove.addEventListener('click', () => {
-        if (!window.confirm(`Pašalinti pratybų juodraštį „${set.title}“?`)) return;
-        state.library.practiceSets = state.library.practiceSets.filter(item => item.id !== set.id);
-        renderLibrary(); scheduleSave();
-      });
-      actions.append(open, remove);
+      actions.appendChild(open);
+      if (!set.builtIn) {
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'secondary-button compact danger-text'; remove.textContent = 'Pašalinti';
+        remove.addEventListener('click', () => {
+          if (!window.confirm(`Pašalinti pratybų juodraštį „${set.title}“?`)) return;
+          state.library.practiceSets = state.library.practiceSets.filter(item => item.id !== set.id);
+          renderLibrary(); scheduleSave();
+        });
+        actions.appendChild(remove);
+      }
       refs.libraryPracticeList.appendChild(card);
     });
   }
@@ -3994,7 +4062,8 @@
   }
 
   function boardPracticePixelRect(instance, boardRect = getBoardWorldRect()) {
-    const width = Math.min(boardRect.width, Math.max(470, Math.min(760, Number(instance.width || 0.5) * boardRect.width)));
+    const maxWidth = instance?.kind === 'external-module' ? 980 : 760;
+    const width = Math.min(boardRect.width, Math.max(470, Math.min(maxWidth, Number(instance.width || 0.5) * boardRect.width)));
     const height = Math.min(boardRect.height, Math.max(560, Math.min(980, Number(instance.height || 0.86) * boardRect.height)));
     return { x: Number(instance.x || 0) * boardRect.width, y: Number(instance.y || 0) * boardRect.height, width, height };
   }
@@ -4171,6 +4240,38 @@
   }
 
   function insertPracticeSetIntoBoard(set) {
+    if (set?.kind === 'external-module') {
+      if (!set.moduleUrl || !set.moduleId) {
+        showToast('Nepavyko rasti pratybų modulio failo');
+        return;
+      }
+      const id = `board-practice-${Date.now()}`;
+      const instance = normalizeBoardPracticeInstance({
+        id,
+        kind: 'external-module',
+        practiceSetId: set.id,
+        title: set.title,
+        subtitle: set.description || 'Interaktyvios pratybos',
+        moduleUrl: set.moduleUrl,
+        moduleId: set.moduleId,
+        moduleVersion: set.moduleVersion,
+        moduleState: {},
+        moduleMode: 'class',
+        moduleCurrentIndex: 0,
+        moduleView: 'start',
+        collapsed: false,
+        ...nextBoardPracticePlacement()
+      });
+      if (!instance) return;
+      state.boardPractices.push(instance);
+      setActiveBoardObject('practice', instance.id, { save: false });
+      collapsePrimaryPracticeForBoardTasks();
+      renderBoardObjects();
+      scheduleSave();
+      closeLibrary();
+      showToast(`Įterptos pratybos „${set.title}“`);
+      return;
+    }
     const readySnapshots = (set.snapshots || []).filter(task => runTaskQualityGate(deepClone(task)).status === 'ready');
     if (!readySnapshots.length) {
       showToast('Šiame rinkinyje nėra mokiniui paruoštų užduočių');
@@ -7232,7 +7333,111 @@ KOKYBĖS REIKALAVIMAI:
     return shell;
   }
 
+  function externalPracticeFrameFor(instance) {
+    return refs.objectsLayer.querySelector(`iframe[data-external-practice-id="${CSS.escape(instance.id)}"]`)
+      || refs.practiceOnlyHost?.querySelector(`iframe[data-external-practice-id="${CSS.escape(instance.id)}"]`)
+      || null;
+  }
+
+  function syncExternalPracticeFrame(instance) {
+    if (!instance || instance.kind !== 'external-module') return;
+    const frame = externalPracticeFrameFor(instance);
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage({
+      type: 'p772:external-practice-load',
+      practiceId: instance.id,
+      moduleId: instance.moduleId,
+      state: deepClone(instance.moduleState || {}),
+      mode: instance.moduleMode || 'class',
+      currentIndex: Number(instance.moduleCurrentIndex) || 0,
+      view: instance.moduleView || 'start'
+    }, location.origin);
+  }
+
+  function createExternalPracticeModule(instance, boardRect) {
+    const object = document.createElement('article');
+    object.className = 'board-practice-page-object external-practice-module-object';
+    object.classList.toggle('is-active-object', state.activeBoardObject?.type === 'practice' && state.activeBoardObject.id === instance.id);
+    object.classList.toggle('is-collapsed', instance.collapsed);
+    object.dataset.boardPracticeId = instance.id;
+    object.dataset.boardObjectType = 'practice';
+    object.dataset.boardObjectId = instance.id;
+    object.style.left = `${instance.x * boardRect.width}px`;
+    object.style.top = `${instance.y * boardRect.height}px`;
+    object.style.width = `${Math.max(520, Math.min(980, instance.width * boardRect.width))}px`;
+    if (!instance.collapsed) object.style.height = `${Math.max(560, Math.min(980, instance.height * boardRect.height))}px`;
+
+    const chrome = document.createElement('header');
+    chrome.className = 'board-practice-page-chrome external-practice-module-chrome';
+    const handle = document.createElement('button');
+    handle.type = 'button'; handle.className = 'board-practice-page-handle'; handle.textContent = '⠿'; handle.setAttribute('aria-label', 'Perkelti pratybų modulį');
+    handle.hidden = onlineAccessRole !== 'teacher';
+    const chromeTitle = document.createElement('div');
+    chromeTitle.className = 'board-practice-page-chrome-title';
+    chromeTitle.innerHTML = `<span>Interaktyvių pratybų modulis · v${escapeHtml(instance.moduleVersion || '')}</span><strong>${escapeHtml(instance.title)}</strong>`;
+    const actions = document.createElement('div');
+    actions.className = 'board-practice-page-actions';
+
+    const openOnly = document.createElement('button');
+    openOnly.type = 'button';
+    openOnly.className = 'board-practice-page-open-only';
+    openOnly.textContent = '⛶';
+    openOnly.title = 'Atverti tik šias pratybas';
+    openOnly.addEventListener('click', event => { event.stopPropagation(); enterPracticeOnly(instance.id); });
+    actions.appendChild(openOnly);
+
+    if (onlineAccessRole === 'teacher') {
+      const collapse = document.createElement('button');
+      collapse.type = 'button'; collapse.className = 'board-practice-page-collapse'; collapse.textContent = instance.collapsed ? '+' : '−';
+      collapse.setAttribute('aria-label', instance.collapsed ? 'Išskleisti pratybas' : 'Sutraukti pratybas');
+      collapse.addEventListener('click', event => {
+        event.stopPropagation();
+        instance.collapsed = !instance.collapsed;
+        setActiveBoardPractice(instance.id, { save: false });
+        renderBoardObjects(); scheduleSave();
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.className = 'board-practice-page-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Pašalinti pratybas');
+      remove.addEventListener('click', event => {
+        event.stopPropagation();
+        state.boardPractices = state.boardPractices.filter(item => item.id !== instance.id);
+        if (state.activeBoardObject?.type === 'practice' && state.activeBoardObject.id === instance.id) clearActiveBoardObject({ save: false });
+        renderBoardObjects(); scheduleSave();
+      });
+      actions.append(collapse, remove);
+    }
+
+    chrome.append(handle, chromeTitle, actions);
+    if (onlineAccessRole === 'teacher') makeBoardObjectDraggable(object, instance, chromeTitle, { alwaysAllow: true });
+    object.appendChild(chrome);
+
+    if (!instance.collapsed) {
+      const host = document.createElement('div');
+      host.className = 'external-practice-module-host';
+      const frame = document.createElement('iframe');
+      frame.className = 'external-practice-module-frame';
+      frame.dataset.externalPracticeId = instance.id;
+      const joiner = instance.moduleUrl.includes('?') ? '&' : '?';
+      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}`;
+      frame.title = instance.title;
+      frame.setAttribute('allow', 'clipboard-write');
+      frame.addEventListener('load', () => syncExternalPracticeFrame(instance));
+      host.appendChild(frame);
+      object.appendChild(host);
+      if (onlineAccessRole === 'teacher') {
+        const resize = document.createElement('button');
+        resize.type = 'button'; resize.className = 'board-practice-page-resize'; resize.setAttribute('aria-label', 'Keisti pratybų objekto dydį');
+        object.appendChild(resize);
+        makeBoardPracticeResizable(object, instance, resize);
+      }
+    }
+    object.addEventListener('pointerdown', () => setActiveBoardPractice(instance.id));
+    object.addEventListener('focusin', () => setActiveBoardPractice(instance.id));
+    return object;
+  }
+
   function createBoardPracticePage(instance, boardRect) {
+    if (instance?.kind === 'external-module') return createExternalPracticeModule(instance, boardRect);
     ensurePracticePagination(instance);
     const object = document.createElement('article');
     const layoutMode = practiceLayoutMode(instance);
@@ -7861,6 +8066,35 @@ KOKYBĖS REIKALAVIMAI:
     };
   }
 
+  function externalPracticeStaticSignature(instance) {
+    const copy = deepClone(instance);
+    delete copy.moduleState;
+    delete copy.moduleMode;
+    delete copy.moduleCurrentIndex;
+    delete copy.moduleView;
+    return JSON.stringify(copy);
+  }
+
+  function applyExternalPracticeProgressWithoutRerender(incoming) {
+    if (!Array.isArray(incoming) || incoming.length !== state.boardPractices.length) return false;
+    const pairs = incoming.map(item => [state.boardPractices.find(current => current.id === item.id), item]);
+    if (pairs.some(([current]) => !current)) return false;
+    for (const [current, next] of pairs) {
+      if (current.kind === 'external-module' && next.kind === 'external-module') {
+        if (externalPracticeStaticSignature(current) !== externalPracticeStaticSignature(next)) return false;
+      } else if (JSON.stringify(current) !== JSON.stringify(next)) return false;
+    }
+    for (const [current, next] of pairs) {
+      if (current.kind !== 'external-module') continue;
+      current.moduleState = deepClone(next.moduleState || {});
+      current.moduleMode = next.moduleMode === 'self' ? 'self' : 'class';
+      current.moduleCurrentIndex = Math.max(0, Number(next.moduleCurrentIndex) || 0);
+      current.moduleView = ['start', 'task', 'end'].includes(next.moduleView) ? next.moduleView : 'start';
+      syncExternalPracticeFrame(current);
+    }
+    return true;
+  }
+
   function applyOnlineSharedPart(part, value) {
     if (part === 'drawing') {
       state.drawing = Array.isArray(value) ? value.filter(Boolean) : [];
@@ -7876,9 +8110,12 @@ KOKYBĖS REIKALAVIMAI:
       if (state.activeBoardTaskId && !state.boardTasks.some(item => item.id === state.activeBoardTaskId)) state.activeBoardTaskId = null;
       renderBoardObjects();
     } else if (part === 'boardPractices') {
-      state.boardPractices = (Array.isArray(value) ? value : []).map(normalizeBoardPracticeInstance).filter(Boolean);
-      if (state.activeBoardPracticeId && !state.boardPractices.some(item => item.id === state.activeBoardPracticeId)) state.activeBoardPracticeId = null;
-      renderBoardObjects();
+      const incoming = (Array.isArray(value) ? value : []).map(normalizeBoardPracticeInstance).filter(Boolean);
+      if (!applyExternalPracticeProgressWithoutRerender(incoming)) {
+        state.boardPractices = incoming;
+        if (state.activeBoardPracticeId && !state.boardPractices.some(item => item.id === state.activeBoardPracticeId)) state.activeBoardPracticeId = null;
+        renderBoardObjects();
+      }
     } else if (part === 'window') {
       state.window = { ...defaultState().window, ...(value && typeof value === 'object' ? value : {}) };
       initializePracticeWindow();
@@ -7921,8 +8158,25 @@ KOKYBĖS REIKALAVIMAI:
     renderBoardObjects();
   }
 
+  window.addEventListener('message', event => {
+    if (event.origin !== location.origin) return;
+    const data = event.data || {};
+    if (!['p772:external-practice-ready', 'p772:external-practice-state'].includes(data.type)) return;
+    const instance = state.boardPractices.find(item => item.kind === 'external-module' && item.id === data.practiceId && item.moduleId === data.moduleId);
+    if (!instance) return;
+    if (data.type === 'p772:external-practice-ready') {
+      syncExternalPracticeFrame(instance);
+      return;
+    }
+    instance.moduleState = data.state && typeof data.state === 'object' ? deepClone(data.state) : {};
+    instance.moduleMode = data.mode === 'self' ? 'self' : 'class';
+    instance.moduleCurrentIndex = Math.max(0, Number(data.currentIndex) || 0);
+    instance.moduleView = ['start', 'task', 'end'].includes(data.view) ? data.view : 'start';
+    scheduleSave();
+  });
+
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.7',
+    version: 'P7.7.2-ONLINE-P1.1.8',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
