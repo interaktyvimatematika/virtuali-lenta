@@ -28,6 +28,7 @@ const roomEl = document.getElementById('onlineRoomCode');
 const usersEl = document.getElementById('onlineUsers');
 const copyButton = document.getElementById('copySessionLinkButton');
 const newButton = document.getElementById('newSessionButton');
+const roleBadge = document.getElementById('onlineRoleBadge');
 
 if (!bridge) {
   setUi('error', 'Online tiltas nerastas');
@@ -49,16 +50,44 @@ function newRoomId() {
 function resolveRoom() {
   const url = new URL(window.location.href);
   let room = safeRoom(url.searchParams.get('room'));
+  let startsBlank = url.searchParams.get('new') === '1';
+
   if (!room) {
     room = newRoomId();
+    startsBlank = true;
     url.searchParams.set('room', room);
-    try {
-      history.replaceState(null, '', url);
-    } catch (_) {
-      try { window.location.replace(url.toString()); } catch (_) { /* kraštutiniu atveju kodas liks tik šiame lange */ }
-    }
   }
-  return room;
+
+  // „new=1“ yra tik vienkartinis paleidimo ženklas. Jo negalima palikti
+  // bendrinamoje nuorodoje, nes kitas prisijungęs langas vėl išvalytų kambarį.
+  url.searchParams.delete('new');
+  try {
+    history.replaceState(null, '', url);
+  } catch (_) {
+    /* URL išvalymas nėra kritinis sinchronizacijai. */
+  }
+
+  return { room, startsBlank };
+}
+
+function resolveAccessRole() {
+  const url = new URL(window.location.href);
+  const requested = String(url.searchParams.get('role') || '').toLowerCase();
+  // Suderinamumas su ankstesnėmis ONLINE-P1 nuorodomis: jei rolė dar nenurodyta,
+  // šis langas laikomas mokytojo langu. Nuo P1.1.2 bendrinamas mygtukas visada
+  // sukuria aiškią role=student nuorodą.
+  const role = requested === 'student' ? 'student' : 'teacher';
+  url.searchParams.set('role', role);
+  try { history.replaceState(null, '', url); } catch (_) {}
+  return role;
+}
+
+function urlForRoom(targetRoom, role) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', targetRoom);
+  url.searchParams.set('role', role === 'student' ? 'student' : 'teacher');
+  url.searchParams.delete('new');
+  return url;
 }
 
 function clientId() {
@@ -96,9 +125,15 @@ function stable(value) {
   return JSON.stringify(value ?? null);
 }
 
-const roomId = resolveRoom();
+const roomInfo = resolveRoom();
+const roomId = roomInfo.room;
+const onlineRole = resolveAccessRole();
 const me = clientId();
 if (roomEl) roomEl.textContent = roomId;
+if (roleBadge) roleBadge.textContent = onlineRole === 'teacher' ? 'Mokytojas' : 'Mokinys';
+bridge.setOnlineRole?.(onlineRole);
+if (copyButton) copyButton.hidden = onlineRole !== 'teacher';
+if (newButton) newButton.hidden = onlineRole !== 'teacher';
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -117,6 +152,7 @@ function myLiveStrokeRef(strokeId) {
 }
 const presenceRef = ref(db, `p772Rooms/${roomId}/presence/${me}`);
 const presenceListRef = ref(db, `p772Rooms/${roomId}/presence`);
+const transitionRef = ref(db, `p772Rooms/${roomId}/control/transition`);
 const connectedRef = ref(db, '.info/connected');
 
 let bootstrapped = false;
@@ -173,7 +209,7 @@ async function publishLocalChanges() {
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1.1 publish klaida', error);
+    console.error('ONLINE-P1.1.2 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -232,23 +268,50 @@ function subscribeWorkspaceParts() {
   });
 }
 
+function emptyWorkspace() {
+  return {
+    drawing: {},
+    notes: {},
+    boardTasks: {},
+    boardPractices: {},
+    window: {}
+  };
+}
+
+function clearLocalSharedWorkspace() {
+  bridge.applySharedPart('drawing', []);
+  bridge.applySharedPart('notes', []);
+  bridge.applySharedPart('boardTasks', []);
+  bridge.applySharedPart('boardPractices', []);
+  bridge.applySharedPart('window', {});
+  bridge.setRemoteLiveStrokes([]);
+}
+
+// Nauja sesija turi atrodyti tuščia iš karto, dar prieš Firebase atsakymą.
+// Ankstesnėje P1.1 versijoje naujas tuščias Firebase kambarys būdavo
+// automatiškai „užsėjamas“ sena localStorage lenta, todėl „Nauja sesija“
+// vizualiai nieko nepakeisdavo.
+if (roomInfo.startsBlank) clearLocalSharedWorkspace();
+
 async function initializeWorkspace() {
   try {
     const snapshot = await get(workspaceRef);
-    if (!snapshot.exists()) {
-      const parts = localParts();
+
+    if (roomInfo.startsBlank || !snapshot.exists()) {
+      const blank = emptyWorkspace();
       await set(workspaceRef, {
-        ...parts,
+        ...blank,
         meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
       });
-      cacheWorkspace(parts);
+      applyInitialWorkspace(blank);
     } else {
       applyInitialWorkspace(snapshot.val());
     }
+
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1.1 workspace inicijavimo klaida', error);
+    console.error('ONLINE-P1.1.2 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -272,6 +335,18 @@ onValue(liveRef, snapshot => {
   bridge.setRemoteLiveStrokes(strokes);
 });
 
+let transitionInProgress = false;
+onValue(transitionRef, snapshot => {
+  const data = snapshot.val();
+  const nextRoom = safeRoom(data?.toRoom);
+  if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
+  transitionInProgress = true;
+  const target = urlForRoom(nextRoom, onlineRole);
+  bridge.showToast?.('Mokytojas pradėjo naują sesiją');
+  // replace() nepalieka seno kambario kaip tarpinio Back istorijos žingsnio.
+  setTimeout(() => window.location.replace(target.toString()), 80);
+});
+
 onValue(connectedRef, snapshot => {
   if (snapshot.val() === true) {
     set(presenceRef, { online: true, joinedAt: Date.now(), updatedAt: serverTimestamp() });
@@ -283,7 +358,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1.1 connection klaida', error);
+  console.error('ONLINE-P1.1.2 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -305,7 +380,7 @@ async function writeLiveStroke(stroke) {
   try {
     await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
   } catch (error) {
-    console.warn('ONLINE-P1.1 live stroke klaida', error);
+    console.warn('ONLINE-P1.1.2 live stroke klaida', error);
   }
 }
 
@@ -352,21 +427,40 @@ window.addEventListener('p772:live-stroke', event => {
 if (copyButton) {
   copyButton.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      const studentUrl = urlForRoom(roomId, 'student').toString();
+      await navigator.clipboard.writeText(studentUrl);
       bridge.showToast(location.protocol === 'file:'
-        ? 'Nuoroda nukopijuota. Kitam įrenginiui ji veiks tik patalpinus lentą internete.'
-        : 'Bendros lentos nuoroda nukopijuota');
+        ? 'Mokinio nuoroda nukopijuota. Kitam įrenginiui ji veiks tik patalpinus lentą internete.'
+        : 'Mokinio nuoroda nukopijuota');
     } catch (_) {
-      window.prompt('Nukopijuok šią nuorodą:', window.location.href);
+      window.prompt('Nukopijuok mokiniui šią nuorodą:', urlForRoom(roomId, 'student').toString());
     }
   });
 }
 
 if (newButton) {
-  newButton.addEventListener('click', () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', newRoomId());
-    window.location.href = url.toString();
+  newButton.addEventListener('click', async () => {
+    if (onlineRole !== 'teacher' || transitionInProgress) return;
+    if (!window.confirm('Pradėti naują tuščią sesiją ir perkelti į ją visus prie šios lentos prisijungusius dalyvius?')) return;
+
+    newButton.disabled = true;
+    const nextRoom = newRoomId();
+    try {
+      const nextWorkspaceRef = ref(db, `p772Rooms/${nextRoom}/workspace`);
+      const blank = emptyWorkspace();
+      await set(nextWorkspaceRef, {
+        ...blank,
+        meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
+      });
+      // Pirmiausia paruošiame naują tuščią kambarį, tik tada paskelbiame perėjimą.
+      // Senajame kambaryje ši nuoroda lieka ir vėliau prisijungusį mokinį taip pat
+      // nukreips į naujausią sesiją.
+      await set(transitionRef, { toRoom: nextRoom, issuedBy: me, issuedAt: serverTimestamp() });
+    } catch (error) {
+      console.error('ONLINE-P1.1.2 naujos sesijos klaida', error);
+      newButton.disabled = false;
+      bridge.showToast?.('Nepavyko pradėti naujos sesijos');
+    }
   });
 }
 
@@ -376,5 +470,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1.1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('ONLINE-P1.1.2 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }

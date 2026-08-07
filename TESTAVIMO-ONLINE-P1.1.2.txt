@@ -1,0 +1,24 @@
+P7.7.2 ONLINE-P1.1.2 – TIKSLINIS TESTAS
+
+1. Mokytojo lange atidarykite pagrindinį GitHub Pages adresą.
+   Turi būti rolė „Mokytojas“ ir matytis Biblioteka, režimų jungiklis,
+   Išvalyti P7.7.2, Kopijuoti mokinio nuorodą, Nauja sesija.
+
+2. Spauskite „Kopijuoti mokinio nuorodą“ ir atidarykite ją kitame įrenginyje.
+   Turi būti tas pats room, rolė „Mokinys“.
+   Mokiniui neturi matytis Biblioteka, režimų jungiklis, Išvalyti P7.7.2,
+   Kopijuoti nuorodą ir Nauja sesija.
+
+3. Patikrinkite rašymą ir trynimą abiem kryptimis. Jis turi likti toks pats
+   sklandus kaip patvirtintoje P1.1.1 bazėje.
+
+4. Mokytojo lange spauskite „Nauja sesija“ ir patvirtinkite.
+   Turi pasikeisti room visuose tuo metu prijungtuose įrenginiuose ir visur
+   turi atsirasti ta pati tuščia lenta. Mokytojo / mokinio rolės turi išlikti.
+
+5. Po perėjimo pabandykite atidaryti seną mokinio nuorodą naujame lange.
+   Ji turi automatiškai nukreipti į naują sesiją.
+
+6. Mokinio lange patikrinkite lentoje esančią pavienę užduotį / pratybų dokumentą:
+   neturi būti pašalinimo, tempimo, dydžio keitimo ar sutraukimo valdiklių.
+   Atsakymo laukai turi likti aktyvūs.

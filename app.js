@@ -354,6 +354,7 @@
   let pendingAiImport = null;
   let libraryActiveTab = 'tasks';
   const selectedLibraryTaskIds = new Set();
+  let onlineAccessRole = 'teacher';
 
   const responseRenderers = {
     'single-math-input': renderSingleMathInput,
@@ -3962,6 +3963,10 @@
   }
 
   function openLibrary(tab = 'tasks') {
+    if (onlineAccessRole !== 'teacher') {
+      showToast('Biblioteką valdo mokytojas');
+      return;
+    }
     libraryActiveTab = tab;
     refs.libraryModal.hidden = false;
     renderLibrary();
@@ -4724,6 +4729,7 @@ KOKYBĖS REIKALAVIMAI:
       setMode('student');
     });
     refs.teacherModeButton.addEventListener('click', () => {
+      if (onlineAccessRole !== 'teacher') { showToast('Mokytojo režimas skirtas mokytojui'); return; }
       const changed = setMode('teacher');
       if (changed === false) return;
       if (state.boardPractices.length || state.boardTasks.length) {
@@ -7331,18 +7337,22 @@ KOKYBĖS REIKALAVIMAI:
       actions.append(size, orientation, autoFlow, addPage, removePage);
     }
 
-    const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'board-practice-page-collapse'; collapse.textContent = instance.collapsed ? '+' : '−'; collapse.setAttribute('aria-label', instance.collapsed ? 'Išskleisti pratybas' : 'Sutraukti pratybas');
-    collapse.addEventListener('click', event => { event.stopPropagation(); instance.collapsed = !instance.collapsed; setActiveBoardPractice(instance.id, { save: false }); renderBoardObjects(); scheduleSave(); });
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'board-practice-page-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Pašalinti pratybas');
-    remove.addEventListener('click', event => {
-      event.stopPropagation();
-      if (activeDirectMathField && object.contains(activeDirectMathField)) setActiveDirectMathField(null);
-      state.boardPractices = state.boardPractices.filter(item => item.id !== instance.id);
-      if (state.activeBoardObject?.type === 'practice' && state.activeBoardObject.id === instance.id) clearActiveBoardObject({ save: false });
-      renderBoardObjects(); scheduleSave();
-    });
-    actions.append(collapse, remove); chrome.append(handle, chromeTitle, actions);
-    makeBoardObjectDraggable(object, instance, chromeTitle, { alwaysAllow: true });
+    if (onlineAccessRole === 'teacher') {
+      const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'board-practice-page-collapse'; collapse.textContent = instance.collapsed ? '+' : '−'; collapse.setAttribute('aria-label', instance.collapsed ? 'Išskleisti pratybas' : 'Sutraukti pratybas');
+      collapse.addEventListener('click', event => { event.stopPropagation(); instance.collapsed = !instance.collapsed; setActiveBoardPractice(instance.id, { save: false }); renderBoardObjects(); scheduleSave(); });
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'board-practice-page-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Pašalinti pratybas');
+      remove.addEventListener('click', event => {
+        event.stopPropagation();
+        if (activeDirectMathField && object.contains(activeDirectMathField)) setActiveDirectMathField(null);
+        state.boardPractices = state.boardPractices.filter(item => item.id !== instance.id);
+        if (state.activeBoardObject?.type === 'practice' && state.activeBoardObject.id === instance.id) clearActiveBoardObject({ save: false });
+        renderBoardObjects(); scheduleSave();
+      });
+      actions.append(collapse, remove);
+    }
+    handle.hidden = onlineAccessRole !== 'teacher';
+    chrome.append(handle, chromeTitle, actions);
+    if (onlineAccessRole === 'teacher') makeBoardObjectDraggable(object, instance, chromeTitle, { alwaysAllow: true });
     object.appendChild(chrome);
 
     if (state.mode === 'teacher' && !instance.collapsed) object.appendChild(createPracticeLayoutEditorBar(instance));
@@ -7544,23 +7554,26 @@ KOKYBĖS REIKALAVIMAI:
       const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'board-solver-task-handle'; handle.textContent = '⠿'; handle.setAttribute('aria-label', 'Perkelti užduotį');
       const title = document.createElement('div'); title.className = 'board-solver-task-title'; title.innerHTML = `<span>Pavienė užduotis</span><strong>${escapeHtml(task.title || 'Užduotis')}</strong>`;
       const headerActions = document.createElement('div'); headerActions.className = 'board-solver-task-header-actions';
-      const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'board-solver-task-collapse'; collapse.textContent = instance.collapsed ? '+' : '−'; collapse.setAttribute('aria-label', instance.collapsed ? 'Išskleisti užduotį' : 'Sutraukti užduotį');
-      collapse.addEventListener('click', event => {
-        event.stopPropagation();
-        instance.collapsed = !instance.collapsed;
-        setActiveBoardTask(instance.id, { save: false });
-        renderBoardObjects();
-        scheduleSave();
-      });
-      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'board-solver-task-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Pašalinti užduotį iš lentos');
-      remove.addEventListener('click', event => {
-        event.stopPropagation();
-        if (activeDirectMathField && card.contains(activeDirectMathField)) setActiveDirectMathField(null);
-        state.boardTasks = state.boardTasks.filter(item => item.id !== instance.id);
-        if (state.activeBoardObject?.type === 'task' && state.activeBoardObject.id === instance.id) clearActiveBoardObject({ save: false });
-        card.remove(); scheduleSave();
-      });
-      headerActions.append(collapse, remove);
+      if (onlineAccessRole === 'teacher') {
+        const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'board-solver-task-collapse'; collapse.textContent = instance.collapsed ? '+' : '−'; collapse.setAttribute('aria-label', instance.collapsed ? 'Išskleisti užduotį' : 'Sutraukti užduotį');
+        collapse.addEventListener('click', event => {
+          event.stopPropagation();
+          instance.collapsed = !instance.collapsed;
+          setActiveBoardTask(instance.id, { save: false });
+          renderBoardObjects();
+          scheduleSave();
+        });
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'board-solver-task-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Pašalinti užduotį iš lentos');
+        remove.addEventListener('click', event => {
+          event.stopPropagation();
+          if (activeDirectMathField && card.contains(activeDirectMathField)) setActiveDirectMathField(null);
+          state.boardTasks = state.boardTasks.filter(item => item.id !== instance.id);
+          if (state.activeBoardObject?.type === 'task' && state.activeBoardObject.id === instance.id) clearActiveBoardObject({ save: false });
+          card.remove(); scheduleSave();
+        });
+        headerActions.append(collapse, remove);
+      }
+      handle.hidden = onlineAccessRole !== 'teacher';
       header.append(handle, title, headerActions);
 
       const body = document.createElement('div'); body.className = 'board-solver-task-body';
@@ -7574,15 +7587,19 @@ KOKYBĖS REIKALAVIMAI:
       const feedback = document.createElement('div'); feedback.className = 'board-task-feedback'; feedback.hidden = true;
       body.append(prompt, responseHost, feedback);
       card.append(header, body);
-      const resizeHandle = document.createElement('button'); resizeHandle.type = 'button'; resizeHandle.className = 'board-solver-task-resize'; resizeHandle.setAttribute('aria-label', 'Keisti užduoties dydį'); card.appendChild(resizeHandle);
+      const resizeHandle = document.createElement('button'); resizeHandle.type = 'button'; resizeHandle.className = 'board-solver-task-resize'; resizeHandle.setAttribute('aria-label', 'Keisti užduoties dydį');
+      resizeHandle.hidden = onlineAccessRole !== 'teacher';
+      card.appendChild(resizeHandle);
       refs.objectsLayer.appendChild(card);
       renderBoardTaskResponse(instance, responseHost, card);
       renderBoardTaskFeedback(card, instance.result);
       applyBoardTaskStepResults(card, instance.result);
       card.addEventListener('pointerdown', () => setActiveBoardTask(instance.id));
       card.addEventListener('focusin', () => setActiveBoardTask(instance.id));
-      makeBoardObjectDraggable(card, instance, handle);
-      makeBoardTaskResizable(card, instance, resizeHandle);
+      if (onlineAccessRole === 'teacher') {
+        makeBoardObjectDraggable(card, instance, handle);
+        makeBoardTaskResizable(card, instance, resizeHandle);
+      }
     }
 
     if (state.practiceOnly?.active) mountPracticeOnlyObject();
@@ -7766,7 +7783,7 @@ KOKYBĖS REIKALAVIMAI:
   function installWindowDrag() {
     let drag = null;
     refs.dragHandle.addEventListener('pointerdown', event => {
-      if (event.target.closest('button') || state.practiceOnly?.active) return;
+      if (onlineAccessRole !== 'teacher' || event.target.closest('button') || state.practiceOnly?.active) return;
       event.preventDefault();
       drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: refs.practiceWindow.offsetLeft, top: refs.practiceWindow.offsetTop };
       refs.dragHandle.setPointerCapture(event.pointerId);
@@ -7792,7 +7809,7 @@ KOKYBĖS REIKALAVIMAI:
   function installWindowResize() {
     let resize = null;
     refs.resizeHandle.addEventListener('pointerdown', event => {
-      if (state.practiceOnly?.active) return;
+      if (onlineAccessRole !== 'teacher' || state.practiceOnly?.active) return;
       event.preventDefault();
       event.stopPropagation();
       const boardRect = getBoardWorldRect();
@@ -7817,7 +7834,7 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  // -------------------- ONLINE-P1.1 bendros lentos tiltas --------------------
+  // -------------------- ONLINE-P1.1.2 bendros lentos tiltas --------------------
 
   function ensureSharedIds() {
     state.drawing.forEach((stroke, index) => {
@@ -7868,8 +7885,32 @@ KOKYBĖS REIKALAVIMAI:
     } catch (_) { /* vietinė kopija nėra kritinė online sinchronizacijai */ }
   }
 
+  function applyOnlineAccessRole(role) {
+    onlineAccessRole = role === 'student' ? 'student' : 'teacher';
+    document.body.dataset.onlineRole = onlineAccessRole;
+    const isTeacher = onlineAccessRole === 'teacher';
+
+    refs.libraryButton.hidden = !isTeacher;
+    refs.resetButton.hidden = !isTeacher;
+    refs.collapseButton.hidden = !isTeacher;
+    refs.resizeHandle.hidden = !isTeacher;
+    const mainGrip = refs.practiceWindow.querySelector('.practice-object-grip');
+    if (mainGrip) mainGrip.hidden = !isTeacher;
+    const modeSwitch = refs.studentModeButton.closest('.mode-switch');
+    if (modeSwitch) modeSwitch.hidden = !isTeacher;
+
+    if (!isTeacher) {
+      closeLibrary();
+      if (state.mode !== 'student') setMode('student', { force: true });
+      refs.authoringBody.hidden = true;
+      refs.centerPracticeButton.hidden = true;
+    }
+    renderBoardObjects();
+  }
+
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1',
+    version: 'P7.7.2-ONLINE-P1.1.2',
+    setOnlineRole: applyOnlineAccessRole,
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {
@@ -7899,6 +7940,7 @@ KOKYBĖS REIKALAVIMAI:
     renderTask();
   });
   refs.collapseButton.addEventListener('click', () => {
+    if (onlineAccessRole !== 'teacher') return;
     state.window.collapsed = !state.window.collapsed;
     refs.practiceWindow.classList.toggle('is-collapsed', state.window.collapsed);
     refs.collapseButton.textContent = state.window.collapsed ? '+' : '—';
@@ -7907,6 +7949,7 @@ KOKYBĖS REIKALAVIMAI:
   refs.addNoteButton.addEventListener('click', () => { setTool('select'); addNote(); });
   refs.centerPracticeButton.addEventListener('click', centerPracticeWindow);
   refs.resetButton.addEventListener('click', () => {
+    if (onlineAccessRole !== 'teacher') { showToast('Bendrą lentą gali išvalyti tik mokytojas'); return; }
     if (!window.confirm('Išvalyti visus P7.7.2 atsakymus, biblioteką, pavienes užduotis, puslapines pratybas, lentos objektus ir lango padėtį?')) return;
     document.body.classList.remove('practice-only-mode');
     refs.practiceOnlyOverlay.hidden = true;
