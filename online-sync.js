@@ -27,6 +27,7 @@ const statusEl = document.getElementById('onlineStatus');
 const roomEl = document.getElementById('onlineRoomCode');
 const usersEl = document.getElementById('onlineUsers');
 const copyButton = document.getElementById('copySessionLinkButton');
+const previewButton = document.getElementById('previewStudentButton');
 const newButton = document.getElementById('newSessionButton');
 const roleBadge = document.getElementById('onlineRoleBadge');
 
@@ -73,11 +74,12 @@ function resolveRoom() {
 function resolveAccessRole() {
   const url = new URL(window.location.href);
   const requested = String(url.searchParams.get('role') || '').toLowerCase();
-  // Suderinamumas su ankstesnėmis ONLINE-P1 nuorodomis: jei rolė dar nenurodyta,
-  // šis langas laikomas mokytojo langu. Nuo P1.1.2 bendrinamas mygtukas visada
-  // sukuria aiškią role=student nuorodą.
-  const role = requested === 'student' ? 'student' : 'teacher';
+  const legacyStudent = url.searchParams.get('student') === '1';
+  // ONLINE-P1.1.3: rolę visada lemia nuoroda. Vietinė ankstesnė būsena jos
+  // perrašyti negali. Be rolės atidarytas adresas yra mokytojo adresas.
+  const role = requested === 'student' || legacyStudent ? 'student' : 'teacher';
   url.searchParams.set('role', role);
+  url.searchParams.delete('student');
   try { history.replaceState(null, '', url); } catch (_) {}
   return role;
 }
@@ -86,6 +88,7 @@ function urlForRoom(targetRoom, role) {
   const url = new URL(window.location.href);
   url.searchParams.set('room', targetRoom);
   url.searchParams.set('role', role === 'student' ? 'student' : 'teacher');
+  url.searchParams.delete('student');
   url.searchParams.delete('new');
   return url;
 }
@@ -133,6 +136,7 @@ if (roomEl) roomEl.textContent = roomId;
 if (roleBadge) roleBadge.textContent = onlineRole === 'teacher' ? 'Mokytojas' : 'Mokinys';
 bridge.setOnlineRole?.(onlineRole);
 if (copyButton) copyButton.hidden = onlineRole !== 'teacher';
+if (previewButton) previewButton.hidden = onlineRole !== 'teacher';
 if (newButton) newButton.hidden = onlineRole !== 'teacher';
 
 const app = initializeApp(firebaseConfig);
@@ -209,7 +213,7 @@ async function publishLocalChanges() {
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1.1.2 publish klaida', error);
+    console.error('ONLINE-P1.1.3 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -311,7 +315,7 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1.1.2 workspace inicijavimo klaida', error);
+    console.error('ONLINE-P1.1.3 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -358,7 +362,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1.1.2 connection klaida', error);
+  console.error('ONLINE-P1.1.3 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -380,7 +384,7 @@ async function writeLiveStroke(stroke) {
   try {
     await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
   } catch (error) {
-    console.warn('ONLINE-P1.1.2 live stroke klaida', error);
+    console.warn('ONLINE-P1.1.3 live stroke klaida', error);
   }
 }
 
@@ -424,6 +428,27 @@ window.addEventListener('p772:live-stroke', event => {
   if (!liveTimer) liveTimer = setTimeout(sendLive, 40);
 });
 
+function openStudentPreview() {
+  if (onlineRole !== 'teacher') return;
+  const studentUrl = urlForRoom(roomId, 'student').toString();
+  // noopener svarbus ir tam, kad naujas skirtukas negautų mokytojo lango
+  // sessionStorage kopijos kaip savo identiteto. Naudojame <a>, kad
+  // naršyklės nesukurtų dviejų skirtukų dėl window.open grąžinimo ypatumų.
+  const link = document.createElement('a');
+  link.href = studentUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+// app.js mokytojo rengyklėje esantis „Išbandyti kaip mokiniui“ taip pat
+// naudoja tą patį atskirą mokinio langą, o ne pakeičia mokytojo rolę.
+window.addEventListener('p772:open-student-preview', openStudentPreview);
+
+if (previewButton) previewButton.addEventListener('click', openStudentPreview);
+
 if (copyButton) {
   copyButton.addEventListener('click', async () => {
     try {
@@ -457,7 +482,7 @@ if (newButton) {
       // nukreips į naujausią sesiją.
       await set(transitionRef, { toRoom: nextRoom, issuedBy: me, issuedAt: serverTimestamp() });
     } catch (error) {
-      console.error('ONLINE-P1.1.2 naujos sesijos klaida', error);
+      console.error('ONLINE-P1.1.3 naujos sesijos klaida', error);
       newButton.disabled = false;
       bridge.showToast?.('Nepavyko pradėti naujos sesijos');
     }
@@ -470,5 +495,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1.1.2 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('ONLINE-P1.1.3 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }

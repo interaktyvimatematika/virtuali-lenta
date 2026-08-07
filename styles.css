@@ -2696,3 +2696,20 @@ body[data-online-role="student"] .online-role {
   .online-status { display: none; }
   .online-new { display: none; }
 }
+
+/* P7.7.2-ONLINE-P1.1.4 — rolėms patikimai atskirta sąsaja.
+   Nenaudojame vien HTML `hidden`, nes ankstesnės responsive taisyklės
+   kai kuriems mygtukams turėjo `display: ... !important` ir jį perrašydavo. */
+.internal-mode-switch,
+body[data-online-role] .mode-switch {
+  display: none !important;
+}
+
+body[data-online-role="student"] #libraryButton,
+body[data-online-role="student"] #resetButton,
+body[data-online-role="student"] #centerPracticeButton,
+body[data-online-role="student"] #copySessionLinkButton,
+body[data-online-role="student"] #previewStudentButton,
+body[data-online-role="student"] #newSessionButton {
+  display: none !important;
+}

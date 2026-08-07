@@ -2606,12 +2606,12 @@
 
     if (nextMode === 'student') {
       const readyIndexes = readyTaskIndexes();
-      if (!readyIndexes.length) {
+      if (!readyIndexes.length && !options.allowEmpty) {
         setAuthoringValidation('error', 'Nė viena užduotis dar nepraėjo patikimumo vartų.');
         showToast('Mokinio režimui nėra paruoštų užduočių');
         return false;
       }
-      if (!readyIndexes.includes(state.currentTask)) state.currentTask = readyIndexes[0];
+      if (readyIndexes.length && !readyIndexes.includes(state.currentTask)) state.currentTask = readyIndexes[0];
     }
 
     state.mode = nextMode;
@@ -4131,7 +4131,7 @@
     resetResponsesForCurrentTasks({}, {});
     editorDirty = false;
     renderTask(); renderAuthoringTaskList(); populateEditor();
-    setMode('student', { force: true });
+    setMode(onlineAccessRole === 'teacher' ? 'teacher' : 'student', { force: true, allowEmpty: true });
     requestAnimationFrame(centerPracticeWindow);
     scheduleSave();
     return true;
@@ -4753,7 +4753,10 @@ KOKYBĖS REIKALAVIMAI:
         showToast('Užduotis dar neparuošta mokiniui');
         return;
       }
-      setMode('student', { force: true });
+      if (onlineAccessRole === 'teacher') {
+        window.P772OnlineBridge?.openStudentPreview?.();
+        showToast('Mokinio vaizdas atidarytas naujame lange');
+      }
     });
     refs.discardEditorChangesButton.addEventListener('click', populateEditor);
     refs.copyJsonButton.addEventListener('click', copyCurrentTaskJson);
@@ -7897,11 +7900,15 @@ KOKYBĖS REIKALAVIMAI:
     const mainGrip = refs.practiceWindow.querySelector('.practice-object-grip');
     if (mainGrip) mainGrip.hidden = !isTeacher;
     const modeSwitch = refs.studentModeButton.closest('.mode-switch');
-    if (modeSwitch) modeSwitch.hidden = !isTeacher;
+    // ONLINE-P1.1.3: rolė ir darbo režimas yra vienas dalykas.
+    // Perjungiklis neberodomas nei mokytojui, nei mokiniui.
+    if (modeSwitch) modeSwitch.hidden = true;
 
-    if (!isTeacher) {
+    if (isTeacher) {
+      setMode('teacher', { force: true, allowEmpty: true });
+    } else {
       closeLibrary();
-      if (state.mode !== 'student') setMode('student', { force: true });
+      setMode('student', { force: true, allowEmpty: true });
       refs.authoringBody.hidden = true;
       refs.centerPracticeButton.hidden = true;
     }
@@ -7909,8 +7916,11 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.2',
+    version: 'P7.7.2-ONLINE-P1.1.4',
     setOnlineRole: applyOnlineAccessRole,
+    openStudentPreview() {
+      window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
+    },
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {
@@ -7964,8 +7974,8 @@ KOKYBĖS REIKALAVIMAI:
     renderBoardObjects();
     redrawCanvas();
     setTool('select');
-    setMode('student', { force: true });
-    requestAnimationFrame(() => { centerPracticeWindow(); renderTask(); });
+    setMode(onlineAccessRole === 'teacher' ? 'teacher' : 'student', { force: true, allowEmpty: true });
+    requestAnimationFrame(() => { centerPracticeWindow(); if (state.mode === 'student') renderTask(); });
     showToast('P7.7.2 būsena, biblioteka, užduotys ir pratybų puslapiai išvalyti');
   });
   refs.canvas.addEventListener('pointerdown', startDrawing);

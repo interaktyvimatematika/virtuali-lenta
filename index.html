@@ -41,11 +41,12 @@
           <code class="online-room" id="onlineRoomCode" title="Pamokos kambario kodas">—</code>
           <span class="online-users" id="onlineUsers" title="Prisijungusių langų skaičius">0</span>
           <button class="ghost-button online-copy" id="copySessionLinkButton" type="button" title="Kopijuoti mokiniui skirtą šios bendros lentos nuorodą">Kopijuoti mokinio nuorodą</button>
+          <button class="ghost-button online-preview" id="previewStudentButton" type="button" title="Atidaryti tą pačią sesiją naujame lange taip, kaip ją mato mokinys">Peržiūrėti kaip mokinys</button>
           <button class="ghost-button online-new" id="newSessionButton" type="button" title="Sukurti naują tuščią bendros lentos sesiją ir perkelti į ją visus dalyvius">Nauja sesija</button>
         </div>
         <button class="ghost-button library-open-button" id="libraryButton" type="button"><span aria-hidden="true">▦</span><span>Biblioteka</span></button>
         <button class="ghost-button practice-only-open-button" id="practiceOnlyButton" type="button" title="Atverti pasirinktas pratybas atskirame režime"><span aria-hidden="true">⛶</span><span>Tik pratybos</span></button>
-        <div class="mode-switch" role="group" aria-label="Darbo režimas">
+        <div class="mode-switch internal-mode-switch" role="group" aria-label="Vidinis darbo režimas" hidden aria-hidden="true">
           <button class="mode-button is-active" id="studentModeButton" type="button">Mokinys</button>
           <button class="mode-button" id="teacherModeButton" type="button">Mokytojas</button>
         </div>

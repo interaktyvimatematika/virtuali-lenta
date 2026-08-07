@@ -1,0 +1,17 @@
+P1.1.4 trumpa patikra
+
+1. Mokytojo nuoroda:
+   - rodo „Mokytojas“;
+   - NĖRA Mokinys/Mokytojas jungiklio;
+   - Biblioteka ir mokytojo sesijos valdikliai prieinami.
+
+2. „Kopijuoti mokinio nuorodą“ → atidaryti kitame įrenginyje:
+   - rodo „Mokinys“;
+   - NĖRA Mokinys/Mokytojas jungiklio;
+   - NĖRA Bibliotekos;
+   - NĖRA „Išvalyti P7.7.2“ ir „Nauja sesija“;
+   - galima rašyti / trinti bendroje lentoje.
+
+3. Pakartoti 2 punktą telefone ir planšetėje.
+
+4. Mokytojo „Nauja sesija“ turi ir toliau perkelti mokinio įrenginius kartu.
