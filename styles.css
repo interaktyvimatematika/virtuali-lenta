@@ -2800,3 +2800,182 @@ body[data-online-role="teacher"] #centerPracticeButton {
     font-size: 11px !important;
   }
 }
+
+/* P7.7.2-ONLINE-P1.1.6 — galutinis mokytojo viršutinės juostos sutvarkymas.
+   Svarbu: ši versija taip pat kraunama su cache-busting parametru iš index.html,
+   kad GitHub Pages / Chrome nepaliktų ankstesnio styles.css vaizdo. */
+body[data-online-role="teacher"] .topbar {
+  grid-template-columns: minmax(300px, 350px) minmax(0, 1fr);
+  grid-template-areas:
+    "brand actions"
+    "tools tools";
+  column-gap: 18px;
+  row-gap: 8px;
+  padding: 10px 18px;
+}
+
+body[data-online-role="teacher"] .brand {
+  min-width: 0;
+}
+body[data-online-role="teacher"] .brand-mark {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+}
+body[data-online-role="teacher"] .brand > div {
+  min-width: 0;
+}
+body[data-online-role="teacher"] .brand strong {
+  font-size: 16px;
+  line-height: 1.15;
+}
+body[data-online-role="teacher"] .brand span {
+  max-width: 275px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-online-role="teacher"] .topbar-actions {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+  overflow: visible !important;
+  padding: 0;
+}
+
+/* Mokytojui paliekame tik būtiną sesijos informaciją: ryšys, room kodas, dalyvių skaičius. */
+body[data-online-role="teacher"] .online-session {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 9px;
+  gap: 7px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+body[data-online-role="teacher"] .online-status,
+body[data-online-role="teacher"] .online-role {
+  display: none !important;
+}
+body[data-online-role="teacher"] .online-dot {
+  width: 8px;
+  height: 8px;
+}
+body[data-online-role="teacher"] .online-room {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+body[data-online-role="teacher"] .online-users {
+  min-width: 26px;
+  padding: 4px 7px;
+}
+
+/* Vienodas visų mokytojo veiksmų aukštis ir vizualinis ritmas. */
+body[data-online-role="teacher"] #copySessionLinkButton,
+body[data-online-role="teacher"] #previewStudentButton,
+body[data-online-role="teacher"] #newSessionButton,
+body[data-online-role="teacher"] #libraryButton,
+body[data-online-role="teacher"] #practiceOnlyButton,
+body[data-online-role="teacher"] #resetButton {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 13px !important;
+  border-radius: 12px;
+  font-size: 13px !important;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+/* Lengvas grupavimas: mokinio valdymas | sesija | turinys | pavojingas veiksmas. */
+body[data-online-role="teacher"] #copySessionLinkButton,
+body[data-online-role="teacher"] #previewStudentButton {
+  background: #f8fafc;
+}
+body[data-online-role="teacher"] #newSessionButton {
+  margin-left: 4px;
+  background: #f8fafc;
+}
+body[data-online-role="teacher"] #libraryButton {
+  margin-left: 4px;
+}
+body[data-online-role="teacher"] #libraryButton,
+body[data-online-role="teacher"] #practiceOnlyButton {
+  background: #f5f7fb;
+}
+body[data-online-role="teacher"] #resetButton {
+  margin-left: 4px;
+  background: #fff7f8;
+  border-color: #f0d5d9;
+}
+
+/* Šio prototipo valdiklis mokytojo juostoje nebereikalingas. */
+body[data-online-role="teacher"] #centerPracticeButton,
+body[data-online-role="teacher"] .internal-mode-switch,
+body[data-online-role="teacher"] .mode-switch {
+  display: none !important;
+}
+
+/* Įrankių juosta antroje eilėje turi likti tvarkinga ir nesuspausta. */
+body[data-online-role="teacher"] .tools {
+  width: 100%;
+  justify-self: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+body[data-online-role="teacher"] .tools::-webkit-scrollbar { display: none; }
+
+/* Vidutinio pločio mokytojo ekrane leidžiame veiksmams tvarkingai persikelti,
+   o ne nukirsti kairiausią sesijos dalį. */
+@media (max-width: 1450px) {
+  body[data-online-role="teacher"] .topbar {
+    grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  }
+  body[data-online-role="teacher"] .topbar-actions {
+    justify-content: flex-start;
+  }
+  body[data-online-role="teacher"] #copySessionLinkButton,
+  body[data-online-role="teacher"] #previewStudentButton,
+  body[data-online-role="teacher"] #newSessionButton,
+  body[data-online-role="teacher"] #libraryButton,
+  body[data-online-role="teacher"] #practiceOnlyButton,
+  body[data-online-role="teacher"] #resetButton {
+    min-height: 38px;
+    height: 38px;
+    padding-inline: 11px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 980px) {
+  body[data-online-role="teacher"] .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "actions"
+      "tools";
+    padding: 9px 10px;
+  }
+  body[data-online-role="teacher"] .brand {
+    display: flex;
+  }
+  body[data-online-role="teacher"] .brand span {
+    display: block;
+    max-width: calc(100vw - 95px);
+  }
+  body[data-online-role="teacher"] .topbar-actions {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto !important;
+    scrollbar-width: none;
+    padding-bottom: 1px;
+  }
+  body[data-online-role="teacher"] .topbar-actions::-webkit-scrollbar { display: none; }
+}
