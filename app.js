@@ -7817,7 +7817,7 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  // -------------------- ONLINE-P1 bendros lentos tiltas --------------------
+  // -------------------- ONLINE-P1.1 bendros lentos tiltas --------------------
 
   function ensureSharedIds() {
     state.drawing.forEach((stroke, index) => {
@@ -7869,7 +7869,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1',
+    version: 'P7.7.2-ONLINE-P1.1',
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {

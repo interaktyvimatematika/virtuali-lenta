@@ -110,7 +110,11 @@ const boardTasksRef = ref(db, `p772Rooms/${roomId}/workspace/boardTasks`);
 const boardPracticesRef = ref(db, `p772Rooms/${roomId}/workspace/boardPractices`);
 const windowRef = ref(db, `p772Rooms/${roomId}/workspace/window`);
 const liveRef = ref(db, `p772Rooms/${roomId}/liveStrokes`);
-const myLiveRef = ref(db, `p772Rooms/${roomId}/liveStrokes/${me}`);
+const myLiveRootRef = ref(db, `p772Rooms/${roomId}/liveStrokes/${me}`);
+function myLiveStrokeRef(strokeId) {
+  const safeId = String(strokeId || 'stroke').replace(/[.#$\[\]/]/g, '-');
+  return ref(db, `p772Rooms/${roomId}/liveStrokes/${me}/${safeId}`);
+}
 const presenceRef = ref(db, `p772Rooms/${roomId}/presence/${me}`);
 const presenceListRef = ref(db, `p772Rooms/${roomId}/presence`);
 const connectedRef = ref(db, '.info/connected');
@@ -118,6 +122,7 @@ const connectedRef = ref(db, '.info/connected');
 let bootstrapped = false;
 let liveTimer = null;
 let pendingLive = null;
+const pendingLiveCommits = new Map();
 let remoteCache = {
   drawing: '', notes: '', boardTasks: '', boardPractices: '', window: ''
 };
@@ -168,8 +173,21 @@ async function publishLocalChanges() {
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1 publish klaida', error);
+    console.error('ONLINE-P1.1 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
+  }
+}
+
+function settleCommittedLiveStrokes(normalizedDrawing) {
+  if (!normalizedDrawing || typeof normalizedDrawing !== 'object' || !pendingLiveCommits.size) return;
+  for (const strokeId of [...pendingLiveCommits.keys()]) {
+    if (!normalizedDrawing[strokeId]) continue;
+    const timer = pendingLiveCommits.get(strokeId);
+    if (timer) clearTimeout(timer);
+    pendingLiveCommits.delete(strokeId);
+    // Persistent brūkšnys jau atkeliavo į workspace. Gyvą kopiją pašaliname tik
+    // po trumpo dažymo ciklo, kad kitame ekrane nebūtų tuščio kadro / mirktelėjimo.
+    setTimeout(() => remove(myLiveStrokeRef(strokeId)).catch(() => {}), 70);
   }
 }
 
@@ -177,6 +195,7 @@ function applyMapPart(part, raw) {
   const normalized = raw && typeof raw === 'object' ? raw : {};
   const fp = stable(normalized);
   remoteCache[part] = fp;
+  if (part === 'drawing') settleCommittedLiveStrokes(normalized);
   if (stable(toMap(bridge.getSharedSnapshot()[part])) === fp) return;
   bridge.applySharedPart(part, mapToArray(normalized));
 }
@@ -229,7 +248,7 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1 workspace inicijavimo klaida', error);
+    console.error('ONLINE-P1.1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -239,10 +258,17 @@ initializeWorkspace();
 onValue(liveRef, snapshot => {
   const raw = snapshot.val() || {};
   const now = Date.now();
-  const strokes = Object.entries(raw)
-    .filter(([id, item]) => id !== me && item && Array.isArray(item.points) && item.points.length)
-    .map(([, item]) => item)
-    .filter(item => !item.updatedAt || now - Number(item.updatedAt) < 30000);
+  const strokes = [];
+  for (const [client, value] of Object.entries(raw)) {
+    if (client === me || !value || typeof value !== 'object') continue;
+    // Suderinamumas su ONLINE-P1: ten vienam klientui buvo saugomas vienas brūkšnys.
+    const candidates = Array.isArray(value.points) ? [value] : Object.values(value);
+    for (const item of candidates) {
+      if (!item || !Array.isArray(item.points) || !item.points.length) continue;
+      if (item.updatedAt && now - Number(item.updatedAt) >= 30000) continue;
+      strokes.push(item);
+    }
+  }
   bridge.setRemoteLiveStrokes(strokes);
 });
 
@@ -250,14 +276,14 @@ onValue(connectedRef, snapshot => {
   if (snapshot.val() === true) {
     set(presenceRef, { online: true, joinedAt: Date.now(), updatedAt: serverTimestamp() });
     onDisconnect(presenceRef).remove();
-    onDisconnect(myLiveRef).remove();
+    onDisconnect(myLiveRootRef).remove();
     const localNote = location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta';
     setUi('online', localNote);
   } else {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1 connection klaida', error);
+  console.error('ONLINE-P1.1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -274,29 +300,53 @@ window.addEventListener('p772:shared-state-changed', () => {
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
 });
 
+async function writeLiveStroke(stroke) {
+  if (!stroke?.id) return;
+  try {
+    await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
+  } catch (error) {
+    console.warn('ONLINE-P1.1 live stroke klaida', error);
+  }
+}
+
 async function sendLive() {
   liveTimer = null;
   if (!pendingLive) return;
   const payload = pendingLive;
   pendingLive = null;
-  try {
-    await set(myLiveRef, { ...payload, updatedAt: Date.now(), clientId: me });
-  } catch (error) {
-    console.warn('ONLINE-P1 live stroke klaida', error);
-  }
+  await writeLiveStroke(payload);
 }
 
 window.addEventListener('p772:live-stroke', event => {
   const detail = event.detail || {};
+  const stroke = detail.stroke;
+  if (!stroke?.id) return;
+
   if (detail.phase === 'end') {
+    // ONLINE-P1 pašalindavo gyvą brūkšnį iš karto, o nuolatinė kopija dar
+    // kelias dešimtis / šimtus ms keliaudavo per Firebase. Dėl to nuotoliniame
+    // ekrane brūkšnys akimirkai dingdavo ir vėl atsirasdavo.
     pendingLive = null;
     if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
-    remove(myLiveRef).catch(() => {});
+    writeLiveStroke(stroke); // paliekame galutinę gyvą kopiją iki persistavimo
+
+    const previousTimer = pendingLiveCommits.get(stroke.id);
+    if (previousTimer) clearTimeout(previousTimer);
+    const fallbackTimer = setTimeout(() => {
+      pendingLiveCommits.delete(stroke.id);
+      remove(myLiveStrokeRef(stroke.id)).catch(() => {});
+    }, 2500);
+    pendingLiveCommits.set(stroke.id, fallbackTimer);
+
+    // Brūkšnys state.drawing jau yra, todėl nereikia laukti lokalaus 180 ms save debounce.
+    // Iš karto perduodame jį į workspace; gyva kopija bus nuimta tik gavus
+    // patvirtinimą per drawing listenerį.
+    publishLocalChanges();
     return;
   }
-  if (!detail.stroke) return;
-  pendingLive = detail.stroke;
-  if (!liveTimer) liveTimer = setTimeout(sendLive, 55);
+
+  pendingLive = stroke;
+  if (!liveTimer) liveTimer = setTimeout(sendLive, 40);
 });
 
 if (copyButton) {
@@ -321,10 +371,10 @@ if (newButton) {
 }
 
 window.addEventListener('beforeunload', () => {
-  remove(myLiveRef).catch(() => {});
+  remove(myLiveRootRef).catch(() => {});
   remove(presenceRef).catch(() => {});
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('ONLINE-P1.1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }
