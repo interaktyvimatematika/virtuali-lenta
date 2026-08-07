@@ -5752,7 +5752,7 @@ KOKYBĖS REIKALAVIMAI:
       width: state.activeTool === 'eraser' ? 22 : 2.6,
       points: [pointFromEvent(event)]
     };
-    // ONLINE-P1.3: nebeperpiešiame visos didelės lentos kiekvienam telefono
+    // ONLINE-P1.3.1: nebeperpiešiame visos didelės lentos kiekvienam telefono
     // judesiui. Naują brūkšnį piešiame inkrementiškai – tai smarkiai sumažina
     // mobiliojo CPU apkrovą ir leidžia live paketams išeiti laiku.
     drawStrokeRange(activeStroke, 0);
@@ -5764,8 +5764,8 @@ KOKYBĖS REIKALAVIMAI:
     if (activeDrawingPointerId != null && event.pointerId != null && event.pointerId !== activeDrawingPointerId) return;
     if (event.cancelable) event.preventDefault();
 
-    // pointerrawupdate telefone gali ateiti dažniau už pointermove. Coalesced
-    // taškai užpildo tarpelius, o dublius atmeta appendActiveStrokeSamples().
+    // Naudojame vien pointermove srautą, o getCoalescedEvents() paima naršyklės
+    // sukauptus tarpinius taškus. Taip išvengiame kelių judesio srautų persidengimo.
     const samples = typeof event.getCoalescedEvents === 'function'
       ? event.getCoalescedEvents()
       : [event];
@@ -5776,17 +5776,6 @@ KOKYBĖS REIKALAVIMAI:
     emitLiveStroke('update');
   }
 
-  function continueDrawingFromTouch(event) {
-    if (!drawingActive || !activeStroke) return;
-    if (event.cancelable) event.preventDefault();
-    const touches = event.changedTouches ? Array.from(event.changedTouches) : [];
-    if (!touches.length) return;
-    const before = activeStroke.points.length;
-    const added = appendActiveStrokeSamples(touches);
-    if (!added) return;
-    drawStrokeRange(activeStroke, before);
-    emitLiveStroke('update');
-  }
 
   function stopDrawing(event) {
     if (!drawingActive || !activeStroke) return;
@@ -7877,7 +7866,7 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  // -------------------- ONLINE-P1.3 bendros lentos tiltas --------------------
+  // -------------------- ONLINE-P1.3.1 bendros lentos tiltas --------------------
 
   function ensureSharedIds() {
     state.drawing.forEach((stroke, index) => {
@@ -7929,7 +7918,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.3',
+    version: 'P7.7.2-ONLINE-P1.3.1',
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
     setRemoteLiveStrokes(strokes) {
@@ -7986,15 +7975,13 @@ KOKYBĖS REIKALAVIMAI:
     showToast('P7.7.2 būsena, biblioteka, užduotys ir pratybų puslapiai išvalyti');
   });
   refs.canvas.addEventListener('pointerdown', startDrawing, { passive: false });
-  // pointerrawupdate yra aukšto dažnio Pointer Events srautas (kai naršyklė jį palaiko).
-  // Paliekame ir pointermove: dubliuoti taškai saugiai atmetami pagal koordinates.
+  // ONLINE-P1.3.1: vienas judesio šaltinis. P1.3 vienu metu klausė
+  // pointermove + pointerrawupdate + touchmove. Mobiliajame Chrome tie patys
+  // fiziniai judesiai galėjo ateiti keliais srautais ne visai ta pačia tvarka,
+  // todėl taškai būdavo sujungiami atgal ir atsirasdavo papildomos linijos.
+  // Pointer Events + getCoalescedEvents() palieka sklandžius tarpinius taškus,
+  // bet kiekvieną trajektoriją apdoroja tik vieną kartą.
   refs.canvas.addEventListener('pointermove', continueDrawing, { passive: false });
-  if ('onpointerrawupdate' in window) {
-    refs.canvas.addEventListener('pointerrawupdate', continueDrawing, { passive: false });
-  }
-  // Touch fallback ypač naudingas telefonuose / planšetėse, kurios judesį į
-  // pointermove pateikia retesnėmis porcijomis.
-  refs.canvas.addEventListener('touchmove', continueDrawingFromTouch, { passive: false });
   refs.canvas.addEventListener('pointerup', stopDrawing, { passive: false });
   refs.canvas.addEventListener('pointercancel', stopDrawing, { passive: false });
   refs.canvas.addEventListener('lostpointercapture', event => {

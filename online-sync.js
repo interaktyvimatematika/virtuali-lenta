@@ -173,7 +173,7 @@ async function publishLocalChanges() {
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1.3 publish klaida', error);
+    console.error('ONLINE-P1.3.1 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -251,7 +251,7 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1.3 workspace inicijavimo klaida', error);
+    console.error('ONLINE-P1.3.1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -267,7 +267,7 @@ function normalizeLiveStroke(item) {
     return item;
   }
 
-  // ONLINE-P1.3: siunčiame tik naujus taškų gabalus. Taip nereikia per kiekvieną
+  // ONLINE-P1.3.1: siunčiame tik naujus taškų gabalus. Taip nereikia per kiekvieną
   // judesį iš naujo siųsti viso vis ilgėjančio brūkšnio, todėl rašymas kitame
   // ekrane pradeda rodytis dar neatitraukus pieštuko.
   if (!item.chunks || typeof item.chunks !== 'object') return null;
@@ -320,7 +320,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1.3 connection klaida', error);
+  console.error('ONLINE-P1.3.1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -389,7 +389,7 @@ function flushLiveDelta(strokeId, force = false) {
   if (force) updates.ended = true;
 
   update(myLiveStrokeRef(stroke.id), updates).catch(error => {
-    console.warn('ONLINE-P1.3 live delta klaida', error);
+    console.warn('ONLINE-P1.3.1 live delta klaida', error);
   });
 }
 
@@ -468,5 +468,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1.3 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('ONLINE-P1.3.1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }
