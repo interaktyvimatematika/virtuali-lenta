@@ -120,8 +120,8 @@ const presenceListRef = ref(db, `p772Rooms/${roomId}/presence`);
 const connectedRef = ref(db, '.info/connected');
 
 let bootstrapped = false;
-const LIVE_STREAM_INTERVAL_MS = 24;
-const liveStreams = new Map();
+let liveTimer = null;
+let pendingLive = null;
 const pendingLiveCommits = new Map();
 let remoteCache = {
   drawing: '', notes: '', boardTasks: '', boardPractices: '', window: ''
@@ -173,7 +173,7 @@ async function publishLocalChanges() {
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1.3.1 publish klaida', error);
+    console.error('ONLINE-P1.1 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -185,9 +185,6 @@ function settleCommittedLiveStrokes(normalizedDrawing) {
     const timer = pendingLiveCommits.get(strokeId);
     if (timer) clearTimeout(timer);
     pendingLiveCommits.delete(strokeId);
-    const stream = liveStreams.get(strokeId);
-    if (stream?.timer) clearTimeout(stream.timer);
-    liveStreams.delete(strokeId);
     // Persistent brūkšnys jau atkeliavo į workspace. Gyvą kopiją pašaliname tik
     // po trumpo dažymo ciklo, kad kitame ekrane nebūtų tuščio kadro / mirktelėjimo.
     setTimeout(() => remove(myLiveStrokeRef(strokeId)).catch(() => {}), 70);
@@ -251,45 +248,12 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1.3.1 workspace inicijavimo klaida', error);
+    console.error('ONLINE-P1.1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
 
 initializeWorkspace();
-
-function normalizeLiveStroke(item) {
-  if (!item || typeof item !== 'object') return null;
-
-  // ONLINE-P1 / P1.1 suderinamumas: visas brūkšnys buvo perrašomas vienu masyvu.
-  if (Array.isArray(item.points)) {
-    if (!item.points.length) return null;
-    return item;
-  }
-
-  // ONLINE-P1.3.1: siunčiame tik naujus taškų gabalus. Taip nereikia per kiekvieną
-  // judesį iš naujo siųsti viso vis ilgėjančio brūkšnio, todėl rašymas kitame
-  // ekrane pradeda rodytis dar neatitraukus pieštuko.
-  if (!item.chunks || typeof item.chunks !== 'object') return null;
-  const points = [];
-  for (const key of Object.keys(item.chunks).sort()) {
-    const chunk = item.chunks[key];
-    if (!chunk || !Array.isArray(chunk.points)) continue;
-    for (const point of chunk.points) {
-      if (point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))) {
-        points.push({ x: Number(point.x), y: Number(point.y) });
-      }
-    }
-  }
-  if (!points.length) return null;
-  return {
-    id: item.id || 'live-stroke',
-    mode: item.mode === 'eraser' ? 'eraser' : 'pen',
-    width: Number(item.width) || (item.mode === 'eraser' ? 22 : 2.6),
-    points,
-    updatedAt: item.updatedAt || 0
-  };
-}
 
 onValue(liveRef, snapshot => {
   const raw = snapshot.val() || {};
@@ -297,13 +261,12 @@ onValue(liveRef, snapshot => {
   const strokes = [];
   for (const [client, value] of Object.entries(raw)) {
     if (client === me || !value || typeof value !== 'object') continue;
-    // Vienas klientas gali turėti kelis dar nepatvirtintus brūkšnius.
-    const candidates = (Array.isArray(value.points) || value.chunks) ? [value] : Object.values(value);
+    // Suderinamumas su ONLINE-P1: ten vienam klientui buvo saugomas vienas brūkšnys.
+    const candidates = Array.isArray(value.points) ? [value] : Object.values(value);
     for (const item of candidates) {
-      const stroke = normalizeLiveStroke(item);
-      if (!stroke) continue;
-      if (stroke.updatedAt && now - Number(stroke.updatedAt) >= 30000) continue;
-      strokes.push(stroke);
+      if (!item || !Array.isArray(item.points) || !item.points.length) continue;
+      if (item.updatedAt && now - Number(item.updatedAt) >= 30000) continue;
+      strokes.push(item);
     }
   }
   bridge.setRemoteLiveStrokes(strokes);
@@ -320,7 +283,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1.3.1 connection klaida', error);
+  console.error('ONLINE-P1.1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -337,72 +300,21 @@ window.addEventListener('p772:shared-state-changed', () => {
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
 });
 
-function streamFor(stroke) {
-  let stream = liveStreams.get(stroke.id);
-  if (!stream) {
-    stream = {
-      sentPoints: 0,
-      sequence: 0,
-      latestStroke: stroke,
-      timer: null,
-      lastFlushAt: 0
-    };
-    liveStreams.set(stroke.id, stream);
+async function writeLiveStroke(stroke) {
+  if (!stroke?.id) return;
+  try {
+    await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
+  } catch (error) {
+    console.warn('ONLINE-P1.1 live stroke klaida', error);
   }
-  stream.latestStroke = stroke;
-  return stream;
 }
 
-function liveChunkKey(sequence) {
-  return `c${String(sequence).padStart(6, '0')}`;
-}
-
-function flushLiveDelta(strokeId, force = false) {
-  const stream = liveStreams.get(strokeId);
-  const stroke = stream?.latestStroke;
-  if (!stream || !stroke?.id) return;
-  if (stream.timer) { clearTimeout(stream.timer); stream.timer = null; }
-
-  const points = Array.isArray(stroke.points) ? stroke.points : [];
-  if (stream.sentPoints >= points.length && !force) return;
-
-  const from = stream.sentPoints;
-  const delta = points.slice(from);
-  if (!delta.length && !force) return;
-
-  // sentPoints keliame prieš asinchroninį rašymą, kad greiti pointermove įvykiai
-  // nesukurtų tų pačių taškų dublikatų. Firebase SDK pats eilėje išlaiko writes.
-  stream.sentPoints = points.length;
-  const chunkKey = liveChunkKey(stream.sequence++);
-  stream.lastFlushAt = performance.now();
-
-  const updates = {
-    id: stroke.id,
-    mode: stroke.mode,
-    width: stroke.width,
-    clientId: me,
-    updatedAt: Date.now()
-  };
-  if (delta.length) {
-    updates[`chunks/${chunkKey}`] = { points: delta, updatedAt: Date.now() };
-  }
-  if (force) updates.ended = true;
-
-  update(myLiveStrokeRef(stroke.id), updates).catch(error => {
-    console.warn('ONLINE-P1.3.1 live delta klaida', error);
-  });
-}
-
-function scheduleLiveDelta(stroke, immediate = false) {
-  const stream = streamFor(stroke);
-  const elapsed = performance.now() - stream.lastFlushAt;
-  if (immediate || elapsed >= LIVE_STREAM_INTERVAL_MS) {
-    flushLiveDelta(stroke.id, false);
-    return;
-  }
-  if (!stream.timer) {
-    stream.timer = setTimeout(() => flushLiveDelta(stroke.id, false), Math.max(0, LIVE_STREAM_INTERVAL_MS - elapsed));
-  }
+async function sendLive() {
+  liveTimer = null;
+  if (!pendingLive) return;
+  const payload = pendingLive;
+  pendingLive = null;
+  await writeLiveStroke(payload);
 }
 
 window.addEventListener('p772:live-stroke', event => {
@@ -410,35 +322,31 @@ window.addEventListener('p772:live-stroke', event => {
   const stroke = detail.stroke;
   if (!stroke?.id) return;
 
-  if (detail.phase === 'start') {
-    // Pirmą tašką išsiunčiame nedelsiant – kitas ekranas pradeda piešti iš karto.
-    scheduleLiveDelta(stroke, true);
-    return;
-  }
-
-  if (detail.phase === 'update') {
-    scheduleLiveDelta(stroke, false);
-    return;
-  }
-
   if (detail.phase === 'end') {
-    const stream = streamFor(stroke);
-    if (stream.timer) { clearTimeout(stream.timer); stream.timer = null; }
-    flushLiveDelta(stroke.id, true);
+    // ONLINE-P1 pašalindavo gyvą brūkšnį iš karto, o nuolatinė kopija dar
+    // kelias dešimtis / šimtus ms keliaudavo per Firebase. Dėl to nuotoliniame
+    // ekrane brūkšnys akimirkai dingdavo ir vėl atsirasdavo.
+    pendingLive = null;
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+    writeLiveStroke(stroke); // paliekame galutinę gyvą kopiją iki persistavimo
 
     const previousTimer = pendingLiveCommits.get(stroke.id);
     if (previousTimer) clearTimeout(previousTimer);
     const fallbackTimer = setTimeout(() => {
       pendingLiveCommits.delete(stroke.id);
-      liveStreams.delete(stroke.id);
       remove(myLiveStrokeRef(stroke.id)).catch(() => {});
     }, 2500);
     pendingLiveCommits.set(stroke.id, fallbackTimer);
 
-    // Persistuojame iš karto, bet gyvas srautas lieka matomas iki drawing patvirtinimo,
-    // todėl nėra tarpinio dingimo tarp „rašoma“ ir „išsaugota“.
+    // Brūkšnys state.drawing jau yra, todėl nereikia laukti lokalaus 180 ms save debounce.
+    // Iš karto perduodame jį į workspace; gyva kopija bus nuimta tik gavus
+    // patvirtinimą per drawing listenerį.
     publishLocalChanges();
+    return;
   }
+
+  pendingLive = stroke;
+  if (!liveTimer) liveTimer = setTimeout(sendLive, 40);
 });
 
 if (copyButton) {
@@ -468,5 +376,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1.3.1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('ONLINE-P1.1 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }
