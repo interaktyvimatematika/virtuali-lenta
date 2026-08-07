@@ -319,6 +319,30 @@
     return output;
   }
 
+  const BUILTIN_PRACTICE_SETS = Object.freeze([
+    {
+      id: 'builtin-vbe-a-01-funkcija-grafikas-v1-6',
+      kind: 'external-module',
+      title: 'VBE A · Funkcija ir jos grafikas',
+      description: '1 modulis · 4 pamokų turinys · Pamokoje ir Savarankiškai',
+      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html',
+      moduleId: 'vbe-funkcija-grafikas-v1-6',
+      moduleVersion: '1.6',
+      taskCount: 34,
+      classTaskCount: 22,
+      selfTaskCount: 12,
+      builtIn: true,
+      createdAt: '2026-08-07T18:39:00.000Z',
+      updatedAt: '2026-08-07T18:39:00.000Z',
+      taskRefs: [],
+      snapshots: []
+    }
+  ]);
+
+  function builtInPracticeSetCopies() {
+    return BUILTIN_PRACTICE_SETS.map(item => deepClone(item));
+  }
+
   const defaultState = () => ({
     currentTask: 0,
     mode: 'student',
@@ -3335,30 +3359,6 @@
       },
       task: snapshot
     };
-  }
-
-  const BUILTIN_PRACTICE_SETS = Object.freeze([
-    {
-      id: 'builtin-vbe-a-01-funkcija-grafikas-v1-6',
-      kind: 'external-module',
-      title: 'VBE A · Funkcija ir jos grafikas',
-      description: '1 modulis · 4 pamokų turinys · Pamokoje ir Savarankiškai',
-      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html',
-      moduleId: 'vbe-funkcija-grafikas-v1-6',
-      moduleVersion: '1.6',
-      taskCount: 34,
-      classTaskCount: 22,
-      selfTaskCount: 12,
-      builtIn: true,
-      createdAt: '2026-08-07T18:39:00.000Z',
-      updatedAt: '2026-08-07T18:39:00.000Z',
-      taskRefs: [],
-      snapshots: []
-    }
-  ]);
-
-  function builtInPracticeSetCopies() {
-    return BUILTIN_PRACTICE_SETS.map(item => deepClone(item));
   }
 
   function createInitialLibrary() {
@@ -8176,7 +8176,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.8',
+    version: 'P7.7.2-ONLINE-P1.1.8.1',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
