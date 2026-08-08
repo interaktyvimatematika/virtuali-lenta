@@ -463,6 +463,9 @@
     normalizeSteps(steps) {
       return normalizeStructuredSteps(steps);
     },
+    holdMathToolbar(duration = 360) {
+      holdMathToolbarDuringHandoff(duration);
+    },
     validateTask(task, response) {
       const safeTask = upgradeTaskRequirements(deepClone(task));
       const validator = validators[safeTask?.response?.validator];
@@ -843,6 +846,20 @@
     selection: null,
     restorePending: false
   };
+  let mathToolbarHandoffTimer = 0;
+
+  function holdMathToolbarDuringHandoff(duration = 360) {
+    const toolbar = refs.universalMathToolbar;
+    if (!toolbar) return;
+    const ms = Math.max(120, Math.min(900, Number(duration) || 360));
+    toolbar.classList.add('is-handoff');
+    if (mathToolbarHandoffTimer) window.clearTimeout(mathToolbarHandoffTimer);
+    mathToolbarHandoffTimer = window.setTimeout(() => {
+      mathToolbarHandoffTimer = 0;
+      toolbar.classList.remove('is-handoff');
+      updateMathToolbarUi();
+    }, ms);
+  }
 
   let activeMixedTextEditor = null;
   let savedMixedTextRange = null;
@@ -1718,7 +1735,7 @@
       }
       if (eventTouchesMathToolbar(event)) return;
 
-      // P2-SPLIT-P2.3.1: aktyvus MathLive laukas parodo universalią matematikos juostą.
+      // P2-SPLIT-P2.3.2: aktyvus MathLive laukas parodo universalią matematikos juostą.
       // Jei ją paslepiame jau pointerdown metu, visas P2 maketas pasislenka dar iki native click,
       // todėl pirmas paspaudimas ant „Šakos“, „Atsakymas“, „Pridėti eilutę“, „Tikrinti“ ir pan.
       // gali tik deaktyvuoti lauką, o ne paspausti mygtuką. P2 mokinio mygtukams sesiją uždarome

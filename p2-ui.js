@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.3.1';
+  const BUILD = 'P2-SPLIT-P2.3.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -831,6 +831,7 @@
       [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
     };
     solutionFocusRequest = { taskId, index, branchIndex: 0 };
+    practiceEngine?.holdMathToolbar?.(420);
     publishProgress(next);
   }
 
@@ -890,7 +891,9 @@
         const selector = targetBranch === 0
           ? `[data-testid="p2-step-input-${targetIndex}"]`
           : `[data-testid="p2-step-input-${targetIndex}-${targetBranch}"]`;
-        studentPanel.querySelector(selector)?.focus();
+        const target = studentPanel.querySelector(selector);
+        if (!target) return;
+        try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); }
       });
     }
   }
@@ -912,6 +915,7 @@
       [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
     };
     solutionFocusRequest = { taskId, index: Math.min(nextIndex, response.steps.length - 1) };
+    practiceEngine?.holdMathToolbar?.(420);
     publishProgress(next);
   }
 
@@ -930,6 +934,7 @@
       [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
     };
     solutionFocusRequest = { taskId, index: Math.max(0, Math.min(index, response.steps.length - 1)) };
+    practiceEngine?.holdMathToolbar?.(420);
     publishProgress(next);
   }
 

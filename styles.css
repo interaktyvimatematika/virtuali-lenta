@@ -2998,7 +2998,8 @@ body.p2-shell .external-practice-module-object,
 body.p2-shell .board-solver-task { display:none !important; }
 body.p2-shell .practice-only-open-button,
 body.p2-shell #centerPracticeButton { display:none !important; }
-body.p2-shell .universal-math-toolbar.is-inactive { display:none; }
+body.p2-shell .universal-math-toolbar.is-inactive:not(.is-restoring):not(.is-handoff) { display:none; }
+body.p2-shell .universal-math-toolbar.is-handoff.is-inactive { pointer-events:none; }
 body.p2-shell .online-status,
 body.p2-shell .online-role { display:none !important; }
 body.p2-shell .online-session { min-height:42px; padding:0 9px; border:1px solid var(--line); border-radius:13px; background:#fff; gap:7px; }
