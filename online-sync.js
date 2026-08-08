@@ -486,6 +486,25 @@ onValue(p2ProgressRef, snapshot => {
   window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: snapshot.val() || null }));
 });
 
+function sanitizeAttemptPolicy(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const normalizeLimit = (raw, fallback = 3) => {
+    const number = Number(raw);
+    if (!Number.isFinite(number)) return fallback;
+    if (number === 0) return 0; // 0 = neribotai
+    return Math.max(1, Math.min(9, Math.round(number)));
+  };
+  const defaultMaxAttempts = normalizeLimit(source.defaultMaxAttempts, 3);
+  const taskMaxAttempts = {};
+  if (source.taskMaxAttempts && typeof source.taskMaxAttempts === 'object') {
+    for (const [taskId, rawLimit] of Object.entries(source.taskMaxAttempts)) {
+      if (!/^[a-z0-9_-]{1,40}$/i.test(String(taskId))) continue;
+      taskMaxAttempts[String(taskId)] = normalizeLimit(rawLimit, defaultMaxAttempts);
+    }
+  }
+  return { defaultMaxAttempts, taskMaxAttempts };
+}
+
 window.addEventListener('p2:assignment-request', async event => {
   if (onlineRole !== 'teacher') return;
   const detail = event.detail || {};
@@ -496,11 +515,21 @@ window.addEventListener('p2:assignment-request', async event => {
       bridge.showToast?.('Pamokos priskyrimas atšauktas');
       return;
     }
+    if (detail.action === 'settings') {
+      await update(p2AssignmentRef, {
+        attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
+        settingsUpdatedAt: Date.now(),
+        settingsUpdatedBy: me
+      });
+      bridge.showToast?.('Bandymų nustatymai atnaujinti');
+      return;
+    }
     if (detail.action !== 'assign') return;
     const assignment = {
       lessonId: String(detail.lessonId || ''),
       title: String(detail.title || 'Pamokos prototipas'),
       taskCount: Math.max(0, Number(detail.taskCount) || 0),
+      attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
       assignedAt: Date.now(),
       assignedBy: me
     };
@@ -515,8 +544,8 @@ window.addEventListener('p2:assignment-request', async event => {
     });
     bridge.showToast?.('Pamoka priskirta mokiniui');
   } catch (error) {
-    console.error('P2-SPLIT-P1.7 priskyrimo klaida', error);
-    bridge.showToast?.('Nepavyko pakeisti pamokos priskyrimo');
+    console.error('P2-SPLIT-P1.9.7 priskyrimo / nustatymų klaida', error);
+    bridge.showToast?.('Nepavyko pakeisti pamokos nustatymų');
   }
 });
 

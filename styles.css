@@ -4336,3 +4336,259 @@ body.p2-shell .p2-teacher-student-feedback {
   font-size:9px;
   padding:8px 10px;
 }
+
+/* P2-SPLIT-P1.9.7 — bandymų politika ir ramesnė mokymosi būsenų semantika */
+body.p2-shell .p2-task-dot.is-help {
+  background:#fff8e8;
+  border-color:#e6d39a;
+  color:#86651f;
+}
+body.p2-shell .p2-practice-feedback.is-warning {
+  border:1px solid #eadcae;
+  background:#fff9e9;
+  color:#7a5d1d;
+}
+body.p2-shell .p2-preview-badge.status-help {
+  background:#fff7e1;
+  color:#826522;
+}
+body.p2-shell .p2-preview-badge.status-help::before { background:#d3a72f; }
+
+body.p2-shell .p2-library-attempt-summary {
+  display:grid;
+  gap:3px;
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid #e8ebf1;
+  border-radius:10px;
+  background:#fafbfc;
+  color:#727d90;
+}
+body.p2-shell .p2-library-attempt-summary > span {
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+body.p2-shell .p2-library-attempt-summary > b {
+  color:#39455c;
+  font-size:11px;
+}
+body.p2-shell .p2-library-attempt-summary > small {
+  color:#8a93a2;
+  font-size:9px;
+  line-height:1.4;
+}
+
+/* Nustatymai rodomi tik mokytojo išplėstiniame pratybų lange. */
+body.p2-shell .p2-preview-main { min-width:0; }
+body.p2-shell .p2-attempt-settings { display:none; }
+body.p2-shell .p2-teacher-practice-window.is-docked .p2-preview-layout,
+body.p2-shell .p2-teacher-practice-window.is-minimized .p2-preview-layout {
+  display:block;
+}
+body.p2-shell .p2-teacher-practice-window.is-maximized .p2-preview-layout {
+  display:grid;
+  grid-template-columns:minmax(560px,1.65fr) minmax(310px,.75fr);
+  gap:18px;
+  align-items:start;
+}
+body.p2-shell .p2-teacher-practice-window.is-maximized .p2-attempt-settings {
+  display:block;
+  position:sticky;
+  top:0;
+  min-width:0;
+  padding:16px;
+  border:1px solid #e4e8ef;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 6px 20px rgba(42,54,82,.045);
+}
+body.p2-shell .p2-attempt-settings-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:12px;
+  border-bottom:1px solid #edf0f4;
+}
+body.p2-shell .p2-attempt-settings-head .p2-label {
+  color:#8a93a2;
+  font-size:8px;
+}
+body.p2-shell .p2-attempt-settings-head h3 {
+  margin:4px 0 0;
+  color:#2d384e;
+  font-size:16px;
+  line-height:1.25;
+}
+body.p2-shell .p2-attempt-sync {
+  flex:0 0 auto;
+  padding-top:3px;
+  color:#6f9a7d;
+  font-size:8px;
+  font-weight:800;
+}
+body.p2-shell .p2-attempt-global-card {
+  margin-top:14px;
+  padding:13px;
+  border:1px solid #e8ebf1;
+  border-radius:11px;
+  background:#fafbfc;
+}
+body.p2-shell .p2-attempt-setting-title {
+  display:grid;
+  gap:3px;
+}
+body.p2-shell .p2-attempt-setting-title strong {
+  color:#3a465c;
+  font-size:11px;
+}
+body.p2-shell .p2-attempt-setting-title span {
+  color:#8992a1;
+  font-size:9px;
+  line-height:1.4;
+}
+body.p2-shell .p2-attempt-global-actions {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:11px;
+}
+body.p2-shell .p2-attempt-segment {
+  display:inline-flex;
+  align-items:center;
+  padding:2px;
+  border:1px solid #dfe4ec;
+  border-radius:9px;
+  background:#fff;
+}
+body.p2-shell .p2-attempt-segment button {
+  min-width:31px;
+  height:29px;
+  padding:0 8px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:#6d788b;
+  font-size:10px;
+  font-weight:850;
+  cursor:pointer;
+}
+body.p2-shell .p2-attempt-segment button:hover { background:#f4f6fa; }
+body.p2-shell .p2-attempt-segment button.is-active {
+  background:#eef2ff;
+  color:#5268c5;
+  box-shadow:inset 0 0 0 1px #d7def8;
+}
+body.p2-shell .p2-attempt-apply-all {
+  min-height:33px;
+  padding:0 10px;
+  border:1px solid #dfe4ec;
+  border-radius:8px;
+  background:#fff;
+  color:#58657a;
+  font-size:9px;
+  font-weight:800;
+  cursor:pointer;
+}
+body.p2-shell .p2-attempt-apply-all:hover { background:#f7f8fb; }
+body.p2-shell .p2-attempt-list-head {
+  display:grid;
+  gap:3px;
+  margin:16px 2px 8px;
+}
+body.p2-shell .p2-attempt-list-head strong {
+  color:#3a465c;
+  font-size:11px;
+}
+body.p2-shell .p2-attempt-list-head span {
+  color:#8b94a3;
+  font-size:8px;
+  line-height:1.35;
+}
+body.p2-shell .p2-attempt-task-list {
+  display:grid;
+  gap:6px;
+}
+body.p2-shell .p2-attempt-task-row {
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr) minmax(118px,auto);
+  align-items:center;
+  gap:9px;
+  min-height:48px;
+  padding:6px 7px;
+  border:1px solid #e9ecf1;
+  border-radius:10px;
+  background:#fff;
+}
+body.p2-shell .p2-attempt-task-row.is-current {
+  border-color:#d8def3;
+  background:#fafbff;
+}
+body.p2-shell .p2-attempt-task-number {
+  width:29px;
+  height:29px;
+  padding:0;
+  border:1px solid #dfe4ec;
+  border-radius:50%;
+  background:#fff;
+  color:#657188;
+  font-size:10px;
+  font-weight:900;
+  cursor:pointer;
+}
+body.p2-shell .p2-attempt-task-row.is-current .p2-attempt-task-number {
+  border-color:#7d90df;
+  color:#5268c5;
+}
+body.p2-shell .p2-attempt-task-copy {
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+body.p2-shell .p2-attempt-task-copy strong {
+  overflow:hidden;
+  color:#4a566b;
+  font-size:9px;
+  font-weight:800;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.p2-shell .p2-attempt-task-copy span {
+  color:#9098a6;
+  font-size:8px;
+}
+body.p2-shell .p2-attempt-task-row select {
+  width:100%;
+  min-width:118px;
+  height:31px;
+  padding:0 26px 0 9px;
+  border:1px solid #dfe4ec;
+  border-radius:8px;
+  background:#fff;
+  color:#5c687c;
+  font-size:9px;
+  font-weight:700;
+}
+body.p2-shell .p2-attempt-task-row.has-override select {
+  border-color:#cbd4f3;
+  background:#f8f9ff;
+  color:#5268b8;
+}
+body.p2-shell .p2-attempt-note {
+  margin:11px 2px 0;
+  color:#8a93a1;
+  font-size:8px;
+  line-height:1.45;
+}
+
+@media (max-width:1050px) {
+  body.p2-shell .p2-teacher-practice-window.is-maximized .p2-preview-layout {
+    grid-template-columns:1fr;
+  }
+  body.p2-shell .p2-teacher-practice-window.is-maximized .p2-attempt-settings {
+    position:static;
+  }
+}

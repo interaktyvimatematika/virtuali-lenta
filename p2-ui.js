@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9.6';
+  const BUILD = 'P2-SPLIT-P1.9.7';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -48,6 +48,7 @@
   });
 
   let assignment = null;
+  let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
   let progress = null;
   let selectedAnswers = {};
   let libraryModal = null;
@@ -160,6 +161,62 @@
     };
   }
 
+  function normalizeAttemptLimit(value, fallback = 3) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    if (numeric === 0) return 0; // 0 = neribotai
+    return Math.max(1, Math.min(9, Math.round(numeric)));
+  }
+
+  function normalizedAttemptPolicy(source = assignment) {
+    const legacyDefault = source?.allowRetries === false ? 1 : 3;
+    const raw = source?.attemptPolicy && typeof source.attemptPolicy === 'object' ? source.attemptPolicy : {};
+    const defaultMaxAttempts = normalizeAttemptLimit(raw.defaultMaxAttempts, legacyDefault);
+    const taskMaxAttempts = {};
+    const rawOverrides = raw.taskMaxAttempts && typeof raw.taskMaxAttempts === 'object' ? raw.taskMaxAttempts : {};
+    DEMO_LESSON.tasks.forEach(task => {
+      if (!Object.prototype.hasOwnProperty.call(rawOverrides, task.id)) return;
+      taskMaxAttempts[task.id] = normalizeAttemptLimit(rawOverrides[task.id], defaultMaxAttempts);
+    });
+    return { defaultMaxAttempts, taskMaxAttempts };
+  }
+
+  function attemptLimitForTask(taskId, source = assignment) {
+    const policy = normalizedAttemptPolicy(source);
+    return Object.prototype.hasOwnProperty.call(policy.taskMaxAttempts, taskId)
+      ? policy.taskMaxAttempts[taskId]
+      : policy.defaultMaxAttempts;
+  }
+
+  function attemptLimitLabel(limit) {
+    return Number(limit) === 0 ? '∞' : String(limit);
+  }
+
+  function attemptUsageLabel(item, taskId) {
+    const used = Number(item?.attempts || 0);
+    const max = attemptLimitForTask(taskId);
+    return max === 0 ? `${used} band.` : `${used} / ${max} band.`;
+  }
+
+  function attemptsRemaining(item, taskId) {
+    const max = attemptLimitForTask(taskId);
+    if (max === 0) return Infinity;
+    return Math.max(0, max - Number(item?.attempts || 0));
+  }
+
+  function isTaskExhausted(item, taskId) {
+    if (item?.solved) return false;
+    const max = attemptLimitForTask(taskId);
+    return max > 0 && Number(item?.attempts || 0) >= max;
+  }
+
+  function policySummary(source = assignment) {
+    const policy = normalizedAttemptPolicy(source);
+    const overrides = Object.keys(policy.taskMaxAttempts).length;
+    const base = policy.defaultMaxAttempts === 0 ? 'Neribotai visoms' : `${policy.defaultMaxAttempts} band. pagal nutylėjimą`;
+    return overrides ? `${base} · ${overrides} individualūs` : base;
+  }
+
   function currentTask() {
     const state = normalizedProgress(progress);
     return DEMO_LESSON.tasks.find(task => task.id === state.currentTaskId) || DEMO_LESSON.tasks[0];
@@ -180,28 +237,37 @@
     DEMO_LESSON.tasks.forEach(task => {
       const item = state.taskStates[task.id] || {};
       if (item.solved) solved += 1;
-      if (item.status === 'good') good += 1;
-      if (item.status === 'help') help += 1;
-      if (item.status === 'repeat') repeat += 1;
+      if (item.solved) {
+        if (item.hintUsed || Number(item.attempts || 0) > 1 || item.status === 'help') help += 1;
+        else good += 1;
+      } else if (isTaskExhausted(item, task.id)) {
+        repeat += 1;
+      }
     });
-    return { solved, good, help, repeat, percent: Math.round((solved / DEMO_LESSON.taskCount) * 100) };
+    const finished = solved + repeat;
+    return { solved, finished, good, help, repeat, percent: Math.round((finished / DEMO_LESSON.taskCount) * 100) };
   }
-
 
   function pedagogicalStatus(item, options = {}) {
     const state = item || {};
-    if (state.status === 'repeat') return { key: 'repeat', label: 'Kartoti' };
-    if (state.solved && state.status === 'help') return { key: 'help', label: 'Su pagalba' };
-    if (state.solved && state.status === 'good') return { key: 'good', label: 'Savarankiškai' };
+    const taskId = options.taskId || null;
+    if (state.solved) {
+      if (state.hintUsed) return { key: 'help', label: 'Su pagalba' };
+      if (Number(state.attempts || 0) > 1) return { key: 'help', label: 'Po kelių bandymų' };
+      if (state.status === 'help') return { key: 'help', label: 'Su pagalba' };
+      return { key: 'good', label: 'Savarankiškai' };
+    }
+    if (taskId && isTaskExhausted(state, taskId)) return { key: 'repeat', label: 'Kartoti' };
     if (options.current) return { key: 'working', label: 'Vykdoma' };
     if (state.openedAt || Number(state.attempts || 0) > 0) return { key: 'started', label: 'Pradėta' };
     return { key: 'pending', label: 'Nepradėta' };
   }
 
+
   function markTaskOpened(next, taskId) {
     if (!taskId) return next;
     const previous = (next.taskStates && next.taskStates[taskId]) || taskState(taskId);
-    if (previous.solved || previous.status === 'repeat' || previous.openedAt) return next;
+    if (previous.solved || previous.openedAt) return next;
     next.taskStates = { ...next.taskStates, [taskId]: { ...previous, openedAt: Date.now() } };
     return next;
   }
@@ -284,10 +350,10 @@
   function studentProgressSummary(stats) {
     return `
       <section class="p2-mini-section" aria-label="Mano pažanga">
-        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div><span class="p2-soft-pill">${stats.solved} / ${DEMO_LESSON.taskCount}</span></header>
+        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div><span class="p2-soft-pill">${stats.finished} / ${DEMO_LESSON.taskCount}</span></header>
         <div class="p2-student-progress">
           <div><span>Savarankiškai</span><strong>${stats.good}</strong></div>
-          <div><span>Su pagalba</span><strong>${stats.help}</strong></div>
+          <div><span>Su pagalba / taisant</span><strong>${stats.help}</strong></div>
           <div><span>Kartoti</span><strong>${stats.repeat}</strong></div>
         </div>
       </section>`;
@@ -298,22 +364,30 @@
     const item = currentTaskState();
     const selected = selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '';
     const taskNumber = taskIndex(task.id) + 1;
+    const maxAttempts = attemptLimitForTask(task.id);
+    const exhausted = isTaskExhausted(item, task.id);
+    const remaining = attemptsRemaining(item, task.id);
     const feedback = item.solved
-      ? `<div class="p2-practice-feedback is-success">✓ Teisingai. Gali tęsti.</div>`
-      : item.status === 'repeat'
-        ? `<div class="p2-practice-feedback is-repeat">Šią užduotį pažymime „Kartoti“. Gali bandyti dar kartą arba tęsti.</div>`
+      ? item.hintUsed
+        ? `<div class="p2-practice-feedback is-warning">✓ Teisingai${Number(item.attempts || 0) > 1 ? ' su pagalba ir po kelių bandymų' : ' su pagalba'}.</div>`
+        : Number(item.attempts || 0) > 1
+          ? `<div class="p2-practice-feedback is-warning">✓ Teisingai po kelių bandymų.</div>`
+          : `<div class="p2-practice-feedback is-success">✓ Teisingai. Gali tęsti.</div>`
+      : exhausted
+        ? `<div class="p2-practice-feedback is-repeat">Išnaudoti visi ${maxAttempts} ${maxAttempts === 1 ? 'bandymas' : 'bandymai'}. Šią užduotį pažymime „Kartoti“.</div>`
         : item.attempts > 0
-          ? `<div class="p2-practice-feedback is-warning">Dar ne. Patikrink savo pasirinkimą ir bandyk dar kartą.</div>`
+          ? `<div class="p2-practice-feedback is-warning">Dar ne. ${remaining === Infinity ? 'Gali bandyti dar kartą.' : `Liko ${remaining} ${remaining === 1 ? 'bandymas' : 'bandymai'}.`}</div>`
           : '';
     const hint = item.hintUsed ? `<div class="p2-hint-box"><strong>Užuomina</strong><span>${escapeHtml(task.hint)}</span></div>` : '';
     const choiceMarkup = task.choices.map(choice => {
       const active = selected === choice ? ' is-selected' : '';
-      return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}"><span>${String.fromCharCode(65 + task.choices.indexOf(choice))}</span><b>${escapeHtml(choice)}</b></button>`;
+      return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + task.choices.indexOf(choice))}</span><b>${escapeHtml(choice)}</b></button>`;
     }).join('');
     const dots = DEMO_LESSON.tasks.map((candidate, index) => {
       const cstate = taskState(candidate.id);
-      const cls = [candidate.id === task.id ? 'is-current' : '', cstate.solved ? 'is-done' : '', cstate.status === 'repeat' ? 'is-repeat' : ''].filter(Boolean).join(' ');
-      return `<button type="button" class="p2-task-dot ${cls}" data-task-id="${candidate.id}" title="${escapeHtml(candidate.label)} · ${index + 1}">${index + 1}</button>`;
+      const pedagogy = pedagogicalStatus(cstate, { taskId: candidate.id, current: candidate.id === task.id && state.status === 'in_progress' });
+      const cls = [candidate.id === task.id ? 'is-current' : '', pedagogy.key === 'good' ? 'is-done' : '', pedagogy.key === 'help' ? 'is-help' : '', pedagogy.key === 'repeat' ? 'is-repeat' : ''].filter(Boolean).join(' ');
+      return `<button type="button" class="p2-task-dot ${cls}" data-task-id="${candidate.id}" title="${escapeHtml(candidate.label)} · ${index + 1} · ${pedagogy.label}">${index + 1}</button>`;
     }).join('');
     return `
       <section class="p2-practice-shell">
@@ -326,15 +400,17 @@
           <button type="button" data-section="self" class="${task.section === 'self' ? 'is-active' : ''}">⌂ Savarankiškai</button>
         </div>
         <article class="p2-task-card">
-          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>Užduotis</h3></div><span class="p2-soft-pill">${item.attempts || 0} band.</span></div>
+          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>Užduotis</h3></div><span class="p2-soft-pill">${attemptUsageLabel(item, task.id)}</span></div>
           <p class="p2-task-prompt">${escapeHtml(task.prompt)}</p>
           <div class="p2-choice-list">${choiceMarkup}</div>
           ${hint}${feedback}
           <div class="p2-task-actions">
-            <button type="button" class="p2-secondary" data-action="hint" ${item.hintUsed ? 'disabled' : ''}>💡 Užuomina</button>
+            <button type="button" class="p2-secondary" data-action="hint" ${(item.hintUsed || item.solved || exhausted) ? 'disabled' : ''}>💡 Užuomina</button>
             <span class="p2-task-actions-spacer"></span>
             <button type="button" class="p2-secondary" data-action="previous" ${taskNumber === 1 ? 'disabled' : ''}>← Ankstesnė</button>
-            ${item.solved ? '<button type="button" class="p2-primary" data-action="next">Toliau →</button>' : '<button type="button" class="p2-primary" data-action="check">Tikrinti</button>'}
+            ${item.solved || exhausted
+              ? '<button type="button" class="p2-primary" data-action="next">Toliau →</button>'
+              : '<button type="button" class="p2-primary" data-action="check">Tikrinti</button>'}
           </div>
         </article>
         <nav class="p2-task-dots" aria-label="Užduočių navigacija">${dots}</nav>
@@ -342,6 +418,7 @@
       ${studentProgressSummary(stats)}
     `;
   }
+
 
   function bindStudentActions() {
     studentPanel.querySelector('[data-action="open-assignment"]')?.addEventListener('click', () => {
@@ -381,17 +458,19 @@
 
     studentPanel.querySelector('[data-action="check"]')?.addEventListener('click', () => {
       const task = currentTask();
-      const answer = selectedAnswers[task.id] ?? '';
+      const previous = taskState(task.id);
+      if (isTaskExhausted(previous, task.id)) { toast('Šiai užduočiai bandymų nebeliko'); return; }
+      const answer = selectedAnswers[task.id] ?? previous.liveAnswer ?? '';
       if (!answer) { toast('Pasirink atsakymą'); return; }
       const next = normalizedProgress(progress);
-      const previous = taskState(task.id);
       const correct = answer === task.answer;
       const attempts = Number(previous.attempts || 0) + 1;
       const wrongAttempts = Number(previous.wrongAttempts || 0) + (correct ? 0 : 1);
-      let status = previous.status || 'pending';
-      if (correct) {
-        if (status !== 'repeat') status = previous.hintUsed ? 'help' : 'good';
-      } else if (wrongAttempts >= 2) status = 'repeat';
+      const maxAttempts = attemptLimitForTask(task.id);
+      const exhaustedAfter = !correct && maxAttempts > 0 && attempts >= maxAttempts;
+      const status = correct
+        ? (previous.hintUsed || attempts > 1 ? 'help' : 'good')
+        : (exhaustedAfter ? 'repeat' : 'pending');
       const state = {
         ...previous,
         attempts,
@@ -400,14 +479,18 @@
         lastAnswer: answer,
         lastResult: correct ? 'correct' : 'wrong',
         submittedAt: Date.now(),
-        solved: correct || Boolean(previous.solved),
+        solved: correct,
         status
       };
       next.taskStates = { ...next.taskStates, [task.id]: state };
-      const allSolved = DEMO_LESSON.tasks.every(candidate => (candidate.id === task.id ? state : taskState(candidate.id)).solved);
-      next.status = allSolved ? 'completed' : 'in_progress';
+      const allFinished = DEMO_LESSON.tasks.every(candidate => {
+        const candidateState = candidate.id === task.id ? state : taskState(candidate.id);
+        return Boolean(candidateState.solved) || isTaskExhausted(candidateState, candidate.id);
+      });
+      next.status = allFinished ? 'completed' : 'in_progress';
       publishProgress(next);
     });
+
 
     studentPanel.querySelector('[data-action="next"]')?.addEventListener('click', () => {
       const task = currentTask();
@@ -459,7 +542,7 @@
     const assignmentTitle = assigned ? DEMO_LESSON.shortTitle : 'Pamoka dar nepriskirta';
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${DEMO_LESSON.taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
-    const currentPedagogy = started ? pedagogicalStatus(item, { current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
+    const currentPedagogy = started ? pedagogicalStatus(item, { taskId: task?.id, current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
     const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? 'Mokinys dar neatidarė pratybų' : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
       ? 'Priskirk demonstracinę pamoką Bibliotekoje. Mokinys ją iškart pamatys savo „Mano pratybos“ srityje.'
@@ -475,11 +558,11 @@
       </div>
       <div class="p2-teacher-dashboard-grid">
         <div class="p2-progress-card">
-          <div class="p2-progress-head"><div><span class="p2-label">Priskirta pamoka</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? statusLabel(state) : 'Bibliotekoje pasirink pamoką ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.solved} / ${DEMO_LESSON.taskCount}` : '— / —'}</strong></div>
+          <div class="p2-progress-head"><div><span class="p2-label">Priskirta pamoka</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? `${statusLabel(state)} · ${policySummary(assignment)}` : 'Bibliotekoje pasirink pamoką ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.finished} / ${DEMO_LESSON.taskCount}` : '— / —'}</strong></div>
           <div class="p2-progress-line"><span style="width:${assigned ? stats.percent : 0}%"></span></div>
           <div class="p2-metrics">
             <div><span>Dabartinė užduotis</span><strong>${started ? currentLabel : '—'}</strong></div>
-            <div><span>Bandymų</span><strong>${started ? item?.attempts || 0 : '—'}</strong></div>
+            <div><span>Bandymų</span><strong>${started && task ? attemptUsageLabel(item, task.id) : '—'}</strong></div>
             <div><span>Būsena</span><strong class="p2-metric-status status-${currentPedagogy.key}">${started ? currentPedagogy.label : '—'}</strong></div>
           </div>
         </div>
@@ -496,7 +579,7 @@
       </div>
       <div class="p2-insight-card ${started ? '' : 'p2-insight-empty'}">
         <div class="p2-insight-icon" aria-hidden="true">✦</div>
-        <div><span class="p2-label">Mokinio įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
+        <div><span class="p2-label">Mokinio įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
       </div>
     `;
 
@@ -583,19 +666,22 @@
     const host = libraryModal.querySelector('#p2LibraryBody');
     if (!host) return;
     const assigned = assignment?.lessonId === DEMO_LESSON.id;
+    const policy = assigned ? normalizedAttemptPolicy(assignment) : normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy });
     host.innerHTML = `
-      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame P1.9.1 prototipe tikriname darbo eigą, todėl naudojame vieną nedidelį prototipinį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
+      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame prototipe tikriname darbo eigą, todėl naudojame vieną nedidelį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
       <article class="p2-library-lesson-card ${assigned ? 'is-assigned' : ''}">
         <div class="p2-library-lesson-icon" aria-hidden="true">ƒ</div>
         <div class="p2-library-lesson-copy"><span class="p2-label">Pamokos prototipas</span><h3>${escapeHtml(DEMO_LESSON.shortTitle)}</h3><p>${escapeHtml(DEMO_LESSON.description)}</p><div class="p2-assignment-meta"><span>${DEMO_LESSON.taskCount} užduotys</span><span>${DEMO_LESSON.classCount} pamokoje</span><span>${DEMO_LESSON.selfCount} savarankiškai</span></div></div>
         <div class="p2-library-lesson-actions">
+          <div class="p2-library-attempt-summary"><span>Bandymų nustatymas</span><b>${escapeHtml(policySummary({ attemptPolicy: policy }))}</b><small>${assigned ? 'Keisk išplėstinėje mokytojo pratybų peržiūroje.' : 'Numatyta: 3 bandymai. Po priskyrimo galėsi nustatyti ir kiekvienai užduočiai atskirai.'}</small></div>
           ${assigned ? '<span class="p2-status-badge is-assigned">✓ Priskirta</span><button class="p2-secondary" type="button" data-library-action="unassign">Atšaukti priskyrimą</button>' : '<button class="p2-primary" type="button" data-library-action="assign">Priskirti mokiniui</button>'}
         </div>
       </article>
       <div class="p2-library-flow"><span>Biblioteka</span><b>→</b><span>Priskirti</span><b>→</b><span>Mokinio „Mano pratybos“</span><b>→</b><span>Mokinio eiga</span></div>
     `;
     host.querySelector('[data-library-action="assign"]')?.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('p2:assignment-request', { detail: { action: 'assign', lessonId: DEMO_LESSON.id, title: DEMO_LESSON.title, taskCount: DEMO_LESSON.taskCount } }));
+      const attemptPolicy = normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy });
+      window.dispatchEvent(new CustomEvent('p2:assignment-request', { detail: { action: 'assign', lessonId: DEMO_LESSON.id, title: DEMO_LESSON.title, taskCount: DEMO_LESSON.taskCount, attemptPolicy } }));
       toast('Pamoka priskiriama mokiniui…');
     });
     host.querySelector('[data-library-action="unassign"]')?.addEventListener('click', () => {
@@ -604,6 +690,7 @@
       toast('Priskyrimas atšaukiamas…');
     });
   }
+
 
   function ensureTeacherPreviewWindow() {
     if (teacherPreviewWindow) return teacherPreviewWindow;
@@ -690,7 +777,84 @@
     return DEMO_LESSON.tasks.find(task => task.id === teacherPreviewTaskId) || currentTask();
   }
 
+  function setAttemptPolicy(nextPolicy, message = 'Bandymų nustatymai atnaujinti') {
+    if (!assignment || role() !== 'teacher') return;
+    const normalized = normalizedAttemptPolicy({ attemptPolicy: nextPolicy });
+    assignment = { ...assignment, attemptPolicy: normalized };
+    pendingAttemptPolicy = normalized;
+    renderTeacherPanel();
+    renderLibraryContent();
+    renderTeacherPreview();
+    window.dispatchEvent(new CustomEvent('p2:assignment-request', { detail: { action: 'settings', attemptPolicy: normalized } }));
+    toast(message);
+  }
+
+  function attemptSettingsMarkup(previewTask) {
+    const policy = normalizedAttemptPolicy(assignment);
+    const global = policy.defaultMaxAttempts;
+    const limits = [1, 2, 3, 0];
+    const globalButtons = limits.map(limit => `<button type="button" class="${global === limit ? 'is-active' : ''}" data-attempt-global="${limit}">${attemptLimitLabel(limit)}</button>`).join('');
+    const taskRows = DEMO_LESSON.tasks.map((task, index) => {
+      const hasOverride = Object.prototype.hasOwnProperty.call(policy.taskMaxAttempts, task.id);
+      const effective = attemptLimitForTask(task.id);
+      const item = taskState(task.id);
+      const options = [
+        `<option value="inherit" ${hasOverride ? '' : 'selected'}>Bendras (${attemptLimitLabel(global)})</option>`,
+        ...limits.map(limit => `<option value="${limit}" ${hasOverride && policy.taskMaxAttempts[task.id] === limit ? 'selected' : ''}>${limit === 0 ? 'Neribotai' : `${limit} ${limit === 1 ? 'bandymas' : 'bandymai'}`}</option>`)
+      ].join('');
+      return `
+        <div class="p2-attempt-task-row ${task.id === previewTask.id ? 'is-current' : ''} ${hasOverride ? 'has-override' : ''}">
+          <button type="button" class="p2-attempt-task-number" data-attempt-preview-task="${task.id}" title="Rodyti ${index + 1} užduotį">${index + 1}</button>
+          <div class="p2-attempt-task-copy"><strong>${escapeHtml(task.label)}</strong><span>${Number(item.attempts || 0)} / ${effective === 0 ? '∞' : effective} panaudota</span></div>
+          <select data-attempt-task="${task.id}" aria-label="${index + 1} užduoties bandymų skaičius">${options}</select>
+        </div>`;
+    }).join('');
+    return `
+      <aside class="p2-attempt-settings">
+        <header class="p2-attempt-settings-head"><div><span class="p2-label">MOKYTOJO NUSTATYMAI</span><h3>Bandymų skaičius</h3></div><span class="p2-attempt-sync">● gyvai</span></header>
+        <section class="p2-attempt-global-card">
+          <div class="p2-attempt-setting-title"><strong>Bendras nustatymas</strong><span>Taikomas visoms užduotims be individualaus nustatymo.</span></div>
+          <div class="p2-attempt-global-actions"><div class="p2-attempt-segment" aria-label="Bendras bandymų skaičius">${globalButtons}</div><button type="button" class="p2-attempt-apply-all" data-attempt-apply-all>Taikyti visoms</button></div>
+        </section>
+        <div class="p2-attempt-list-head"><strong>Individualiai</strong><span>„Bendras“ reiškia, kad užduotis paveldi aukščiau pasirinktą skaičių.</span></div>
+        <div class="p2-attempt-task-list">${taskRows}</div>
+        <p class="p2-attempt-note">Pakeitimai iškart perduodami mokiniui. Jei bandymų limitas jau išnaudotas, užduotis užrakinama ir žymima „Kartoti“.</p>
+      </aside>`;
+  }
+
+  function bindAttemptSettings(host) {
+    host.querySelectorAll('[data-attempt-global]').forEach(button => {
+      button.addEventListener('click', () => {
+        const policy = normalizedAttemptPolicy(assignment);
+        policy.defaultMaxAttempts = normalizeAttemptLimit(button.dataset.attemptGlobal, policy.defaultMaxAttempts);
+        setAttemptPolicy(policy, `Bendras limitas: ${attemptLimitLabel(policy.defaultMaxAttempts)}`);
+      });
+    });
+    host.querySelector('[data-attempt-apply-all]')?.addEventListener('click', () => {
+      const policy = normalizedAttemptPolicy(assignment);
+      policy.taskMaxAttempts = {};
+      setAttemptPolicy(policy, 'Bendras bandymų skaičius pritaikytas visoms užduotims');
+    });
+    host.querySelectorAll('[data-attempt-task]').forEach(select => {
+      select.addEventListener('change', () => {
+        const policy = normalizedAttemptPolicy(assignment);
+        const taskId = select.dataset.attemptTask;
+        if (select.value === 'inherit') delete policy.taskMaxAttempts[taskId];
+        else policy.taskMaxAttempts[taskId] = normalizeAttemptLimit(select.value, policy.defaultMaxAttempts);
+        setAttemptPolicy(policy, `${taskIndex(taskId) + 1} užduoties bandymų skaičius atnaujintas`);
+      });
+    });
+    host.querySelectorAll('[data-attempt-preview-task]').forEach(button => {
+      button.addEventListener('click', () => {
+        teacherPreviewTaskId = button.dataset.attemptPreviewTask;
+        teacherFollowStudent = false;
+        renderTeacherPreview();
+      });
+    });
+  }
+
   function renderTeacherPreview() {
+
     if (!teacherPreviewWindow || teacherPreviewMode === 'closed') return;
     const host = teacherPreviewWindow.querySelector('#p2TeacherPreviewBody');
     if (!host || !assignment) return;
@@ -702,7 +866,7 @@
     const studentIndex = taskIndex(studentTask.id) + 1;
     const item = taskState(previewTask.id);
     const isStudentTask = previewTask.id === studentTask.id;
-    const pedagogy = pedagogicalStatus(item, { current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
+    const pedagogy = pedagogicalStatus(item, { taskId: previewTask.id, current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
     const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
     const liveAnswer = item.liveAnswer || item.lastAnswer || '';
     const correctIndex = Math.max(0, previewTask.choices.findIndex(choice => choice === previewTask.answer));
@@ -712,22 +876,31 @@
       const classes = ['p2-preview-choice', isSelected ? 'is-student-selected' : ''].filter(Boolean).join(' ');
       return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></div>`;
     }).join('');
+    const previewMaxAttempts = attemptLimitForTask(previewTask.id);
+    const previewExhausted = isTaskExhausted(item, previewTask.id);
+    const previewRemaining = attemptsRemaining(item, previewTask.id);
     const previewFeedback = item.solved
-      ? '<div class="p2-practice-feedback is-success p2-teacher-student-feedback">✓ Teisingai. Gali tęsti.</div>'
-      : item.status === 'repeat'
-        ? '<div class="p2-practice-feedback is-repeat p2-teacher-student-feedback">Šią užduotį pažymime „Kartoti“. Gali bandyti dar kartą arba tęsti.</div>'
+      ? item.hintUsed
+        ? `<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">✓ Teisingai${Number(item.attempts || 0) > 1 ? ' su pagalba ir po kelių bandymų' : ' su pagalba'}.</div>`
+        : Number(item.attempts || 0) > 1
+          ? '<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">✓ Teisingai po kelių bandymų.</div>'
+          : '<div class="p2-practice-feedback is-success p2-teacher-student-feedback">✓ Teisingai. Gali tęsti.</div>'
+      : previewExhausted
+        ? `<div class="p2-practice-feedback is-repeat p2-teacher-student-feedback">Išnaudoti visi ${previewMaxAttempts} bandymai. Užduotis pažymėta „Kartoti“.</div>`
         : Number(item.attempts || 0) > 0
-          ? '<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">Dar ne. Patikrink savo pasirinkimą ir bandyk dar kartą.</div>'
+          ? `<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">Dar ne. ${previewRemaining === Infinity ? 'Bandymų skaičius neribojamas.' : `Liko ${previewRemaining} ${previewRemaining === 1 ? 'bandymas' : 'bandymai'}.`}</div>`
           : '';
+
 
     const taskNavigation = DEMO_LESSON.tasks.map((task, index) => {
       const taskItem = taskState(task.id);
-      const taskPedagogy = pedagogicalStatus(taskItem, { current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
+      const taskPedagogy = pedagogicalStatus(taskItem, { taskId: task.id, current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
       const classes = [
         'p2-task-dot',
         task.id === previewTask.id ? 'is-current' : '',
         task.id === studentTask.id ? 'is-student-current' : '',
-        taskItem.solved ? 'is-done' : '',
+        taskPedagogy.key === 'good' ? 'is-done' : '',
+        taskPedagogy.key === 'help' ? 'is-help' : '',
         taskPedagogy.key === 'repeat' ? 'is-repeat' : ''
       ].filter(Boolean).join(' ');
       return `<button type="button" class="${classes}" data-preview-task="${task.id}" title="${index + 1}. ${escapeHtml(task.prompt)} · ${taskPedagogy.label}" aria-label="${index + 1} užduotis, ${taskPedagogy.label}">${index + 1}</button>`;
@@ -747,32 +920,36 @@
         </div>
       </div>
       <div class="p2-preview-layout">
-        <article class="p2-preview-detail">
-          <header class="p2-preview-detail-head">
-            <div>
-              <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
-              <h3>${escapeHtml(previewTask.prompt)}</h3>
-              <div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>
+        <div class="p2-preview-main">
+          <article class="p2-preview-detail">
+            <header class="p2-preview-detail-head">
+              <div>
+                <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
+                <h3>${escapeHtml(previewTask.prompt)}</h3>
+                <div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>
+              </div>
+              <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
+            </header>
+            <div class="p2-preview-choice-list">${choices}</div>
+            ${previewFeedback}
+            <div class="p2-preview-detail-metrics">
+              <span>Bandymų: <b>${attemptUsageLabel(item, previewTask.id)}</b></span>
+              <span>Pagalba: <b>${item.hintUsed ? 'naudota' : 'nenaudota'}</b></span>
+              <span>Paskutinis pateiktas: <b>${answerText}</b></span>
             </div>
-            <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
-          </header>
-          <div class="p2-preview-choice-list">${choices}</div>
-          ${previewFeedback}
-          <div class="p2-preview-detail-metrics">
-            <span><b>${item.attempts || 0}</b> band.</span>
-            <span>Pagalba: <b>${item.hintUsed ? 'naudota' : 'nenaudota'}</b></span>
-            <span>Paskutinis pateiktas: <b>${answerText}</b></span>
-          </div>
-          <div class="p2-preview-hint"><span>Užuomina</span><p>${escapeHtml(previewTask.hint)}</p></div>
-          <div class="p2-preview-detail-actions">
-            <button type="button" class="p2-secondary" data-preview-action="previous" ${previewIndex === 1 ? 'disabled' : ''}>← Ankstesnė</button>
-            <button type="button" class="p2-secondary" data-preview-action="next" ${previewIndex === DEMO_LESSON.taskCount ? 'disabled' : ''}>Kita →</button>
-            <span></span>
-            <button type="button" class="p2-primary" disabled title="Bus įgyvendinta kitame etape">Rodyti lentoje</button>
-          </div>
-        </article>
-      </div>
-      <nav class="p2-task-dots p2-teacher-task-dots" aria-label="Pamokos užduotys">${taskNavigation}</nav>`;
+            <div class="p2-preview-hint"><span>Užuomina</span><p>${escapeHtml(previewTask.hint)}</p></div>
+            <div class="p2-preview-detail-actions">
+              <button type="button" class="p2-secondary" data-preview-action="previous" ${previewIndex === 1 ? 'disabled' : ''}>← Ankstesnė</button>
+              <button type="button" class="p2-secondary" data-preview-action="next" ${previewIndex === DEMO_LESSON.taskCount ? 'disabled' : ''}>Kita →</button>
+              <span></span>
+              <button type="button" class="p2-primary" disabled title="Bus įgyvendinta kitame etape">Rodyti lentoje</button>
+            </div>
+          </article>
+          <nav class="p2-task-dots p2-teacher-task-dots" aria-label="Pamokos užduotys">${taskNavigation}</nav>
+        </div>
+        ${attemptSettingsMarkup(previewTask)}
+      </div>`;
+
 
     host.querySelectorAll('[data-preview-task]').forEach(button => {
       button.addEventListener('click', () => {
@@ -781,6 +958,7 @@
         renderTeacherPreview();
       });
     });
+    bindAttemptSettings(host);
     host.querySelector('[data-preview-action="follow"]')?.addEventListener('click', () => {
       teacherFollowStudent = !teacherFollowStudent;
       if (teacherFollowStudent) teacherPreviewTaskId = currentTask().id;
@@ -815,9 +993,15 @@
         assignment = null; progress = null; selectedAnswers = {}; renderPanels(); renderLibraryContent(); return;
       }
       if (detail.action === 'assign') {
-        assignment = { lessonId: DEMO_LESSON.id, title: DEMO_LESSON.title, taskCount: DEMO_LESSON.taskCount, assignedAt: Date.now() };
+        assignment = { lessonId: DEMO_LESSON.id, title: DEMO_LESSON.title, taskCount: DEMO_LESSON.taskCount, attemptPolicy: normalizedAttemptPolicy({ attemptPolicy: detail.attemptPolicy || pendingAttemptPolicy }), assignedAt: Date.now() };
+        pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
         progress = emptyProgress();
         renderPanels(); renderLibraryContent();
+      }
+      if (detail.action === 'settings' && assignment) {
+        assignment = { ...assignment, attemptPolicy: normalizedAttemptPolicy({ attemptPolicy: detail.attemptPolicy || assignment.attemptPolicy }) };
+        pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
+        renderPanels(); renderLibraryContent(); renderTeacherPreview();
       }
     });
     window.addEventListener('p2:practice-progress-request', event => {
@@ -828,6 +1012,7 @@
 
   window.addEventListener('p2:assignment-state', event => {
     assignment = event.detail && typeof event.detail === 'object' ? event.detail : null;
+    if (assignment) pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
     if (!assignment) {
       progress = null;
       selectedAnswers = {};
