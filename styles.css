@@ -3736,6 +3736,7 @@ body.p2-shell .status-help { color:#9a6814; }
 body.p2-shell .status-repeat { color:#a34d58; }
 body.p2-shell .status-working { color:#4d65bd; }
 body.p2-shell .status-pending { color:#7a8495; }
+body.p2-shell .status-started { color:#6676ad; }
 body.p2-shell .p2-current-meta {
   display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 0;
 }
@@ -3779,6 +3780,7 @@ body.p2-shell .p2-student-here {
 body.p2-shell .p2-preview-task .p2-preview-badge { grid-column:3; grid-row:1 / span 2; align-self:center; }
 body.p2-shell .p2-preview-badge.status-working { background:#eef2ff; color:#536bd0; }
 body.p2-shell .p2-preview-badge.status-pending { background:#f2f4f7; color:#7b8595; }
+body.p2-shell .p2-preview-badge.status-started { background:#f2f4ff; color:#6676ad; }
 
 body.p2-shell .p2-preview-detail {
   border:1px solid #e1e7ef; border-radius:15px; background:#fff; padding:17px;

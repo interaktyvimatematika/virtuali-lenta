@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9';
+  const BUILD = 'P2-SPLIT-P1.9.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -188,13 +188,23 @@
   }
 
 
-  function pedagogicalStatus(item) {
+  function pedagogicalStatus(item, options = {}) {
     const state = item || {};
     if (state.status === 'repeat') return { key: 'repeat', label: 'Kartoti' };
     if (state.solved && state.status === 'help') return { key: 'help', label: 'Su pagalba' };
     if (state.solved && state.status === 'good') return { key: 'good', label: 'Savarankiškai' };
+    if (options.current) return { key: 'working', label: 'Vykdoma' };
     if (Number(state.attempts || 0) > 0) return { key: 'working', label: 'Bandoma' };
+    if (state.openedAt) return { key: 'started', label: 'Pradėta' };
     return { key: 'pending', label: 'Nepradėta' };
+  }
+
+  function markTaskOpened(next, taskId) {
+    if (!taskId) return next;
+    const previous = (next.taskStates && next.taskStates[taskId]) || taskState(taskId);
+    if (previous.solved || previous.status === 'repeat' || previous.openedAt) return next;
+    next.taskStates = { ...next.taskStates, [taskId]: { ...previous, openedAt: Date.now() } };
+    return next;
   }
 
   function publishProgress(next) {
@@ -340,6 +350,7 @@
       next.status = 'in_progress';
       next.currentTaskId = next.currentTaskId || DEMO_LESSON.tasks[0].id;
       next.startedAt = next.startedAt || Date.now();
+      markTaskOpened(next, next.currentTaskId);
       publishProgress(next);
     });
 
@@ -383,6 +394,7 @@
       const task = currentTask();
       const next = normalizedProgress(progress);
       next.currentTaskId = nextTaskId(task.id);
+      markTaskOpened(next, next.currentTaskId);
       publishProgress(next);
     });
 
@@ -390,6 +402,7 @@
       const task = currentTask();
       const next = normalizedProgress(progress);
       next.currentTaskId = previousTaskId(task.id);
+      markTaskOpened(next, next.currentTaskId);
       publishProgress(next);
     });
 
@@ -397,6 +410,7 @@
       button.addEventListener('click', () => {
         const next = normalizedProgress(progress);
         next.currentTaskId = button.dataset.taskId;
+        markTaskOpened(next, next.currentTaskId);
         publishProgress(next);
       });
     });
@@ -408,6 +422,7 @@
         if (!first) return;
         const next = normalizedProgress(progress);
         next.currentTaskId = first.id;
+        markTaskOpened(next, next.currentTaskId);
         publishProgress(next);
       });
     });
@@ -425,7 +440,7 @@
     const assignmentTitle = assigned ? DEMO_LESSON.shortTitle : 'Pamoka dar nepriskirta';
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${DEMO_LESSON.taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
-    const currentPedagogy = started ? pedagogicalStatus(item) : { key: 'pending', label: '—' };
+    const currentPedagogy = started ? pedagogicalStatus(item, { current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
     const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? 'Mokinys dar neatidarė pratybų' : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
       ? 'Priskirk demonstracinę pamoką Bibliotekoje. Mokinys ją iškart pamatys savo „Mano pratybos“ srityje.'
@@ -550,7 +565,7 @@
     if (!host) return;
     const assigned = assignment?.lessonId === DEMO_LESSON.id;
     host.innerHTML = `
-      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame P1.9 prototipe tikriname darbo eigą, todėl naudojame vieną nedidelį prototipinį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
+      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame P1.9.1 prototipe tikriname darbo eigą, todėl naudojame vieną nedidelį prototipinį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
       <article class="p2-library-lesson-card ${assigned ? 'is-assigned' : ''}">
         <div class="p2-library-lesson-icon" aria-hidden="true">ƒ</div>
         <div class="p2-library-lesson-copy"><span class="p2-label">Pamokos prototipas</span><h3>${escapeHtml(DEMO_LESSON.shortTitle)}</h3><p>${escapeHtml(DEMO_LESSON.description)}</p><div class="p2-assignment-meta"><span>${DEMO_LESSON.taskCount} užduotys</span><span>${DEMO_LESSON.classCount} pamokoje</span><span>${DEMO_LESSON.selfCount} savarankiškai</span></div></div>
@@ -667,8 +682,8 @@
     const previewIndex = taskIndex(previewTask.id) + 1;
     const studentIndex = taskIndex(studentTask.id) + 1;
     const item = taskState(previewTask.id);
-    const pedagogy = pedagogicalStatus(item);
     const isStudentTask = previewTask.id === studentTask.id;
+    const pedagogy = pedagogicalStatus(item, { current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
     const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
     const choices = previewTask.choices.map((choice, index) => {
       const isCorrect = choice === previewTask.answer;
@@ -680,7 +695,7 @@
 
     const taskList = DEMO_LESSON.tasks.map((task, index) => {
       const taskItem = taskState(task.id);
-      const taskPedagogy = pedagogicalStatus(taskItem);
+      const taskPedagogy = pedagogicalStatus(taskItem, { current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
       const classes = [
         'p2-preview-task',
         task.id === previewTask.id ? 'is-previewed' : '',
