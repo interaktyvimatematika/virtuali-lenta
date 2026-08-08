@@ -4223,3 +4223,55 @@ body.p2-shell .p2-teacher-practice-window.is-docked .p2-preview-detail-metrics {
   body.p2-shell .p2-preview-detail-metrics { display:flex; }
 }
 \n\n/* P2-SPLIT-P1.9.3 — užduoties sąlyga pirmiausia, kompaktiška numerių navigacija */\nbody.p2-shell .p2-preview-task-list { display:none !important; }\nbody.p2-shell .p2-preview-layout,\nbody.p2-shell .p2-teacher-practice-window.is-docked .p2-preview-layout,\nbody.p2-shell .p2-teacher-practice-window.is-maximized .p2-preview-layout {\n  display:block;\n  grid-template-columns:none;\n}\nbody.p2-shell .p2-preview-task-dots {\n  display:flex;\n  align-items:center;\n  gap:7px;\n  overflow-x:auto;\n  overscroll-behavior-inline:contain;\n  scrollbar-width:thin;\n  padding:7px 1px 10px;\n  margin:0 0 10px;\n}\nbody.p2-shell .p2-preview-task-dot {\n  position:relative;\n  flex:0 0 auto;\n  width:31px;\n  height:31px;\n  display:grid;\n  place-items:center;\n  border:1px solid #dfe5ee;\n  border-radius:50%;\n  background:#fff;\n  color:#68758b;\n  font-size:10px;\n  font-weight:900;\n  cursor:pointer;\n  transition:border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease;\n}\nbody.p2-shell .p2-preview-task-dot:hover { border-color:#bcc7e9; background:#fafbff; }\nbody.p2-shell .p2-preview-task-dot.is-previewed {\n  border-color:#536bd0;\n  color:#536bd0;\n  box-shadow:0 0 0 2px rgba(83,107,208,.08);\n}\nbody.p2-shell .p2-preview-task-dot.is-student-current::after {\n  content:\"\";\n  position:absolute;\n  left:50%;\n  bottom:-5px;\n  width:5px;\n  height:5px;\n  border-radius:50%;\n  background:#55b87a;\n  transform:translateX(-50%);\n}\nbody.p2-shell .p2-preview-task-dot.is-good { background:#f5fbf7; border-color:#d4eadb; color:#4f785c; }\nbody.p2-shell .p2-preview-task-dot.is-help { background:#fffaf0; border-color:#eee0b9; color:#8a6d2d; }\nbody.p2-shell .p2-preview-task-dot.is-repeat { background:#fff6f6; border-color:#edd7da; color:#9a5962; }\nbody.p2-shell .p2-preview-task-dot.is-working,\nbody.p2-shell .p2-preview-task-dot.is-started { border-color:#cad3f0; color:#6273bd; }\n\n/* Mokytojo peržiūroje sąlyga yra pagrindinis vizualinis elementas. */\nbody.p2-shell .p2-preview-detail { padding:16px; }\nbody.p2-shell .p2-preview-detail-head { margin-bottom:14px; padding-bottom:12px; }\nbody.p2-shell .p2-preview-detail-head .p2-label { font-size:8px; letter-spacing:.035em; }\nbody.p2-shell .p2-preview-detail-head h3 {\n  max-width:46em;\n  margin:6px 0 0;\n  font-size:18px;\n  line-height:1.42;\n  letter-spacing:-.012em;\n  color:#253047;\n}\nbody.p2-shell .p2-teacher-practice-window.is-maximized .p2-preview-detail-head h3 {\n  font-size:22px;\n  line-height:1.45;\n}\n\n/* Mokinys: mažiau vizualinės svarbos pavadinimams, daugiau — pačiai sąlygai. */\nbody.p2-shell .p2-practice-shell-head { padding:14px 18px 11px; }\nbody.p2-shell .p2-practice-shell-head h3 { font-size:15px; }\nbody.p2-shell .p2-task-card { padding:19px 20px 20px; }\nbody.p2-shell .p2-task-card-head h3 { font-size:13px; }\nbody.p2-shell .p2-task-card-head .p2-label { font-size:8px; }\nbody.p2-shell .p2-task-prompt {\n  margin:20px 0 17px;\n  font-size:20px;\n  line-height:1.48;\n  letter-spacing:-.012em;\n  font-weight:750;\n}\n\n@media (max-width:1100px) {\n  body.p2-shell .p2-task-prompt { font-size:18px; }\n  body.p2-shell .p2-preview-detail-head h3 { font-size:16px; }\n}\n
+
+/* P2-SPLIT-P1.9.4 — mokytojo užduočių numerių navigacija tokio pat svorio kaip mokinio */
+body.p2-shell .p2-preview-task-dots {
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scrollbar-width:none;
+  padding:10px 6px 12px;
+  margin:0 0 12px;
+}
+body.p2-shell .p2-preview-task-dots::-webkit-scrollbar { display:none; }
+body.p2-shell .p2-preview-task-dot {
+  flex:0 0 auto;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  border:1px solid #dfe5ee;
+  background:#fff;
+  color:#647187;
+  font-size:12px;
+  font-weight:850;
+  line-height:1;
+  box-shadow:none;
+}
+body.p2-shell .p2-preview-task-dot:hover {
+  border-color:#b7c2df;
+  background:#fafbff;
+}
+body.p2-shell .p2-preview-task-dot.is-previewed {
+  border-color:#536bd0;
+  color:#536bd0;
+  background:#f7f8ff;
+  box-shadow:0 0 0 3px rgba(83,107,208,.10);
+}
+body.p2-shell .p2-preview-task-dot.is-student-current::after {
+  bottom:-6px;
+  width:6px;
+  height:6px;
+}
+body.p2-shell .p2-preview-task-dot.is-good { background:#f3faf5; border-color:#cfe5d6; color:#407255; }
+body.p2-shell .p2-preview-task-dot.is-help { background:#fffaf1; border-color:#ebddb6; color:#876a2a; }
+body.p2-shell .p2-preview-task-dot.is-repeat { background:#fff5f5; border-color:#ecd3d7; color:#95545e; }
+body.p2-shell .p2-preview-task-dot.is-working,
+body.p2-shell .p2-preview-task-dot.is-started { border-color:#c4cdec; color:#5d70bd; }
+
+@media (max-width:1200px) {
+  body.p2-shell .p2-preview-task-dots { justify-content:flex-start; padding-inline:4px; }
+  body.p2-shell .p2-preview-task-dot { width:36px; height:36px; font-size:11px; }
+}
