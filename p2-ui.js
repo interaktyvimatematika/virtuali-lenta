@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.8';
+  const BUILD = 'P2-SPLIT-P1.9';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -51,10 +51,12 @@
   let progress = null;
   let selectedAnswers = {};
   let libraryModal = null;
-  let teacherPreviewModal = null;
+  let teacherPreviewWindow = null;
   // Mokytojo pratybų peržiūra yra lokali: ji NIEKADA nekeičia mokinio aktyvios užduoties.
   let teacherPreviewTaskId = null;
   let teacherFollowStudent = true;
+  let teacherPreviewMode = 'closed'; // closed | docked | minimized | maximized
+  let teacherPreviewRestoreMode = 'docked';
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char]));
@@ -471,21 +473,31 @@
     if (role() === 'teacher') renderTeacherPanel();
     else renderStudentPanel();
     renderLibraryContent();
+    if (role() === 'teacher' && teacherPreviewMode === 'docked') teacherPanel.hidden = true;
   }
 
   function applyRole() {
     const isTeacher = role() === 'teacher';
     studentPanel.hidden = isTeacher;
     teacherPanel.hidden = !isTeacher;
-    sideKicker.textContent = isTeacher ? 'MOKYTOJO STEBĖJIMAS' : 'MOKINIO ERDVĖ';
-    sideTitle.textContent = isTeacher ? 'Mokinio eiga' : 'Mano pratybos';
+    if (!isTeacher || teacherPreviewMode !== 'docked') {
+      sideKicker.textContent = isTeacher ? 'MOKYTOJO STEBĖJIMAS' : 'MOKINIO ERDVĖ';
+      sideTitle.textContent = isTeacher ? 'Mokinio eiga' : 'Mano pratybos';
+    }
     practiceModeButton.textContent = isTeacher ? 'Mokinio eiga' : 'Tik pratybos';
     if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : 'Mokinys';
     document.querySelectorAll('.p2-teacher-only').forEach(el => el.hidden = !isTeacher);
     const p2LibraryButton = document.getElementById('libraryButton');
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
+    if (!isTeacher && teacherPreviewMode !== 'closed') {
+      teacherPreviewMode = 'closed';
+      if (teacherPreviewWindow) teacherPreviewWindow.hidden = true;
+      body.classList.remove('p2-teacher-preview-maximized');
+      sidePane.classList.remove('has-preview-docked');
+    }
     updatePresence();
     renderPanels();
+    if (isTeacher && teacherPreviewMode === 'docked') setTeacherSideHeader(true);
   }
 
   function updatePresence() {
@@ -538,7 +550,7 @@
     if (!host) return;
     const assigned = assignment?.lessonId === DEMO_LESSON.id;
     host.innerHTML = `
-      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame P1.7 etape tikriname darbo eigą, todėl naudojame vieną nedidelį prototipinį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
+      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Priskirk mokiniui demonstracinę pamoką</h3><p>Šiame P1.9 prototipe tikriname darbo eigą, todėl naudojame vieną nedidelį prototipinį rinkinį. Galutinis turinys bus dedamas vėliau.</p></div></div>
       <article class="p2-library-lesson-card ${assigned ? 'is-assigned' : ''}">
         <div class="p2-library-lesson-icon" aria-hidden="true">ƒ</div>
         <div class="p2-library-lesson-copy"><span class="p2-label">Pamokos prototipas</span><h3>${escapeHtml(DEMO_LESSON.shortTitle)}</h3><p>${escapeHtml(DEMO_LESSON.description)}</p><div class="p2-assignment-meta"><span>${DEMO_LESSON.taskCount} užduotys</span><span>${DEMO_LESSON.classCount} pamokoje</span><span>${DEMO_LESSON.selfCount} savarankiškai</span></div></div>
@@ -559,26 +571,85 @@
     });
   }
 
+  function ensureTeacherPreviewWindow() {
+    if (teacherPreviewWindow) return teacherPreviewWindow;
+    teacherPreviewWindow = document.createElement('section');
+    teacherPreviewWindow.className = 'p2-teacher-practice-window';
+    teacherPreviewWindow.hidden = true;
+    teacherPreviewWindow.setAttribute('aria-label', 'Mokytojo pratybų peržiūra');
+    teacherPreviewWindow.innerHTML = `
+      <header class="p2-practice-window-chrome">
+        <div class="p2-practice-window-title">
+          <span class="p2-side-kicker">MOKYTOJO PERŽIŪRA</span>
+          <strong>${escapeHtml(DEMO_LESSON.shortTitle)}</strong>
+        </div>
+        <div class="p2-practice-window-controls" aria-label="Pratybų peržiūros lango valdymas">
+          <button type="button" data-preview-window="minimize" title="Minimizuoti" aria-label="Minimizuoti">—</button>
+          <button type="button" data-preview-window="maximize" title="Išplėsti" aria-label="Išplėsti">□</button>
+          <button type="button" data-preview-window="close" title="Uždaryti" aria-label="Uždaryti">×</button>
+        </div>
+      </header>
+      <div class="p2-teacher-practice-window-body" id="p2TeacherPreviewBody"></div>`;
+    sidePane.appendChild(teacherPreviewWindow);
+    teacherPreviewWindow.querySelector('[data-preview-window="minimize"]')?.addEventListener('click', () => {
+      setTeacherPreviewMode(teacherPreviewMode === 'minimized' ? 'docked' : 'minimized');
+    });
+    teacherPreviewWindow.querySelector('[data-preview-window="maximize"]')?.addEventListener('click', () => {
+      if (teacherPreviewMode === 'maximized') setTeacherPreviewMode(teacherPreviewRestoreMode || 'docked');
+      else setTeacherPreviewMode('maximized');
+    });
+    teacherPreviewWindow.querySelector('[data-preview-window="close"]')?.addEventListener('click', () => setTeacherPreviewMode('closed'));
+    teacherPreviewWindow.querySelector('.p2-practice-window-title')?.addEventListener('dblclick', () => {
+      if (teacherPreviewMode === 'minimized') setTeacherPreviewMode('docked');
+      else setTeacherPreviewMode(teacherPreviewMode === 'maximized' ? teacherPreviewRestoreMode || 'docked' : 'maximized');
+    });
+    return teacherPreviewWindow;
+  }
+
+  function setTeacherSideHeader(previewActive = false) {
+    if (role() !== 'teacher') return;
+    sideKicker.textContent = previewActive ? 'MOKYTOJO PERŽIŪRA' : 'MOKYTOJO STEBĖJIMAS';
+    sideTitle.textContent = previewActive ? 'Pratybų peržiūra' : 'Mokinio eiga';
+  }
+
+  function setTeacherPreviewMode(nextMode) {
+    if (role() !== 'teacher') return;
+    const preview = ensureTeacherPreviewWindow();
+    const mode = ['closed','docked','minimized','maximized'].includes(nextMode) ? nextMode : 'docked';
+    if (mode === 'maximized' && teacherPreviewMode !== 'maximized') {
+      teacherPreviewRestoreMode = teacherPreviewMode === 'minimized' ? 'minimized' : 'docked';
+    }
+    teacherPreviewMode = mode;
+    preview.hidden = mode === 'closed';
+    preview.classList.toggle('is-docked', mode === 'docked');
+    preview.classList.toggle('is-minimized', mode === 'minimized');
+    preview.classList.toggle('is-maximized', mode === 'maximized');
+    body.classList.toggle('p2-teacher-preview-maximized', mode === 'maximized');
+    sidePane.classList.toggle('has-preview-docked', mode === 'docked');
+
+    if (preview.parentElement !== sidePane) sidePane.appendChild(preview);
+    if (teacherPanel) teacherPanel.hidden = mode === 'docked';
+    setTeacherSideHeader(mode === 'docked');
+
+    const minButton = preview.querySelector('[data-preview-window="minimize"]');
+    const maxButton = preview.querySelector('[data-preview-window="maximize"]');
+    if (minButton) {
+      minButton.textContent = mode === 'minimized' ? '▣' : '—';
+      minButton.title = mode === 'minimized' ? 'Atkurti dešinėje' : 'Minimizuoti';
+      minButton.setAttribute('aria-label', minButton.title);
+    }
+    if (maxButton) {
+      maxButton.textContent = mode === 'maximized' ? '❐' : '□';
+      maxButton.title = mode === 'maximized' ? 'Atkurti ankstesnį dydį' : 'Išplėsti';
+      maxButton.setAttribute('aria-label', maxButton.title);
+    }
+    if (mode !== 'closed') renderTeacherPreview();
+  }
+
   function openTeacherPreview() {
     if (!assignment) return;
-    if (!teacherPreviewModal) {
-      teacherPreviewModal = document.createElement('div');
-      teacherPreviewModal.className = 'p2-library-modal';
-      teacherPreviewModal.innerHTML = `
-        <div class="p2-library-backdrop" data-close></div>
-        <section class="p2-library-panel p2-teacher-preview-modal" role="dialog" aria-modal="true" aria-label="Pratybų peržiūra">
-          <header>
-            <div><span class="p2-side-kicker">MOKYTOJO PERŽIŪRA</span><h2>${escapeHtml(DEMO_LESSON.shortTitle)}</h2></div>
-            <button type="button" data-close aria-label="Uždaryti">×</button>
-          </header>
-          <div class="p2-library-body p2-preview-body" id="p2TeacherPreviewBody"></div>
-        </section>`;
-      document.body.appendChild(teacherPreviewModal);
-      teacherPreviewModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => teacherPreviewModal.hidden = true));
-    }
     if (!teacherPreviewTaskId || teacherFollowStudent) teacherPreviewTaskId = currentTask().id;
-    renderTeacherPreview();
-    teacherPreviewModal.hidden = false;
+    setTeacherPreviewMode('docked');
   }
 
   function teacherPreviewTask() {
@@ -586,8 +657,8 @@
   }
 
   function renderTeacherPreview() {
-    if (!teacherPreviewModal) return;
-    const host = teacherPreviewModal.querySelector('#p2TeacherPreviewBody');
+    if (!teacherPreviewWindow || teacherPreviewMode === 'closed') return;
+    const host = teacherPreviewWindow.querySelector('#p2TeacherPreviewBody');
     if (!host || !assignment) return;
 
     const studentTask = currentTask();
@@ -634,7 +705,7 @@
           ${!teacherFollowStudent ? '<button type="button" class="p2-primary" data-preview-action="return">Grįžti prie mokinio</button>' : ''}
         </div>
       </div>
-      <p class="p2-preview-note">Naršyk visas pamokos užduotis laisvai. Ši mokytojo peržiūra nekeičia mokinio aktyvios užduoties, atsakymo ar slinkties.</p>
+      <p class="p2-preview-note">Naršyk visas pamokos užduotis laisvai. Mokytojo peržiūra nekeičia mokinio aktyvios užduoties, atsakymo ar slinkties.</p>
       <div class="p2-preview-layout">
         <nav class="p2-preview-task-list" aria-label="Pamokos užduotys">${taskList}</nav>
         <article class="p2-preview-detail">
@@ -716,6 +787,7 @@
     if (!assignment) {
       progress = null;
       selectedAnswers = {};
+      if (role() === 'teacher' && teacherPreviewMode !== 'closed') setTeacherPreviewMode('closed');
     }
     renderPanels();
     renderTeacherPreview();
