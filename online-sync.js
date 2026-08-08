@@ -124,8 +124,19 @@ function mapToArray(value) {
   return Object.values(value).filter(Boolean);
 }
 
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== 'object') return value ?? null;
+  const result = {};
+  Object.keys(value).sort().forEach(key => {
+    const item = value[key];
+    if (item !== undefined) result[key] = canonicalize(item);
+  });
+  return result;
+}
+
 function stable(value) {
-  return JSON.stringify(value ?? null);
+  return JSON.stringify(canonicalize(value));
 }
 
 const roomInfo = resolveRoom();
@@ -166,6 +177,8 @@ const pendingLiveCommits = new Map();
 let remoteCache = {
   drawing: '', notes: '', boardTasks: '', boardPractices: '', window: ''
 };
+let pendingRemoteNotes = null;
+let localNotesRevision = 0;
 
 // P2-SPLIT-P1.1: Firebase gali grąžinti mūsų pačių ankstesnę būseną tuo metu,
 // kai vartotojas jau įvedė kitą raidę / formulės simbolį. Jei tokią senesnę
@@ -255,6 +268,18 @@ async function publishLocalChanges() {
 
   if (!Object.keys(updates).length) return;
 
+  // P2-SPLIT-P1.2: tekstas ir MathLive negali būti perpiešiami nuo mūsų pačių
+  // Firebase aido. Notes pakeitimui pridedame aiškią autoriaus/revizijos žymą,
+  // o remote cache atnaujiname optimistiškai dar prieš tinklo round-trip.
+  let previousNotesCache = null;
+  if (changed.notes) {
+    previousNotesCache = remoteCache.notes;
+    remoteCache.notes = stable(parts.notes);
+    localNotesRevision += 1;
+    updates['workspace/meta/notesUpdatedBy'] = me;
+    updates['workspace/meta/notesRevision'] = localNotesRevision;
+  }
+
   const echoes = {};
   for (const part of ['drawing', 'notes', 'boardTasks', 'boardPractices', 'window']) {
     if (changed[part]) echoes[part] = rememberLocalEcho(part, parts[part]);
@@ -266,7 +291,10 @@ async function publishLocalChanges() {
     await update(roomRef, updates);
   } catch (error) {
     for (const [part, fp] of Object.entries(echoes)) forgetLocalEcho(part, fp);
-    console.error('P2-SPLIT-P1.1 publish klaida', error);
+    if (changed.notes && remoteCache.notes === stable(parts.notes) && previousNotesCache !== null) {
+      remoteCache.notes = previousNotesCache;
+    }
+    console.error('P2-SPLIT-P1.2 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -299,6 +327,45 @@ function applyMapPart(part, raw) {
   bridge.applySharedPart(part, mapToArray(normalized));
 }
 
+function applyNotesPart(raw, meta = {}) {
+  const normalized = raw && typeof raw === 'object' ? raw : {};
+  const fp = stable(normalized);
+  const author = String(meta?.notesUpdatedBy || '');
+  const ownEcho = author === me || consumeLocalEcho('notes', fp);
+
+  // Jei tai mūsų pačių būsena, ji jau yra gyvame DOM. Jokio renderio.
+  if (ownEcho) {
+    remoteCache.notes = fp;
+    return;
+  }
+
+  if (fp === remoteCache.notes) return;
+  remoteCache.notes = fp;
+
+  // Kito įrenginio teksto pakeitimo neperpiešiame per aktyvų contenteditable/MathLive.
+  // Jį pritaikysime iškart, kai vietinis teksto/formulės redagavimas baigsis.
+  if (bridge.isSharedNoteEditing?.()) {
+    pendingRemoteNotes = { normalized, fp };
+    return;
+  }
+
+  pendingRemoteNotes = null;
+  if (stable(toMap(bridge.getSharedSnapshot().notes)) === fp) return;
+  bridge.applySharedPart('notes', mapToArray(normalized));
+}
+
+function flushPendingRemoteNotes() {
+  if (!pendingRemoteNotes || bridge.isSharedNoteEditing?.()) return;
+  const pending = pendingRemoteNotes;
+  pendingRemoteNotes = null;
+  if (stable(toMap(bridge.getSharedSnapshot().notes)) === pending.fp) return;
+  bridge.applySharedPart('notes', mapToArray(pending.normalized));
+}
+
+window.addEventListener('p772:shared-note-editing-ended', () => {
+  setTimeout(flushPendingRemoteNotes, 0);
+});
+
 function cacheWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   remoteCache.drawing = stable(workspace.drawing || {});
@@ -320,7 +387,11 @@ function applyInitialWorkspace(data) {
 
 function subscribeWorkspaceParts() {
   onValue(drawingRef, snapshot => applyMapPart('drawing', snapshot.val()));
-  onValue(notesRef, snapshot => applyMapPart('notes', snapshot.val()));
+  // Notes skaitome kartu su jų meta žyma viename atominiame workspace snapshot'e.
+  onValue(workspaceRef, snapshot => {
+    const workspace = snapshot.val() || {};
+    applyNotesPart(workspace.notes || {}, workspace.meta || {});
+  });
   onValue(boardTasksRef, snapshot => applyMapPart('boardTasks', snapshot.val()));
   onValue(boardPracticesRef, snapshot => applyMapPart('boardPractices', snapshot.val()));
   onValue(windowRef, snapshot => {
@@ -376,7 +447,7 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('ONLINE-P1.1.3 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P1.2 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -423,7 +494,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('ONLINE-P1.1.3 connection klaida', error);
+  console.error('P2-SPLIT-P1.2 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -445,7 +516,7 @@ async function writeLiveStroke(stroke) {
   try {
     await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
   } catch (error) {
-    console.warn('ONLINE-P1.1.3 live stroke klaida', error);
+    console.warn('P2-SPLIT-P1.2 live stroke klaida', error);
   }
 }
 
@@ -543,7 +614,7 @@ if (newButton) {
       // nukreips į naujausią sesiją.
       await set(transitionRef, { toRoom: nextRoom, issuedBy: me, issuedAt: serverTimestamp() });
     } catch (error) {
-      console.error('ONLINE-P1.1.3 naujos sesijos klaida', error);
+      console.error('P2-SPLIT-P1.2 naujos sesijos klaida', error);
       newButton.disabled = false;
       bridge.showToast?.('Nepavyko pradėti naujos sesijos');
     }
@@ -556,5 +627,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('ONLINE-P1.1.3 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('P2-SPLIT-P1.2 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }

@@ -1040,6 +1040,7 @@
       mathEditSession.selection = null;
     }
     updateMathToolbarUi();
+    notifySharedNoteEditingEndedSoon?.();
   }
 
   function resolveActiveMathField() {
@@ -5974,7 +5975,21 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
+  function sharedNoteEditingActive() {
+    if (activeMixedTextEditor?.isConnected && activeMixedTextEditor.closest('.board-note')) return true;
+    if (activeDirectMathField?.isConnected && activeDirectMathField.closest('.board-note')) return true;
+    const registered = mathFieldRegistry.get(mathEditSession.key);
+    return Boolean(registered?.isConnected && registered.closest?.('.board-note') && (mathEditSession.field || mathEditSession.restorePending));
+  }
+
+  function notifySharedNoteEditingEndedSoon() {
+    queueMicrotask(() => {
+      if (!sharedNoteEditingActive()) window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
+    });
+  }
+
   function setActiveMixedTextEditor(editor, options = {}) {
+    const previous = activeMixedTextEditor;
     const next = editor?.isConnected ? editor : null;
     if (activeMixedTextEditor && activeMixedTextEditor !== next) activeMixedTextEditor.closest('.board-note')?.classList.remove('is-mixed-editing');
     activeMixedTextEditor = next;
@@ -5984,6 +5999,7 @@ KOKYBĖS REIKALAVIMAI:
       if (noteId) setActiveBoardObject('note', noteId, { save: options.save !== false });
     }
     updateMathToolbarUi();
+    if (previous && !next) notifySharedNoteEditingEndedSoon();
   }
 
   function captureMixedTextSelection(editor = activeMixedTextEditor) {
@@ -8245,13 +8261,14 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P2-SPLIT-P1.1',
+    version: 'P2-SPLIT-P1.2',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
     },
     getSharedSnapshot: onlineSharedSnapshot,
     applySharedPart: applyOnlineSharedPart,
+    isSharedNoteEditing: sharedNoteEditingActive,
     setRemoteLiveStrokes(strokes) {
       remoteLiveStrokes = Array.isArray(strokes) ? strokes.filter(Boolean) : [];
       redrawCanvas();
