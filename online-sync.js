@@ -544,22 +544,24 @@ window.addEventListener('p2:assignment-request', async event => {
     });
     bridge.showToast?.('Pamoka priskirta mokiniui');
   } catch (error) {
-    console.error('P2-SPLIT-P1.9.7 priskyrimo / nustatymų klaida', error);
+    console.error('P2-SPLIT-P2.1 priskyrimo / nustatymų klaida', error);
     bridge.showToast?.('Nepavyko pakeisti pamokos nustatymų');
   }
 });
 
-window.addEventListener('p2:practice-progress-request', async event => {
+async function persistP2PracticeProgress(event) {
   if (onlineRole !== 'student') return;
   const value = event.detail;
   if (!value || typeof value !== 'object') return;
   try {
     await set(p2ProgressRef, { ...value, updatedAt: Date.now(), updatedBy: me });
   } catch (error) {
-    console.error('P2-SPLIT-P1.7 mokinio eigos klaida', error);
+    console.error('P2-SPLIT-P2.1 mokinio eigos klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
   }
-});
+}
+window.addEventListener('p2:practice-progress-request', persistP2PracticeProgress);
+window.addEventListener('p2:practice-progress-live-request', persistP2PracticeProgress);
 
 let transitionInProgress = false;
 onValue(transitionRef, snapshot => {

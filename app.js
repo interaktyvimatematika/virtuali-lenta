@@ -446,6 +446,35 @@
     'quadratic-equation-chain': validateQuadraticEquationChain
   };
 
+  // P2-SPLIT-P2.1: siauras tiltas P2 sluoksniui į tą patį P7.7.2 variklį.
+  // Nekuriame antro formulės ar tikrinimo variklio: naudojami tie patys
+  // MathLive laukai, struktūruotų žingsnių modelis ir validatoriai.
+  window.P772PracticeEngine = Object.freeze({
+    version: 'P7.7.2',
+    createMathField(options = {}) {
+      return createDirectMathField(options);
+    },
+    createStep(type = 'equation', values = [''], latexValues = []) {
+      return createStructuredStep(type, values, latexValues);
+    },
+    normalizeSteps(steps) {
+      return normalizeStructuredSteps(steps);
+    },
+    validateTask(task, response) {
+      const safeTask = upgradeTaskRequirements(deepClone(task));
+      const validator = validators[safeTask?.response?.validator];
+      if (!validator) {
+        return {
+          status: 'incorrect',
+          title: 'Nepalaikomas tikrinimo būdas',
+          message: `Validatorius „${safeTask?.response?.validator || 'nenurodytas'}“ nerastas.`,
+          stepResults: []
+        };
+      }
+      return deepClone(validator(safeTask, deepClone(response)));
+    }
+  });
+
   function deepClone(value) {
     return JSON.parse(JSON.stringify(value));
   }

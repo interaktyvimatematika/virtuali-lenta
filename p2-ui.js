@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9.7';
+  const BUILD = 'P2-SPLIT-P2.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -38,7 +38,31 @@
     classCount: 4,
     selfCount: 2,
     tasks: [
-      { id: 'c1', section: 'class', label: 'Pamokoje', prompt: 'Jei f(x) = 2x + 1, kokia yra f(3) reikšmė?', choices: ['5', '6', '7', '8'], answer: '7', hint: 'Į funkcijos formulę vietoje x įrašyk 3.' },
+      {
+        id: 'c1',
+        type: 'solution',
+        section: 'class',
+        label: 'Pamokoje',
+        title: 'Išspręsk lygtį',
+        prompt: '3x + 7 = 22',
+        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą.',
+        answer: 'x = 5',
+        hint: 'Pirmiausia atimk 7 iš abiejų lygties pusių, tada abi puses padalyk iš 3.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Pvz., 3x = 15',
+          validator: 'linear-equation-chain',
+          options: {
+            initial: '3x + 7 = 22',
+            expectedVariable: 'x',
+            expectedValue: 5,
+            expectedDisplay: '5',
+            minimumSteps: 1
+          }
+        }
+      },
       { id: 'c2', section: 'class', label: 'Pamokoje', prompt: 'Kuris taškas priklauso funkcijos y = x + 2 grafikui?', choices: ['(1; 1)', '(1; 3)', '(2; 1)', '(0; 0)'], answer: '(1; 3)', hint: 'Patikrink: kai x = 1, kiek tada lygu y?' },
       { id: 'c3', section: 'class', label: 'Pamokoje', prompt: 'Ką reiškia užrašas f(4) = 9?', choices: ['Kai x = 9, y = 4', 'Kai x = 4, funkcijos reikšmė yra 9', 'Funkcija visada lygi 9', 'Grafikas kerta x ašį ties 4'], answer: 'Kai x = 4, funkcijos reikšmė yra 9', hint: 'f(4) nurodo funkcijos reikšmę, kai argumento x reikšmė yra 4.' },
       { id: 'c4', section: 'class', label: 'Pamokoje', prompt: 'Jei f(x) = 3 − x, kokia yra f(−2) reikšmė?', choices: ['1', '5', '−5', '−1'], answer: '5', hint: 'Atsargiai su dviem minuso ženklais: 3 − (−2).' },
@@ -61,6 +85,82 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char]));
+  }
+
+  const practiceEngine = window.P772PracticeEngine || null;
+  const liveSolutionTimers = new Map();
+  let solutionFocusRequest = null;
+
+  function deepCopy(value) {
+    try { return JSON.parse(JSON.stringify(value)); }
+    catch (_) { return value; }
+  }
+
+  function isSolutionTask(task) {
+    return task?.type === 'solution' || task?.response?.renderer === 'math-step-list';
+  }
+
+  function emptySolutionResponse() {
+    const step = practiceEngine?.createStep?.('equation', [''], [''])
+      || { type: 'equation', values: [''], latexValues: [''] };
+    return { steps: [step] };
+  }
+
+  function normalizeSolutionResponse(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    const steps = practiceEngine?.normalizeSteps?.(source.steps)
+      || (Array.isArray(source.steps) && source.steps.length ? source.steps : emptySolutionResponse().steps);
+    return { steps: deepCopy(steps) };
+  }
+
+  function solutionResponseForItem(item) {
+    return normalizeSolutionResponse(item?.liveSolution || item?.lastSolution || emptySolutionResponse());
+  }
+
+  function solutionSummary(response) {
+    return normalizeSolutionResponse(response).steps
+      .map(step => Array.isArray(step.values) ? step.values.filter(Boolean).join(' arba ') : '')
+      .filter(Boolean)
+      .join(' → ');
+  }
+
+  function solutionTaskForEngine(task) {
+    return {
+      id: task.id,
+      title: task.title || 'Išspręsk lygtį',
+      instruction: task.instruction || '',
+      prompt: { kind: 'equation', value: task.prompt },
+      response: deepCopy(task.response)
+    };
+  }
+
+  function validateSolutionTask(task, response) {
+    if (!practiceEngine?.validateTask) {
+      return { status: 'incorrect', title: 'Tikrinimo variklis nepasiekiamas', message: 'Perkrauk puslapį ir bandyk dar kartą.', stepResults: [] };
+    }
+    return practiceEngine.validateTask(solutionTaskForEngine(task), normalizeSolutionResponse(response));
+  }
+
+  function comparableProgress(value) {
+    const copy = deepCopy(value && typeof value === 'object' ? value : {});
+    delete copy.updatedAt;
+    delete copy.updatedBy;
+    return JSON.stringify(copy);
+  }
+
+  function studentSolutionFieldActive() {
+    return Boolean(studentPanel.querySelector('math-field.p2-solution-math-field:focus-within, math-field.p2-solution-math-field.math-field-is-active'));
+  }
+
+  function publishLiveProgress(next, taskId) {
+    progress = normalizedProgress(next);
+    progress.updatedAt = Date.now();
+    const old = liveSolutionTimers.get(taskId);
+    if (old) clearTimeout(old);
+    liveSolutionTimers.set(taskId, setTimeout(() => {
+      liveSolutionTimers.delete(taskId);
+      window.dispatchEvent(new CustomEvent('p2:practice-progress-live-request', { detail: deepCopy(progress) }));
+    }, 90));
   }
 
   function readPrefs() {
@@ -222,20 +322,34 @@
     return DEMO_LESSON.tasks.find(task => task.id === state.currentTaskId) || DEMO_LESSON.tasks[0];
   }
 
+  function baseTaskState() {
+    return { attempts: 0, wrongAttempts: 0, hintUsed: false, solved: false, status: 'pending', lastAnswer: '' };
+  }
+
+  function typedTaskState(taskId) {
+    const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
+    const raw = normalizedProgress(progress).taskStates[taskId] || baseTaskState();
+    // P2.1 c1 anksčiau buvo testinis klausimas. Jei kambaryje liko seno prototipo
+    // A/B/C/D būsena, jos nelaikome naujos sprendžiamos lygties rezultatu.
+    if (isSolutionTask(task) && !raw.liveSolution && !raw.lastSolution && (raw.liveAnswer || raw.lastAnswer || raw.solved)) {
+      return { ...baseTaskState(), openedAt: raw.openedAt || null };
+    }
+    return raw;
+  }
+
   function currentTaskState() {
-    const task = currentTask();
-    return normalizedProgress(progress).taskStates[task.id] || { attempts: 0, wrongAttempts: 0, hintUsed: false, solved: false, status: 'pending', lastAnswer: '' };
+    return typedTaskState(currentTask().id);
   }
 
   function taskState(taskId) {
-    return normalizedProgress(progress).taskStates[taskId] || { attempts: 0, wrongAttempts: 0, hintUsed: false, solved: false, status: 'pending', lastAnswer: '' };
+    return typedTaskState(taskId);
   }
 
   function progressStats() {
     const state = normalizedProgress(progress);
     let solved = 0, good = 0, help = 0, repeat = 0;
     DEMO_LESSON.tasks.forEach(task => {
-      const item = state.taskStates[task.id] || {};
+      const item = taskState(task.id);
       if (item.solved) solved += 1;
       if (item.solved) {
         if (item.hintUsed || Number(item.attempts || 0) > 1 || item.status === 'help') help += 1;
@@ -359,36 +473,99 @@
       </section>`;
   }
 
-  function studentPracticeMarkup(state, stats) {
-    const task = currentTask();
-    const item = currentTaskState();
-    const selected = selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '';
-    const taskNumber = taskIndex(task.id) + 1;
+  function taskFeedbackMarkup(task, item, { teacher = false } = {}) {
     const maxAttempts = attemptLimitForTask(task.id);
     const exhausted = isTaskExhausted(item, task.id);
     const remaining = attemptsRemaining(item, task.id);
-    const feedback = item.solved
-      ? item.hintUsed
-        ? `<div class="p2-practice-feedback is-warning">✓ Teisingai${Number(item.attempts || 0) > 1 ? ' su pagalba ir po kelių bandymų' : ' su pagalba'}.</div>`
-        : Number(item.attempts || 0) > 1
-          ? `<div class="p2-practice-feedback is-warning">✓ Teisingai po kelių bandymų.</div>`
-          : `<div class="p2-practice-feedback is-success">✓ Teisingai. Gali tęsti.</div>`
-      : exhausted
-        ? `<div class="p2-practice-feedback is-repeat">Išnaudoti visi ${maxAttempts} ${maxAttempts === 1 ? 'bandymas' : 'bandymai'}. Šią užduotį pažymime „Kartoti“.</div>`
-        : item.attempts > 0
-          ? `<div class="p2-practice-feedback is-warning">Dar ne. ${remaining === Infinity ? 'Gali bandyti dar kartą.' : `Liko ${remaining} ${remaining === 1 ? 'bandymas' : 'bandymai'}.`}</div>`
-          : '';
-    const hint = item.hintUsed ? `<div class="p2-hint-box"><strong>Užuomina</strong><span>${escapeHtml(task.hint)}</span></div>` : '';
-    const choiceMarkup = task.choices.map(choice => {
-      const active = selected === choice ? ' is-selected' : '';
-      return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + task.choices.indexOf(choice))}</span><b>${escapeHtml(choice)}</b></button>`;
+    const extraClass = teacher ? ' p2-teacher-student-feedback' : '';
+
+    if (item.solved) {
+      if (item.hintUsed) {
+        return `<div class="p2-practice-feedback is-warning${extraClass}">✓ Teisingai${Number(item.attempts || 0) > 1 ? ' su pagalba ir po kelių bandymų' : ' su pagalba'}.</div>`;
+      }
+      if (Number(item.attempts || 0) > 1) {
+        return `<div class="p2-practice-feedback is-warning${extraClass}">✓ Teisingai po kelių bandymų.</div>`;
+      }
+      return `<div class="p2-practice-feedback is-success${extraClass}">✓ Teisingai. Gali tęsti.</div>`;
+    }
+
+    if (exhausted) {
+      return `<div class="p2-practice-feedback is-repeat${extraClass}">Išnaudoti visi ${maxAttempts} ${maxAttempts === 1 ? 'bandymas' : 'bandymai'}. Užduotis pažymėta „Kartoti“.</div>`;
+    }
+
+    if (Number(item.attempts || 0) > 0) {
+      const result = isSolutionTask(task) ? item.validationResult : null;
+      const detail = result?.message ? `<span>${escapeHtml(result.message)}</span>` : '';
+      const title = result?.title ? escapeHtml(result.title) : 'Dar ne.';
+      return `<div class="p2-practice-feedback is-warning${extraClass}"><strong>${title}</strong>${detail}<small>${remaining === Infinity ? 'Bandymų skaičius neribojamas.' : `Liko ${remaining} ${remaining === 1 ? 'bandymas' : 'bandymai'}.`}</small></div>`;
+    }
+    return '';
+  }
+
+  function solutionEditorMarkup(task, item) {
+    const response = solutionResponseForItem(item);
+    const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
+    const stepResults = Array.isArray(item.validationResult?.stepResults) ? item.validationResult.stepResults : [];
+    const rows = response.steps.map((step, index) => {
+      const result = stepResults[index] || null;
+      const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
+      const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      return `
+        <div class="p2-solution-step${resultClass}" data-solution-step="${index}">
+          <span class="p2-solution-step-number">${index + 1}.</span>
+          <div class="p2-solution-step-main">
+            <div class="p2-solution-field-host" data-solution-field="${index}"></div>
+            <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
+          </div>
+          <span class="p2-solution-step-state" aria-hidden="true">${stateMark}</span>
+          <button type="button" class="p2-solution-remove" data-solution-remove="${index}" aria-label="Pašalinti ${index + 1} eilutę" ${locked || response.steps.length <= 1 ? 'disabled' : ''}>×</button>
+        </div>`;
     }).join('');
+
+    return `
+      <section class="p2-solution-editor ${locked ? 'is-locked' : ''}">
+        <header class="p2-solution-editor-head">
+          <div><span>Sprendimo eiga</span><small>Rašyk po vieną lygties žingsnį eilutėje.</small></div>
+          <span><kbd>Enter</kbd> – nauja eilutė</span>
+        </header>
+        <div class="p2-solution-steps">${rows}</div>
+        <div class="p2-solution-editor-actions">
+          <button type="button" class="p2-secondary p2-add-solution-step" data-action="add-solution-step" ${locked ? 'disabled' : ''}>＋ Pridėti eilutę</button>
+        </div>
+      </section>`;
+  }
+
+  function studentPracticeMarkup(state, stats) {
+    const task = currentTask();
+    const item = currentTaskState();
+    const solutionTask = isSolutionTask(task);
+    const selected = solutionTask ? '' : (selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '');
+    const taskNumber = taskIndex(task.id) + 1;
+    const exhausted = isTaskExhausted(item, task.id);
+    const feedback = taskFeedbackMarkup(task, item);
+    const hint = item.hintUsed ? `<div class="p2-hint-box"><strong>Užuomina</strong><span>${escapeHtml(task.hint)}</span></div>` : '';
+
+    const answerMarkup = solutionTask
+      ? solutionEditorMarkup(task, item)
+      : `<div class="p2-choice-list">${task.choices.map((choice, index) => {
+          const active = selected === choice ? ' is-selected' : '';
+          return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></button>`;
+        }).join('')}</div>`;
+
+    const conditionMarkup = solutionTask
+      ? `<div class="p2-solution-condition">
+          <p class="p2-task-instruction">${escapeHtml(task.instruction || task.title || 'Išspręsk užduotį.')}</p>
+          <math-field class="p2-static-math p2-task-equation" read-only tabindex="-1">${escapeHtml(task.prompt)}</math-field>
+        </div>`
+      : `<p class="p2-task-prompt">${escapeHtml(task.prompt)}</p>`;
+
     const dots = DEMO_LESSON.tasks.map((candidate, index) => {
       const cstate = taskState(candidate.id);
       const pedagogy = pedagogicalStatus(cstate, { taskId: candidate.id, current: candidate.id === task.id && state.status === 'in_progress' });
       const cls = [candidate.id === task.id ? 'is-current' : '', pedagogy.key === 'good' ? 'is-done' : '', pedagogy.key === 'help' ? 'is-help' : '', pedagogy.key === 'repeat' ? 'is-repeat' : ''].filter(Boolean).join(' ');
       return `<button type="button" class="p2-task-dot ${cls}" data-task-id="${candidate.id}" title="${escapeHtml(candidate.label)} · ${index + 1} · ${pedagogy.label}">${index + 1}</button>`;
     }).join('');
+
     return `
       <section class="p2-practice-shell">
         <header class="p2-practice-shell-head">
@@ -399,10 +576,10 @@
           <button type="button" data-section="class" class="${task.section === 'class' ? 'is-active' : ''}">▤ Pamokoje</button>
           <button type="button" data-section="self" class="${task.section === 'self' ? 'is-active' : ''}">⌂ Savarankiškai</button>
         </div>
-        <article class="p2-task-card">
-          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>Užduotis</h3></div><span class="p2-soft-pill">${attemptUsageLabel(item, task.id)}</span></div>
-          <p class="p2-task-prompt">${escapeHtml(task.prompt)}</p>
-          <div class="p2-choice-list">${choiceMarkup}</div>
+        <article class="p2-task-card ${solutionTask ? 'p2-solution-task-card' : ''}">
+          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>${escapeHtml(solutionTask ? (task.title || 'Užduotis') : 'Užduotis')}</h3></div><span class="p2-soft-pill">${attemptUsageLabel(item, task.id)}</span></div>
+          ${conditionMarkup}
+          ${answerMarkup}
           ${hint}${feedback}
           <div class="p2-task-actions">
             <button type="button" class="p2-secondary" data-action="hint" ${(item.hintUsed || item.solved || exhausted) ? 'disabled' : ''}>💡 Užuomina</button>
@@ -410,7 +587,7 @@
             <button type="button" class="p2-secondary" data-action="previous" ${taskNumber === 1 ? 'disabled' : ''}>← Ankstesnė</button>
             ${item.solved || exhausted
               ? '<button type="button" class="p2-primary" data-action="next">Toliau →</button>'
-              : '<button type="button" class="p2-primary" data-action="check">Tikrinti</button>'}
+              : `<button type="button" class="p2-primary" data-action="check">${solutionTask ? 'Patikrinti sprendimą' : 'Tikrinti'}</button>`}
           </div>
         </article>
         <nav class="p2-task-dots" aria-label="Užduočių navigacija">${dots}</nav>
@@ -419,6 +596,111 @@
     `;
   }
 
+  function updateLiveSolution(task, index, plain, latex, row) {
+    const next = normalizedProgress(progress);
+    const previous = taskState(task.id);
+    const response = solutionResponseForItem(previous);
+    while (response.steps.length <= index) response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
+    response.steps[index] = practiceEngine?.createStep?.('equation', [plain], [latex])
+      || { type: 'equation', values: [plain], latexValues: [latex] };
+
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [task.id]: {
+        ...previous,
+        liveSolution: response,
+        solutionUpdatedAt: Date.now(),
+        validationResult: null
+      }
+    };
+    row?.classList.remove('is-correct', 'is-error', 'is-warning');
+    const message = row?.querySelector('.p2-solution-step-message');
+    const stateMark = row?.querySelector('.p2-solution-step-state');
+    if (message) message.textContent = '';
+    if (stateMark) stateMark.textContent = '';
+    publishLiveProgress(next, task.id);
+  }
+
+  function hydrateStudentSolutionEditor() {
+    const task = currentTask();
+    if (!isSolutionTask(task)) return;
+    const item = currentTaskState();
+    const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
+    const response = solutionResponseForItem(item);
+    studentPanel.querySelectorAll('[data-solution-field]').forEach(host => {
+      const index = Number(host.dataset.solutionField);
+      const step = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
+      if (!practiceEngine?.createMathField) {
+        host.textContent = step.values?.[0] || '';
+        return;
+      }
+      const row = host.closest('.p2-solution-step');
+      const field = practiceEngine.createMathField({
+        source: step.values?.[0] || '',
+        latexSource: step.latexValues?.[0] || '',
+        kind: 'equation',
+        fieldKey: `p2:${task.id}:step:${index}`,
+        testid: `p2-step-input-${index}`,
+        placeholder: task.response?.placeholder || 'Kita lygtis',
+        contextLabel: `P2 pratybų ${index + 1} sprendimo eilutė`,
+        onCommit: (plain, latex) => updateLiveSolution(task, index, plain, latex, row),
+        onEnter: () => addSolutionStep(task.id, index + 1)
+      });
+      field.classList.add('p2-solution-math-field');
+      if (locked) {
+        field.setAttribute('read-only', '');
+        field.setAttribute('disabled', '');
+      }
+      host.replaceChildren(field);
+    });
+
+    if (solutionFocusRequest?.taskId === task.id) {
+      const targetIndex = solutionFocusRequest.index;
+      solutionFocusRequest = null;
+      requestAnimationFrame(() => {
+        studentPanel.querySelector(`[data-testid="p2-step-input-${targetIndex}"]`)?.focus();
+      });
+    }
+  }
+
+  function addSolutionStep(taskId, focusIndex = null) {
+    const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
+    if (!task || !isSolutionTask(task)) return;
+    const previous = taskState(taskId);
+    if (previous.solved || isTaskExhausted(previous, taskId)) return;
+    const response = solutionResponseForItem(previous);
+    const nextIndex = focusIndex === null ? response.steps.length : Math.max(0, Number(focusIndex));
+    if (nextIndex >= response.steps.length) {
+      response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
+    }
+    const next = normalizedProgress(progress);
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
+    };
+    solutionFocusRequest = { taskId, index: Math.min(nextIndex, response.steps.length - 1) };
+    publishProgress(next);
+  }
+
+  function removeSolutionStep(taskId, index) {
+    const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
+    if (!task || !isSolutionTask(task)) return;
+    const previous = taskState(taskId);
+    if (previous.solved || isTaskExhausted(previous, taskId)) return;
+    const response = solutionResponseForItem(previous);
+    if (response.steps.length <= 1) return;
+    response.steps.splice(index, 1);
+    const next = normalizedProgress(progress);
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
+    };
+    solutionFocusRequest = { taskId, index: Math.max(0, Math.min(index, response.steps.length - 1)) };
+    publishProgress(next);
+  }
 
   function bindStudentActions() {
     studentPanel.querySelector('[data-action="open-assignment"]')?.addEventListener('click', () => {
@@ -433,11 +715,9 @@
     studentPanel.querySelectorAll('[data-choice]').forEach(button => {
       button.addEventListener('click', () => {
         const task = currentTask();
+        if (isSolutionTask(task)) return;
         const choice = button.dataset.choice || '';
         selectedAnswers[task.id] = choice;
-
-        // P1.9.6: mokytojas turi matyti tą patį pasirinkimą realiu laiku,
-        // kurį šiuo metu mato mokinys, dar prieš paspaudžiant „Tikrinti“.
         const next = normalizedProgress(progress);
         const previous = taskState(task.id);
         next.taskStates = {
@@ -456,14 +736,36 @@
       publishProgress(next);
     });
 
+    studentPanel.querySelector('[data-action="add-solution-step"]')?.addEventListener('click', () => addSolutionStep(currentTask().id));
+    studentPanel.querySelectorAll('[data-solution-remove]').forEach(button => {
+      button.addEventListener('click', () => removeSolutionStep(currentTask().id, Number(button.dataset.solutionRemove)));
+    });
+
     studentPanel.querySelector('[data-action="check"]')?.addEventListener('click', () => {
       const task = currentTask();
       const previous = taskState(task.id);
       if (isTaskExhausted(previous, task.id)) { toast('Šiai užduočiai bandymų nebeliko'); return; }
-      const answer = selectedAnswers[task.id] ?? previous.liveAnswer ?? '';
-      if (!answer) { toast('Pasirink atsakymą'); return; }
+
+      let correct = false;
+      let submittedAnswer = '';
+      let validationResult = null;
+      let submittedSolution = null;
+
+      if (isSolutionTask(task)) {
+        const response = solutionResponseForItem(previous);
+        submittedAnswer = solutionSummary(response);
+        if (!submittedAnswer) { toast('Įrašyk bent vieną sprendimo žingsnį'); return; }
+        validationResult = validateSolutionTask(task, response);
+        correct = validationResult.status === 'correct';
+        submittedSolution = response;
+      } else {
+        const answer = selectedAnswers[task.id] ?? previous.liveAnswer ?? '';
+        if (!answer) { toast('Pasirink atsakymą'); return; }
+        submittedAnswer = answer;
+        correct = answer === task.answer;
+      }
+
       const next = normalizedProgress(progress);
-      const correct = answer === task.answer;
       const attempts = Number(previous.attempts || 0) + 1;
       const wrongAttempts = Number(previous.wrongAttempts || 0) + (correct ? 0 : 1);
       const maxAttempts = attemptLimitForTask(task.id);
@@ -475,12 +777,14 @@
         ...previous,
         attempts,
         wrongAttempts,
-        liveAnswer: answer,
-        lastAnswer: answer,
-        lastResult: correct ? 'correct' : 'wrong',
+        lastAnswer: submittedAnswer,
+        lastResult: correct ? 'correct' : (validationResult?.status || 'wrong'),
         submittedAt: Date.now(),
         solved: correct,
-        status
+        status,
+        ...(isSolutionTask(task)
+          ? { liveSolution: submittedSolution, lastSolution: submittedSolution, validationResult }
+          : { liveAnswer: submittedAnswer })
       };
       next.taskStates = { ...next.taskStates, [task.id]: state };
       const allFinished = DEMO_LESSON.tasks.every(candidate => {
@@ -490,7 +794,6 @@
       next.status = allFinished ? 'completed' : 'in_progress';
       publishProgress(next);
     });
-
 
     studentPanel.querySelector('[data-action="next"]')?.addEventListener('click', () => {
       const task = currentTask();
@@ -528,6 +831,8 @@
         publishProgress(next);
       });
     });
+
+    hydrateStudentSolutionEditor();
   }
 
   function renderTeacherPanel() {
@@ -853,8 +1158,32 @@
     });
   }
 
-  function renderTeacherPreview() {
+  function teacherSolutionMarkup(task, item) {
+    const response = solutionResponseForItem(item);
+    const stepResults = Array.isArray(item.validationResult?.stepResults) ? item.validationResult.stepResults : [];
+    const rows = response.steps.map((step, index) => {
+      const result = stepResults[index] || null;
+      const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
+      const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const value = step?.values?.[0] || '';
+      return `
+        <div class="p2-solution-step p2-teacher-solution-step${resultClass}">
+          <span class="p2-solution-step-number">${index + 1}.</span>
+          <div class="p2-solution-step-main">
+            <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value)}</math-field>
+            <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
+          </div>
+          <span class="p2-solution-step-state" aria-hidden="true">${stateMark}</span>
+        </div>`;
+    }).join('');
+    return `
+      <section class="p2-teacher-solution-view">
+        <header><div><strong>Sprendimo eiga</strong><span>Tas pats mokinio darbas realiu laiku</span></div><b class="p2-live-label">● gyvai</b></header>
+        <div class="p2-solution-steps">${rows}</div>
+      </section>`;
+  }
 
+  function renderTeacherPreview() {
     if (!teacherPreviewWindow || teacherPreviewMode === 'closed') return;
     const host = teacherPreviewWindow.querySelector('#p2TeacherPreviewBody');
     if (!host || !assignment) return;
@@ -866,32 +1195,35 @@
     const studentIndex = taskIndex(studentTask.id) + 1;
     const item = taskState(previewTask.id);
     const isStudentTask = previewTask.id === studentTask.id;
+    const solutionTask = isSolutionTask(previewTask);
     const pedagogy = pedagogicalStatus(item, { taskId: previewTask.id, current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
     const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
     const liveAnswer = item.liveAnswer || item.lastAnswer || '';
-    const correctIndex = Math.max(0, previewTask.choices.findIndex(choice => choice === previewTask.answer));
-    const correctLetter = String.fromCharCode(65 + correctIndex);
-    const choices = previewTask.choices.map((choice, index) => {
-      const isSelected = liveAnswer === choice;
-      const classes = ['p2-preview-choice', isSelected ? 'is-student-selected' : ''].filter(Boolean).join(' ');
-      return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></div>`;
-    }).join('');
-    const previewMaxAttempts = attemptLimitForTask(previewTask.id);
-    const previewExhausted = isTaskExhausted(item, previewTask.id);
-    const previewRemaining = attemptsRemaining(item, previewTask.id);
-    const previewFeedback = item.solved
-      ? item.hintUsed
-        ? `<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">✓ Teisingai${Number(item.attempts || 0) > 1 ? ' su pagalba ir po kelių bandymų' : ' su pagalba'}.</div>`
-        : Number(item.attempts || 0) > 1
-          ? '<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">✓ Teisingai po kelių bandymų.</div>'
-          : '<div class="p2-practice-feedback is-success p2-teacher-student-feedback">✓ Teisingai. Gali tęsti.</div>'
-      : previewExhausted
-        ? `<div class="p2-practice-feedback is-repeat p2-teacher-student-feedback">Išnaudoti visi ${previewMaxAttempts} bandymai. Užduotis pažymėta „Kartoti“.</div>`
-        : Number(item.attempts || 0) > 0
-          ? `<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">Dar ne. ${previewRemaining === Infinity ? 'Bandymų skaičius neribojamas.' : `Liko ${previewRemaining} ${previewRemaining === 1 ? 'bandymas' : 'bandymai'}.`}</div>`
-          : '';
 
+    let conditionMarkup;
+    let answerKeyMarkup;
+    let responseMarkup;
+    if (solutionTask) {
+      conditionMarkup = `
+        <h3>${escapeHtml(previewTask.title || 'Išspręsk lygtį')}</h3>
+        <p class="p2-preview-instruction">${escapeHtml(previewTask.instruction || '')}</p>
+        <math-field class="p2-static-math p2-preview-equation" read-only tabindex="-1">${escapeHtml(previewTask.prompt)}</math-field>`;
+      answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
+      responseMarkup = teacherSolutionMarkup(previewTask, item);
+    } else {
+      const correctIndex = Math.max(0, previewTask.choices.findIndex(choice => choice === previewTask.answer));
+      const correctLetter = String.fromCharCode(65 + correctIndex);
+      conditionMarkup = `<h3>${escapeHtml(previewTask.prompt)}</h3>`;
+      answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>`;
+      const choices = previewTask.choices.map((choice, index) => {
+        const isSelected = liveAnswer === choice;
+        const classes = ['p2-preview-choice', isSelected ? 'is-student-selected' : ''].filter(Boolean).join(' ');
+        return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></div>`;
+      }).join('');
+      responseMarkup = `<div class="p2-preview-choice-list">${choices}</div>`;
+    }
 
+    const previewFeedback = taskFeedbackMarkup(previewTask, item, { teacher: true });
     const taskNavigation = DEMO_LESSON.tasks.map((task, index) => {
       const taskItem = taskState(task.id);
       const taskPedagogy = pedagogicalStatus(taskItem, { taskId: task.id, current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
@@ -903,7 +1235,7 @@
         taskPedagogy.key === 'help' ? 'is-help' : '',
         taskPedagogy.key === 'repeat' ? 'is-repeat' : ''
       ].filter(Boolean).join(' ');
-      return `<button type="button" class="${classes}" data-preview-task="${task.id}" title="${index + 1}. ${escapeHtml(task.prompt)} · ${taskPedagogy.label}" aria-label="${index + 1} užduotis, ${taskPedagogy.label}">${index + 1}</button>`;
+      return `<button type="button" class="${classes}" data-preview-task="${task.id}" title="${index + 1}. ${escapeHtml(task.title || task.prompt)} · ${taskPedagogy.label}" aria-label="${index + 1} užduotis, ${taskPedagogy.label}">${index + 1}</button>`;
     }).join('');
 
     const locationText = isStudentTask
@@ -921,16 +1253,16 @@
       </div>
       <div class="p2-preview-layout">
         <div class="p2-preview-main">
-          <article class="p2-preview-detail">
+          <article class="p2-preview-detail ${solutionTask ? 'p2-solution-preview-detail' : ''}">
             <header class="p2-preview-detail-head">
               <div>
                 <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
-                <h3>${escapeHtml(previewTask.prompt)}</h3>
-                <div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>
+                ${conditionMarkup}
+                ${answerKeyMarkup}
               </div>
               <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
             </header>
-            <div class="p2-preview-choice-list">${choices}</div>
+            ${responseMarkup}
             ${previewFeedback}
             <div class="p2-preview-detail-metrics">
               <span>Bandymų: <b>${attemptUsageLabel(item, previewTask.id)}</b></span>
@@ -949,7 +1281,6 @@
         </div>
         ${attemptSettingsMarkup(previewTask)}
       </div>`;
-
 
     host.querySelectorAll('[data-preview-task]').forEach(button => {
       button.addEventListener('click', () => {
@@ -1008,6 +1339,9 @@
       progress = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : progress;
       renderPanels();
     });
+    window.addEventListener('p2:practice-progress-live-request', event => {
+      progress = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : progress;
+    });
   }
 
   window.addEventListener('p2:assignment-state', event => {
@@ -1023,8 +1357,15 @@
   });
 
   window.addEventListener('p2:progress-state', event => {
-    progress = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : null;
+    const incoming = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : null;
+    const ownLiveEcho = role() === 'student'
+      && incoming
+      && progress
+      && studentSolutionFieldActive()
+      && comparableProgress(incoming) === comparableProgress(progress);
+    progress = incoming;
     if (teacherFollowStudent && progress) teacherPreviewTaskId = currentTask().id;
+    if (ownLiveEcho) return;
     renderPanels();
     renderTeacherPreview();
   });

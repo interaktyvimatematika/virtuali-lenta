@@ -4592,3 +4592,94 @@ body.p2-shell .p2-attempt-note {
     position:static;
   }
 }
+
+
+/* P2-SPLIT-P2.1 — pirmoji tikra sprendžiama matematikos užduotis */
+body.p2-shell .p2-solution-task-card { gap:14px; }
+body.p2-shell .p2-solution-condition { display:grid; gap:10px; padding:2px 2px 4px; }
+body.p2-shell .p2-task-instruction,
+body.p2-shell .p2-preview-instruction { margin:0; color:#596579; font-size:13px; line-height:1.55; }
+body.p2-shell math-field.p2-static-math {
+  display:inline-block; width:auto; min-width:0; min-height:0; padding:0; border:0;
+  background:transparent; color:#263247; pointer-events:none;
+  --caret-color:transparent; --selection-background-color:transparent;
+}
+body.p2-shell math-field.p2-task-equation { justify-self:start; font-size:24px; line-height:1.25; }
+body.p2-shell .p2-solution-editor { overflow:hidden; border:1px solid #e3e7ef; border-radius:14px; background:#fff; }
+body.p2-shell .p2-solution-editor-head {
+  display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 14px;
+  border-bottom:1px solid #edf0f4; background:#fafbfc; color:#6e798c;
+}
+body.p2-shell .p2-solution-editor-head > div { display:grid; gap:2px; }
+body.p2-shell .p2-solution-editor-head > div > span { color:#3e4a5f; font-size:11px; font-weight:850; }
+body.p2-shell .p2-solution-editor-head small,
+body.p2-shell .p2-solution-editor-head > span { color:#8b94a3; font-size:9px; }
+body.p2-shell .p2-solution-editor-head kbd {
+  padding:1px 5px; border:1px solid #dfe4ec; border-bottom-width:2px; border-radius:5px;
+  background:#fff; color:#657188; font:700 9px/1.4 inherit;
+}
+body.p2-shell .p2-solution-steps { display:grid; gap:0; }
+body.p2-shell .p2-solution-step {
+  display:grid; grid-template-columns:26px minmax(0,1fr) 22px 26px; align-items:start; gap:7px;
+  min-height:54px; padding:9px 10px; border-bottom:1px solid #f0f2f6; background:#fff;
+}
+body.p2-shell .p2-solution-step:last-child { border-bottom:0; }
+body.p2-shell .p2-solution-step-number { padding-top:10px; color:#9aa2af; font-size:10px; font-weight:800; text-align:right; }
+body.p2-shell .p2-solution-step-main,
+body.p2-shell .p2-solution-field-host { min-width:0; }
+body.p2-shell math-field.p2-solution-math-field {
+  display:block; width:100%; min-height:36px; padding:5px 7px; border:1px solid transparent;
+  border-radius:8px; background:transparent; color:#263247; font-size:18px; line-height:1.3;
+  transition:border-color .12s ease, background .12s ease, box-shadow .12s ease;
+}
+body.p2-shell math-field.p2-solution-math-field:hover { border-color:#e1e5ed; background:#fbfcfe; }
+body.p2-shell math-field.p2-solution-math-field:focus-within,
+body.p2-shell math-field.p2-solution-math-field.math-field-is-active {
+  border-color:#9aaaf0; background:#fff; box-shadow:0 0 0 3px rgba(104,124,216,.11);
+}
+body.p2-shell .p2-solution-step-message { min-height:0; margin:3px 7px 0; color:#8a93a2; font-size:9px; line-height:1.35; }
+body.p2-shell .p2-solution-step-state { padding-top:10px; color:#8a93a2; font-size:12px; font-weight:900; text-align:center; }
+body.p2-shell .p2-solution-step.is-correct { background:#fbfefc; }
+body.p2-shell .p2-solution-step.is-correct .p2-solution-step-state,
+body.p2-shell .p2-solution-step.is-correct .p2-solution-step-message { color:#4d8a61; }
+body.p2-shell .p2-solution-step.is-error { background:#fffafa; }
+body.p2-shell .p2-solution-step.is-error .p2-solution-step-state,
+body.p2-shell .p2-solution-step.is-error .p2-solution-step-message { color:#b45f62; }
+body.p2-shell .p2-solution-step.is-warning { background:#fffdf7; }
+body.p2-shell .p2-solution-step.is-warning .p2-solution-step-state,
+body.p2-shell .p2-solution-step.is-warning .p2-solution-step-message { color:#9b7827; }
+body.p2-shell .p2-solution-remove {
+  width:24px; height:24px; margin-top:6px; padding:0; border:0; border-radius:6px;
+  background:transparent; color:#a0a8b5; font-size:16px; cursor:pointer;
+}
+body.p2-shell .p2-solution-remove:hover:not(:disabled) { background:#f4f5f8; color:#6b7587; }
+body.p2-shell .p2-solution-remove:disabled { opacity:.2; cursor:default; }
+body.p2-shell .p2-solution-editor-actions { display:flex; justify-content:flex-start; padding:9px 12px; border-top:1px solid #edf0f4; background:#fafbfc; }
+body.p2-shell .p2-add-solution-step { min-height:31px; font-size:9px; }
+body.p2-shell .p2-practice-feedback strong,
+body.p2-shell .p2-practice-feedback span,
+body.p2-shell .p2-practice-feedback small { display:block; }
+body.p2-shell .p2-practice-feedback span { margin-top:3px; font-size:10px; line-height:1.4; }
+body.p2-shell .p2-practice-feedback small { margin-top:4px; opacity:.8; font-size:9px; }
+body.p2-shell .p2-solution-preview-detail .p2-preview-detail-head > div { min-width:0; }
+body.p2-shell math-field.p2-preview-equation { display:block; margin-top:10px; font-size:25px; }
+body.p2-shell .p2-teacher-math-answer { align-items:center; }
+body.p2-shell math-field.p2-answer-equation { font-size:15px; font-weight:700; }
+body.p2-shell .p2-teacher-solution-view { overflow:hidden; margin-top:4px; border:1px solid #e4e8ef; border-radius:13px; background:#fff; }
+body.p2-shell .p2-teacher-solution-view > header {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px;
+  border-bottom:1px solid #edf0f4; background:#fafbfc;
+}
+body.p2-shell .p2-teacher-solution-view > header > div { display:grid; gap:2px; }
+body.p2-shell .p2-teacher-solution-view > header strong { color:#404b5f; font-size:10px; }
+body.p2-shell .p2-teacher-solution-view > header span { color:#8c95a4; font-size:8px; }
+body.p2-shell .p2-live-label { color:#6f9a7d; font-size:8px; font-weight:850; }
+body.p2-shell .p2-teacher-solution-step { grid-template-columns:26px minmax(0,1fr) 22px; }
+body.p2-shell math-field.p2-teacher-live-math { display:block; width:100%; min-height:34px; padding:5px 7px; font-size:18px; }
+@media (max-width:700px) {
+  body.p2-shell math-field.p2-task-equation,
+  body.p2-shell math-field.p2-preview-equation { font-size:21px; }
+  body.p2-shell .p2-solution-step { grid-template-columns:22px minmax(0,1fr) 20px 22px; padding:8px 7px; gap:5px; }
+  body.p2-shell math-field.p2-solution-math-field { font-size:17px; }
+  body.p2-shell .p2-solution-editor-head > span { display:none; }
+}
