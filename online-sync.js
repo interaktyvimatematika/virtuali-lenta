@@ -483,7 +483,16 @@ onValue(p2AssignmentRef, snapshot => {
   window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: snapshot.val() || null }));
 });
 onValue(p2ProgressRef, snapshot => {
-  window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: snapshot.val() || null }));
+  const value = snapshot.val() || null;
+
+  // P2-SPLIT-P2.1.1: mokinio paties Firebase įrašo echo negrąžiname atgal į jo UI.
+  // Sprendimo MathLive laukas jau turi naujausią vietinę būseną. Greitai rašant
+  // ankstesnio simbolio echo galėdavo atkeliauti po kito simbolio, sukelti viso
+  // pratybų skydelio perrenderinimą ir pakeisti aktyvų lauką nauju DOM elementu.
+  // Mokytojas ir toliau gauna kiekvieną mokinio atnaujinimą realiu laiku.
+  if (onlineRole === 'student' && value?.updatedBy === me) return;
+
+  window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: value }));
 });
 
 function sanitizeAttemptPolicy(value) {
@@ -544,7 +553,7 @@ window.addEventListener('p2:assignment-request', async event => {
     });
     bridge.showToast?.('Pamoka priskirta mokiniui');
   } catch (error) {
-    console.error('P2-SPLIT-P2.1 priskyrimo / nustatymų klaida', error);
+    console.error('P2-SPLIT-P2.1.1 priskyrimo / nustatymų klaida', error);
     bridge.showToast?.('Nepavyko pakeisti pamokos nustatymų');
   }
 });
@@ -556,7 +565,7 @@ async function persistP2PracticeProgress(event) {
   try {
     await set(p2ProgressRef, { ...value, updatedAt: Date.now(), updatedBy: me });
   } catch (error) {
-    console.error('P2-SPLIT-P2.1 mokinio eigos klaida', error);
+    console.error('P2-SPLIT-P2.1.1 mokinio eigos klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
   }
 }
