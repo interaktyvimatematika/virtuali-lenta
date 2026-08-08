@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.2.3';
+  const BUILD = 'P2-SPLIT-P2.3';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -88,7 +88,32 @@
           }
         }
       },
-      { id: 'c3', section: 'class', label: 'Pamokoje', prompt: 'Ką reiškia užrašas f(4) = 9?', choices: ['Kai x = 9, y = 4', 'Kai x = 4, funkcijos reikšmė yra 9', 'Funkcija visada lygi 9', 'Grafikas kerta x ašį ties 4'], answer: 'Kai x = 4, funkcijos reikšmė yra 9', hint: 'f(4) nurodo funkcijos reikšmę, kai argumento x reikšmė yra 4.' },
+      {
+        id: 'c3',
+        type: 'solution',
+        section: 'class',
+        label: 'Pamokoje',
+        title: 'Išspręsk kvadratinę lygtį',
+        prompt: 'x^2 - 5x + 6 = 0',
+        instruction: 'Išspręsk kvadratinę lygtį parodydamas sprendimo eigą. Kai gausi du atvejus, pasirink „Šakos“.',
+        answer: 'x = 2; x = 3',
+        hint: 'Išskaidyk daugianarį dauginamaisiais: (x - 2)(x - 3) = 0.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Pvz., (x - 2)(x - 3) = 0',
+          validator: 'quadratic-equation-chain',
+          options: {
+            initial: 'x^2 - 5x + 6 = 0',
+            expectedVariable: 'x',
+            expectedValues: [2, 3],
+            expectedDisplay: 'x = 2; x = 3',
+            minimumSteps: 2,
+            autoDerived: true
+          }
+        }
+      },
       { id: 'c4', section: 'class', label: 'Pamokoje', prompt: 'Jei f(x) = 3 − x, kokia yra f(−2) reikšmė?', choices: ['1', '5', '−5', '−1'], answer: '5', hint: 'Atsargiai su dviem minuso ženklais: 3 − (−2).' },
       { id: 's1', section: 'self', label: 'Savarankiškai', prompt: 'Jei g(x) = 4x − 3, kokia yra g(2) reikšmė?', choices: ['5', '8', '11', '−5'], answer: '5', hint: 'Įrašyk x = 2 į formulę g(x) = 4x − 3.' },
       { id: 's2', section: 'self', label: 'Savarankiškai', prompt: 'Kuris užrašas reiškia, kad taškas (2; 6) priklauso funkcijos h grafikui?', choices: ['h(6) = 2', 'h(2) = 6', 'h(x) = 2', 'h(2) = x'], answer: 'h(2) = 6', hint: 'Taško pirmoji koordinatė yra x, antroji – funkcijos reikšmė.' }
@@ -576,15 +601,34 @@
     const response = solutionResponseForItem(item);
     const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
     const stepResults = Array.isArray(item.validationResult?.stepResults) ? item.validationResult.stepResults : [];
-    const rows = response.steps.map((step, index) => {
+    const structuredModes = task.response?.validator === 'quadratic-equation-chain';
+    const rows = response.steps.map((rawStep, index) => {
+      const step = practiceEngine?.createStep?.(rawStep?.type || 'equation', rawStep?.values || [''], rawStep?.latexValues || ['']) || rawStep;
       const result = stepResults[index] || null;
       const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
       const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const fields = step.type === 'alternatives'
+        ? `<div class="p2-solution-branches">
+            <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="0"></div>
+            <span class="p2-solution-branch-separator">arba</span>
+            <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="1"></div>
+          </div>`
+        : `<div class="p2-solution-single-field ${step.type === 'solution-set' ? 'is-answer' : ''}">
+            ${step.type === 'solution-set' ? '<span class="p2-solution-answer-prefix">Atsakymas</span>' : ''}
+            <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="0"></div>
+          </div>`;
+      const tools = structuredModes ? `
+        <div class="p2-solution-step-tools" aria-label="${index + 1} eilutės tipas">
+          <button type="button" class="${step.type === 'equation' ? 'is-active' : ''}" data-solution-type="equation" data-solution-type-step="${index}" ${locked ? 'disabled' : ''}>Lygtis</button>
+          <button type="button" class="${step.type === 'alternatives' ? 'is-active' : ''}" data-solution-type="alternatives" data-solution-type-step="${index}" ${locked ? 'disabled' : ''}>Šakos</button>
+          <button type="button" class="${step.type === 'solution-set' ? 'is-active' : ''}" data-solution-type="solution-set" data-solution-type-step="${index}" ${locked ? 'disabled' : ''}>Atsakymas</button>
+        </div>` : '';
       return `
-        <div class="p2-solution-step${resultClass}" data-solution-step="${index}">
+        <div class="p2-solution-step${resultClass}" data-solution-step="${index}" data-solution-step-type="${escapeHtml(step.type || 'equation')}">
           <span class="p2-solution-step-number">${index + 1}.</span>
           <div class="p2-solution-step-main">
-            <div class="p2-solution-field-host" data-solution-field="${index}"></div>
+            ${fields}
+            ${tools}
             <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
           </div>
           <span class="p2-solution-step-state" aria-hidden="true">${stateMark}</span>
@@ -595,7 +639,7 @@
     return `
       <section class="p2-solution-editor ${locked ? 'is-locked' : ''}">
         <header class="p2-solution-editor-head">
-          <div><span>Sprendimo eiga</span><small>Rašyk po vieną lygties žingsnį eilutėje.</small></div>
+          <div><span>Sprendimo eiga</span><small>${structuredModes ? 'Lygtį skaidant į du atvejus pasirink „Šakos“.' : 'Rašyk po vieną lygties žingsnį eilutėje.'}</small></div>
           <span><kbd>Enter</kbd> – nauja eilutė</span>
         </header>
         <div class="p2-solution-steps">${rows}</div>
@@ -604,7 +648,6 @@
         </div>
       </section>`;
   }
-
 
   function expressionEditorMarkup(task, item) {
     const response = expressionResponseForItem(item);
@@ -735,13 +778,21 @@
     `;
   }
 
-  function updateLiveSolution(task, index, plain, latex, row) {
+  function updateLiveSolution(task, index, branchIndex, plain, latex, row) {
     const next = normalizedProgress(progress);
     const previous = taskState(task.id);
     const response = solutionResponseForItem(previous);
     while (response.steps.length <= index) response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
-    response.steps[index] = practiceEngine?.createStep?.('equation', [plain], [latex])
-      || { type: 'equation', values: [plain], latexValues: [latex] };
+    const current = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
+    const type = ['equation', 'alternatives', 'solution-set'].includes(current.type) ? current.type : 'equation';
+    const values = Array.isArray(current.values) ? [...current.values] : [''];
+    const latexValues = Array.isArray(current.latexValues) ? [...current.latexValues] : [''];
+    while (values.length <= branchIndex) values.push('');
+    while (latexValues.length <= branchIndex) latexValues.push('');
+    values[branchIndex] = plain;
+    latexValues[branchIndex] = latex;
+    response.steps[index] = practiceEngine?.createStep?.(type, values, latexValues)
+      || { type, values, latexValues };
 
     next.status = 'in_progress';
     next.taskStates = {
@@ -761,6 +812,28 @@
     publishLiveProgress(next, task.id);
   }
 
+  function setSolutionStepType(taskId, index, type) {
+    const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
+    if (!task || !isSolutionTask(task) || task.response?.validator !== 'quadratic-equation-chain') return;
+    const previous = taskState(taskId);
+    if (previous.solved || isTaskExhausted(previous, taskId)) return;
+    const response = solutionResponseForItem(previous);
+    const current = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
+    const firstValue = current.values?.[0] || '';
+    const firstLatex = current.latexValues?.[0] || '';
+    response.steps[index] = type === 'alternatives'
+      ? (practiceEngine?.createStep?.('alternatives', [firstValue, ''], [firstLatex, '']) || { type: 'alternatives', values: [firstValue, ''], latexValues: [firstLatex, ''] })
+      : (practiceEngine?.createStep?.(type, [firstValue], [firstLatex]) || { type, values: [firstValue], latexValues: [firstLatex] });
+    const next = normalizedProgress(progress);
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
+    };
+    solutionFocusRequest = { taskId, index, branchIndex: 0 };
+    publishProgress(next);
+  }
+
   function hydrateStudentSolutionEditor() {
     const task = currentTask();
     if (!isSolutionTask(task)) return;
@@ -769,22 +842,37 @@
     const response = solutionResponseForItem(item);
     studentPanel.querySelectorAll('[data-solution-field]').forEach(host => {
       const index = Number(host.dataset.solutionField);
+      const branchIndex = Math.max(0, Number(host.dataset.solutionBranch || 0));
       const step = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
       if (!practiceEngine?.createMathField) {
-        host.textContent = step.values?.[0] || '';
+        host.textContent = step.values?.[branchIndex] || '';
         return;
       }
       const row = host.closest('.p2-solution-step');
       const field = practiceEngine.createMathField({
-        source: step.values?.[0] || '',
-        latexSource: step.latexValues?.[0] || '',
-        kind: 'equation',
-        fieldKey: `p2:${task.id}:step:${index}`,
-        testid: `p2-step-input-${index}`,
-        placeholder: task.response?.placeholder || 'Kita lygtis',
-        contextLabel: `P2 pratybų ${index + 1} sprendimo eilutė`,
-        onCommit: (plain, latex) => updateLiveSolution(task, index, plain, latex, row),
-        onEnter: () => addSolutionStep(task.id, index + 1)
+        source: step.values?.[branchIndex] || '',
+        latexSource: step.latexValues?.[branchIndex] || '',
+        kind: step.type === 'solution-set' ? 'solution-set' : 'equation',
+        fieldKey: `p2:${task.id}:step:${index}:branch:${branchIndex}`,
+        testid: branchIndex === 0 ? `p2-step-input-${index}` : `p2-step-input-${index}-${branchIndex}`,
+        placeholder: step.type === 'alternatives'
+          ? (branchIndex === 0 ? 'Pirmas atvejis' : 'Antras atvejis')
+          : step.type === 'solution-set'
+            ? 'Pvz., x = 2; x = 3'
+            : (task.response?.placeholder || 'Kita lygtis'),
+        contextLabel: step.type === 'alternatives'
+          ? `P2 pratybų ${index + 1} eilutės ${branchIndex + 1} sprendimo šaka`
+          : step.type === 'solution-set'
+            ? 'P2 pratybų galutinis atsakymas'
+            : `P2 pratybų ${index + 1} sprendimo eilutė`,
+        onCommit: (plain, latex) => updateLiveSolution(task, index, branchIndex, plain, latex, row),
+        onEnter: () => {
+          if (step.type === 'alternatives' && branchIndex === 0) {
+            studentPanel.querySelector(`[data-testid="p2-step-input-${index}-1"]`)?.focus();
+            return;
+          }
+          addSolutionStep(task.id, index + 1);
+        }
       });
       field.classList.add('p2-solution-math-field');
       if (locked) {
@@ -796,9 +884,13 @@
 
     if (solutionFocusRequest?.taskId === task.id) {
       const targetIndex = solutionFocusRequest.index;
+      const targetBranch = solutionFocusRequest.branchIndex || 0;
       solutionFocusRequest = null;
       requestAnimationFrame(() => {
-        studentPanel.querySelector(`[data-testid="p2-step-input-${targetIndex}"]`)?.focus();
+        const selector = targetBranch === 0
+          ? `[data-testid="p2-step-input-${targetIndex}"]`
+          : `[data-testid="p2-step-input-${targetIndex}-${targetBranch}"]`;
+        studentPanel.querySelector(selector)?.focus();
       });
     }
   }
@@ -878,6 +970,13 @@
     studentPanel.querySelector('[data-action="add-solution-step"]')?.addEventListener('click', () => addSolutionStep(currentTask().id));
     studentPanel.querySelectorAll('[data-solution-remove]').forEach(button => {
       button.addEventListener('click', () => removeSolutionStep(currentTask().id, Number(button.dataset.solutionRemove)));
+    });
+    studentPanel.querySelectorAll('[data-solution-type]').forEach(button => {
+      button.addEventListener('click', () => setSolutionStepType(
+        currentTask().id,
+        Number(button.dataset.solutionTypeStep),
+        button.dataset.solutionType
+      ));
     });
 
     studentPanel.querySelector('[data-action="check"]')?.addEventListener('click', () => {
@@ -1313,12 +1412,22 @@
       const result = stepResults[index] || null;
       const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
       const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
-      const value = step?.values?.[0] || '';
+      let valueMarkup;
+      if (step?.type === 'alternatives') {
+        const branches = (step.values || []).map(value => `<math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value || '')}</math-field>`);
+        valueMarkup = `<div class="p2-teacher-solution-branches">${branches.map((branch, branchIndex) => `${branchIndex ? '<span>arba</span>' : ''}${branch}`).join('')}</div>`;
+      } else {
+        const value = step?.values?.[0] || '';
+        valueMarkup = `<div class="p2-teacher-solution-single ${step?.type === 'solution-set' ? 'is-answer' : ''}">
+          ${step?.type === 'solution-set' ? '<span class="p2-solution-answer-prefix">Atsakymas</span>' : ''}
+          <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value)}</math-field>
+        </div>`;
+      }
       return `
         <div class="p2-solution-step p2-teacher-solution-step${resultClass}">
           <span class="p2-solution-step-number">${index + 1}.</span>
           <div class="p2-solution-step-main">
-            <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value)}</math-field>
+            ${valueMarkup}
             <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
           </div>
           <span class="p2-solution-step-state" aria-hidden="true">${stateMark}</span>

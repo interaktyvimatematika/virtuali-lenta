@@ -4813,3 +4813,81 @@ body.p2-shell .p2-teacher-expression-view.is-warning .p2-expression-message { co
 @media (max-width: 900px) {
   body.p2-shell math-field.p2-expression-math-field { min-height: 48px; font-size: 19px; }
 }
+
+/* =========================================================
+   P2-SPLIT-P2.3 · Kvadratinės lygties sprendimo šakos
+   ========================================================= */
+body.p2-shell .p2-solution-step-tools {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  margin:5px 6px 0;
+}
+body.p2-shell .p2-solution-step-tools button {
+  min-height:23px;
+  padding:3px 7px;
+  border:1px solid #e2e6ee;
+  border-radius:7px;
+  background:#fff;
+  color:#788397;
+  font:750 8px/1.2 inherit;
+  cursor:pointer;
+}
+body.p2-shell .p2-solution-step-tools button:hover:not(:disabled) {
+  border-color:#cfd6e4;
+  background:#f8f9fc;
+  color:#526077;
+}
+body.p2-shell .p2-solution-step-tools button.is-active {
+  border-color:#b8c4ef;
+  background:#f2f5ff;
+  color:#5269c8;
+}
+body.p2-shell .p2-solution-step-tools button:disabled { opacity:.48; cursor:default; }
+body.p2-shell .p2-solution-branches,
+body.p2-shell .p2-teacher-solution-branches {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;
+  gap:7px;
+  min-width:0;
+}
+body.p2-shell .p2-solution-branch-separator,
+body.p2-shell .p2-teacher-solution-branches > span {
+  color:#929baa;
+  font-size:9px;
+  font-weight:750;
+  text-transform:lowercase;
+}
+body.p2-shell .p2-solution-single-field,
+body.p2-shell .p2-teacher-solution-single {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+body.p2-shell .p2-solution-single-field > .p2-solution-field-host,
+body.p2-shell .p2-teacher-solution-single > math-field { flex:1 1 auto; min-width:0; }
+body.p2-shell .p2-solution-answer-prefix {
+  flex:0 0 auto;
+  color:#7c8798;
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+body.p2-shell .p2-teacher-solution-branches math-field.p2-teacher-live-math {
+  min-width:0;
+}
+@media (max-width:700px) {
+  body.p2-shell .p2-solution-branches,
+  body.p2-shell .p2-teacher-solution-branches {
+    grid-template-columns:1fr;
+    gap:2px;
+  }
+  body.p2-shell .p2-solution-branch-separator,
+  body.p2-shell .p2-teacher-solution-branches > span {
+    padding-left:7px;
+  }
+  body.p2-shell .p2-solution-step-tools { flex-wrap:wrap; }
+}
