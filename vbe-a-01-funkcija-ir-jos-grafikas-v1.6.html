@@ -184,6 +184,8 @@ const EMBED_PARAMS = new URLSearchParams(location.search);
 const EMBEDDED = EMBED_PARAMS.get("embed") === "1";
 const EMBED_ROLE = EMBED_PARAMS.get("role") === "student" ? "student" : "teacher";
 const EMBED_PRACTICE_ID = EMBED_PARAMS.get("practiceId") || "";
+const REQUESTED_LESSON = Number(EMBED_PARAMS.get("lesson"));
+const LESSON_FILTER = [1,2,3,4].includes(REQUESTED_LESSON) ? REQUESTED_LESSON : null;
 const letters = ["A","B","C","D","E","F"];
 const skills = {
   "Funkcijos sąvoka":"Funkcijos sąvoka",
@@ -321,6 +323,8 @@ const taskData = [
    hint2:"Didžiausias atstumas 2 km išlieka 10–15 min.; horizontali dalis reiškia nekintantį atstumą; namo grįžtama po 25 min."}
 ];
 
+const moduleTaskData = LESSON_FILTER ? taskData.filter(t=>t.lesson===LESSON_FILTER) : taskData;
+
 const lessonNames = {
   1:"1 pamoka · Funkcija ir f(x)",
   2:"2 pamoka · Skaitome grafiką",
@@ -357,7 +361,7 @@ function saveState(){
   }
   publishEmbeddedState();
 }
-function activeTasks(){ return taskData.filter(t=>t.mode===mode); }
+function activeTasks(){ return moduleTaskData.filter(t=>t.mode===mode); }
 function currentTask(){ return activeTasks()[currentIndex]; }
 
 function norm(s){
@@ -390,7 +394,8 @@ function taskState(id){
   return state[id];
 }
 function lessonDots(task){
-  return [1,2,3,4].map(n=>`<span class="lesson-pill ${n===task.lesson?'current':''}">${lessonNames[n]}</span>`).join("");
+  const lessons = LESSON_FILTER ? [LESSON_FILTER] : [1,2,3,4];
+  return lessons.map(n=>`<span class="lesson-pill ${n===task.lesson?'current':''}">${lessonNames[n]}</span>`).join("");
 }
 function setMode(newMode){
   mode=newMode; currentIndex=0; selectedChoice=null; graphZeroClicks=[]; saveState();
@@ -415,16 +420,21 @@ function startScreen(){
   const main=document.getElementById("main");
   main.innerHTML=`
     <section class="card start-card">
-      <div class="task-num">VBE A KURSAS · 1 MODULIS</div>
-      <h2>Funkcija ir jos grafikas</h2>
-      <p>Šis modulis skirtas ne vien pasitikrinti. Jame trumpai prisiminsime funkcijos kalbą, taisyklingai skaitysime funkcijų grafikus, jungsime formulę su grafiku ir spręsime pirmas VBE tipo situacijas.</p>
+      <div class="task-num">${LESSON_FILTER ? `VBE A KURSAS · ${LESSON_FILTER} PAMOKA` : "VBE A KURSAS · 1 MODULIS"}</div>
+      <h2>${LESSON_FILTER===1 ? "Funkcija ir f(x)" : "Funkcija ir jos grafikas"}</h2>
+      <p>${LESSON_FILTER===1 ? "Šioje pamokoje prisiminsime funkcijos sąvoką, užrašą f(x), funkcijos reikšmės apskaičiavimą ir taško priklausymą funkcijos grafikui." : "Šis modulis skirtas ne vien pasitikrinti. Jame trumpai prisiminsime funkcijos kalbą, taisyklingai skaitysime funkcijų grafikus, jungsime formulę su grafiku ir spręsime pirmas VBE tipo situacijas."}</p>
       <div class="outcomes">
-        <div>✓ suprasti, ką reiškia \\(f(x)\\)</div>
+        ${LESSON_FILTER===1 ? `
+        <div>✓ atpažinti, kuris grafikas gali būti funkcijos grafikas</div>
+        <div>✓ suprasti, ką reiškia \(f(x)\)</div>
+        <div>✓ apskaičiuoti funkcijos reikšmę</div>
+        <div>✓ patikrinti, ar taškas priklauso funkcijos grafikui</div>` : `
+        <div>✓ suprasti, ką reiškia \(f(x)\)</div>
         <div>✓ apskaičiuoti funkcijos reikšmę</div>
         <div>✓ rasti funkcijos nulius ir ženklą</div>
         <div>✓ skaityti didėjimą, mažėjimą ir sritis</div>
         <div>✓ suprasti tiesinės funkcijos formulę</div>
-        <div>✓ pereiti nuo situacijos prie funkcijos modelio</div>
+        <div>✓ pereiti nuo situacijos prie funkcijos modelio</div>`}
       </div>
       <p class="tiny">Režimas <b>${mode==="class"?"Pamokoje":"Savarankiškai"}</b>: ${activeTasks().length} užduočių. Rezultatas saugomas šiame naršyklės įrenginyje.</p>
       <div class="start-actions">
@@ -1022,7 +1032,7 @@ function aggregate(tasks){
 }
 function renderTeacher(){
   const panel=document.getElementById("teacherPanel");
-  const all=taskData;
+  const all=moduleTaskData;
   const completed=all.filter(t=>taskState(t.id).completed).length;
   const independent=all.filter(t=>taskState(t.id).status==="independent").length;
   const help=all.filter(t=>taskState(t.id).status==="with_help").length;
@@ -1035,7 +1045,7 @@ function renderTeacher(){
       <div class="task-head"><div><div class="task-num">MOKYTOJO SUVESTINĖ</div><h2 style="margin:6px 0 0">Mokymosi profilis</h2></div>
       <button id="closeTeacher" class="ghost" type="button">Uždaryti</button></div>
       <div class="teacher-grid">
-        <div class="metric">Atlikta<b>${completed}/${taskData.length}</b></div>
+        <div class="metric">Atlikta<b>${completed}/${moduleTaskData.length}</b></div>
         <div class="metric">Iš pirmo karto<b>${independent}</b></div>
         <div class="metric">Su pagalba<b>${help}</b></div>
         <div class="metric">Kartoti<b>${repeat}</b></div>
@@ -1054,7 +1064,7 @@ function renderTeacher(){
   document.getElementById("closeTeacher").onclick=()=>panel.classList.remove("show");
   document.getElementById("copySummary").onclick=()=>{
     const lines=["Funkcija ir jos grafikas · mokytojo suvestinė",
-      `Atlikta: ${completed}/${taskData.length}`, `Savarankiškai: ${independent}`, `Su pagalba: ${help}`, `Kartoti: ${repeat}`,"",
+      `Atlikta: ${completed}/${moduleTaskData.length}`, `Savarankiškai: ${independent}`, `Su pagalba: ${help}`, `Kartoti: ${repeat}`,"",
       ...agg.map(x=>`${skills[x.skill]||x.skill}: savarankiškai ${x.independent}, su pagalba ${x.help}, kartoti ${x.repeat}`)];
     navigator.clipboard?.writeText(lines.join("\n")).then(()=>alert("Suvestinė nukopijuota."));
   };

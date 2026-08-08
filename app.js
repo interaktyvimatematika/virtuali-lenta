@@ -321,10 +321,27 @@
 
   const BUILTIN_PRACTICE_SETS = Object.freeze([
     {
+      id: 'builtin-vbe-a-01-pamoka-funkcija-fx-v1-6',
+      kind: 'external-module',
+      title: 'VBE A · 1 pamoka — Funkcija ir f(x)',
+      description: 'Artimiausiai pamokai · 5 užduotys Pamokoje + 3 Savarankiškai',
+      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html?lesson=1',
+      moduleId: 'vbe-funkcija-grafikas-v1-6',
+      moduleVersion: '1.6 · 1 pamoka',
+      taskCount: 8,
+      classTaskCount: 5,
+      selfTaskCount: 3,
+      builtIn: true,
+      createdAt: '2026-08-08T00:00:00.000Z',
+      updatedAt: '2026-08-08T00:00:00.000Z',
+      taskRefs: [],
+      snapshots: []
+    },
+    {
       id: 'builtin-vbe-a-01-funkcija-grafikas-v1-6',
       kind: 'external-module',
-      title: 'VBE A · Funkcija ir jos grafikas',
-      description: '1 modulis · 4 pamokų turinys · Pamokoje ir Savarankiškai',
+      title: 'VBE A · Funkcija ir jos grafikas — visas modulis',
+      description: '4 pamokos · 34 užduotys · Pamokoje ir Savarankiškai',
       moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html',
       moduleId: 'vbe-funkcija-grafikas-v1-6',
       moduleVersion: '1.6',
@@ -333,7 +350,7 @@
       selfTaskCount: 12,
       builtIn: true,
       createdAt: '2026-08-07T18:39:00.000Z',
-      updatedAt: '2026-08-07T18:39:00.000Z',
+      updatedAt: '2026-08-08T00:00:00.000Z',
       taskRefs: [],
       snapshots: []
     }
@@ -7427,7 +7444,7 @@ KOKYBĖS REIKALAVIMAI:
       frame.className = 'external-practice-module-frame';
       frame.dataset.externalPracticeId = instance.id;
       const joiner = instance.moduleUrl.includes('?') ? '&' : '?';
-      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.3`;
+      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.4`;
       frame.title = instance.title;
       frame.setAttribute('allow', 'clipboard-write');
       frame.addEventListener('load', () => syncExternalPracticeFrame(instance));
@@ -8186,7 +8203,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.8.3',
+    version: 'P7.7.2-ONLINE-P1.1.8.4',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
