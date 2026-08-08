@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const BUILD = 'P2-SPLIT-P1.5';
+  const BUILD = 'P2-SPLIT-P1.5.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');

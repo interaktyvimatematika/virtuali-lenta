@@ -3312,3 +3312,27 @@ body[data-p2-view="practice"].p2-shell .p2-teacher-panel { max-width:1120px; }
   .p2-side-role-pill { display:none; }
   .p2-side-scroll { padding:12px; }
 }
+
+/* =========================================================
+   P2-SPLIT-P1.5.1 — practice / student-progress full view fix.
+   Kai pirmi du grid elementai paslepiami, CSS Grid auto-placement anksčiau
+   perkeldavo šoninį langą į 0 px pirmą stulpelį. Pilname pratybų / mokinio
+   eigos vaizde šoninė sritis dabar aiškiai užima vienintelį pilno pločio stulpelį.
+   ========================================================= */
+body.p2-shell #practiceOnlyButton {
+  display: none !important;
+}
+body.p2-shell .p2-workspace[data-view="practice"] {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+body.p2-shell .p2-workspace[data-view="practice"] .p2-side-pane {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-left: 0;
+  border-top: 0;
+}
