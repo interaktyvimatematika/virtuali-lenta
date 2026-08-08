@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9.2';
+  const BUILD = 'P2-SPLIT-P1.9.3';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -194,8 +194,7 @@
     if (state.solved && state.status === 'help') return { key: 'help', label: 'Su pagalba' };
     if (state.solved && state.status === 'good') return { key: 'good', label: 'Savarankiškai' };
     if (options.current) return { key: 'working', label: 'Vykdoma' };
-    if (Number(state.attempts || 0) > 0) return { key: 'working', label: 'Bandoma' };
-    if (state.openedAt) return { key: 'started', label: 'Pradėta' };
+    if (state.openedAt || Number(state.attempts || 0) > 0) return { key: 'started', label: 'Pradėta' };
     return { key: 'pending', label: 'Nepradėta' };
   }
 
@@ -693,19 +692,20 @@
       return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b>${marker}</div>`;
     }).join('');
 
-    const taskList = DEMO_LESSON.tasks.map((task, index) => {
+    const taskNavigation = DEMO_LESSON.tasks.map((task, index) => {
       const taskItem = taskState(task.id);
       const taskPedagogy = pedagogicalStatus(taskItem, { current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
       const classes = [
-        'p2-preview-task',
+        'p2-preview-task-dot',
         task.id === previewTask.id ? 'is-previewed' : '',
-        task.id === studentTask.id ? 'is-student-current' : ''
+        task.id === studentTask.id ? 'is-student-current' : '',
+        taskPedagogy.key === 'good' ? 'is-good' : '',
+        taskPedagogy.key === 'help' ? 'is-help' : '',
+        taskPedagogy.key === 'repeat' ? 'is-repeat' : '',
+        taskPedagogy.key === 'working' ? 'is-working' : '',
+        taskPedagogy.key === 'started' ? 'is-started' : ''
       ].filter(Boolean).join(' ');
-      return `<button type="button" class="${classes}" data-preview-task="${task.id}">
-        <span class="p2-preview-index">${index + 1}</span>
-        <span class="p2-preview-task-copy"><strong>${escapeHtml(task.prompt)}</strong><small>${escapeHtml(task.label)} · ${taskItem.attempts || 0} band.</small></span>
-        <span class="p2-preview-badge status-${taskPedagogy.key}">${taskPedagogy.label}</span>
-      </button>`;
+      return `<button type="button" class="${classes}" data-preview-task="${task.id}" title="${index + 1}. ${escapeHtml(task.prompt)} · ${taskPedagogy.label}" aria-label="${index + 1} užduotis, ${taskPedagogy.label}">${index + 1}</button>`;
     }).join('');
 
     const locationText = isStudentTask
@@ -721,8 +721,8 @@
             : '<button type="button" class="p2-secondary" data-preview-action="return">↩ Grįžti prie mokinio</button>'}
         </div>
       </div>
+      <nav class="p2-preview-task-dots" aria-label="Pamokos užduotys">${taskNavigation}</nav>
       <div class="p2-preview-layout">
-        <nav class="p2-preview-task-list" aria-label="Pamokos užduotys">${taskList}</nav>
         <article class="p2-preview-detail">
           <header class="p2-preview-detail-head">
             <div>
