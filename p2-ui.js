@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4';
+  const BUILD = 'P2-SPLIT-P2.4.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -602,7 +602,10 @@
     const response = solutionResponseForItem(item);
     const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
     const stepResults = Array.isArray(item.validationResult?.stepResults) ? item.validationResult.stepResults : [];
-    const structuredModes = task.response?.validator === 'quadratic-equation-chain';
+    // P2.4.1: vieninga sprendimo lapo sistema taikoma VISOMS sprendimo eigos užduotims.
+    // Tiesinė ir kvadratinė lygtis naudoja tą pačią Įprasta / Šakos / Atsakymas juostą;
+    // skirtumas lieka tik matematiniame validatoriuje, ne mokinio sąsajoje.
+    const structuredModes = true;
     const activeIndex = activeSolutionStep.taskId === task.id
       ? Math.max(0, Math.min(response.steps.length - 1, Number(activeSolutionStep.index || 0)))
       : 0;
@@ -824,7 +827,7 @@
 
   function setSolutionStepType(taskId, index, type) {
     const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
-    if (!task || !isSolutionTask(task) || task.response?.validator !== 'quadratic-equation-chain') return;
+    if (!task || !isSolutionTask(task)) return;
     const previous = taskState(taskId);
     if (previous.solved || isTaskExhausted(previous, taskId)) return;
     const response = solutionResponseForItem(previous);

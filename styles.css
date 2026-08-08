@@ -4895,7 +4895,7 @@ body.p2-shell .p2-teacher-solution-branches math-field.p2-teacher-live-math {
 
 
 /* =========================================================
-   P2-SPLIT-P2.4 · Minimalus „sprendimo lapo“ UI
+   P2-SPLIT-P2.4.1 · Vieningas fiksuoto ritmo „sprendimo lapo“ UI
    Sprendimo sritis skirta matematikai, techniniai valdikliai
    sutelkti vienoje juostoje virš lapo.
    ========================================================= */
@@ -4976,6 +4976,11 @@ body.p2-shell .p2-solution-paper-lines {
   position: relative;
   display: grid;
   gap: 0;
+  /* P2.4.1: fiksuotas „sąsiuvinio“ ritmas.
+     align-content:start neleidžia kelioms eilutėms išsitempti per visą min-height,
+     todėl 1, 2 ar 6 eilutės visada turi tokį patį vertikalų žingsnį. */
+  align-content: start;
+  grid-auto-rows: max-content;
   min-height: 252px;
   padding: 7px 12px 24px;
   background:
@@ -4996,6 +5001,7 @@ body.p2-shell .p2-teacher-solution-step.p2-paper-step {
   align-items: start;
   gap: 4px;
   min-height: 56px;
+  block-size: auto;
   padding: 3px 0;
   border: 0;
   background: transparent;
