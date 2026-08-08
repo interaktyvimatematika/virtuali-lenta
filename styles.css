@@ -3577,3 +3577,18 @@ body.p2-shell .p2-splitter:hover { background:#e3e8f1; }
   body.p2-shell .p2-student-progress > div { border-right:0; border-bottom:1px solid #e8ecf2; }
   body.p2-shell .p2-student-progress > div:last-child { border-bottom:0; }
 }
+
+
+/* =========================================================
+   P2-SPLIT-P1.6.1 — rolių panelių matomumo pataisa.
+   `hidden` atributą ankstesnis bendras `.p2-*-panel { display:grid }`
+   stilius perrašydavo, todėl mokytojo režime buvo matoma ir mokinio panelė.
+   ========================================================= */
+body.p2-shell .p2-student-panel[hidden],
+body.p2-shell .p2-teacher-panel[hidden] {
+  display: none !important;
+}
+body.p2-shell[data-online-role="teacher"] #p2StudentPanel,
+body.p2-shell[data-online-role="student"] #p2TeacherPanel {
+  display: none !important;
+}
