@@ -3130,3 +3130,42 @@ body.p2-shell #practiceOnlyOverlay { display:none !important; }
   .p2-learner-card { grid-template-columns:auto 1fr; }
   .p2-presence-pill { grid-column:1/-1; justify-self:start; }
 }
+
+
+/* P2-SPLIT-P1.3 – teksto / formulės objektas susilieja su lenta, kol nėra redaguojamas.
+   Baltas „lapelis“ rodomas tik aktyvaus redagavimo metu. */
+body.p2-shell .board-note.board-mixed-editor {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+body.p2-shell .board-note.board-mixed-editor.is-active-object:not(.is-mixed-editing):not(:focus-within) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+body.p2-shell .board-note.board-mixed-editor:hover:not(.is-mixed-editing):not(:focus-within) {
+  border-color: rgba(166,178,197,.42);
+  background: rgba(255,255,255,.10);
+  box-shadow: none;
+}
+body.p2-shell .board-note.board-mixed-editor:focus-within,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing {
+  border-color: #7189dd;
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 0 0 3px rgba(74,103,214,.11),0 12px 32px rgba(34,45,68,.15);
+}
+/* Valdymo rankenėlės ramybės būsenoje netrukdo tekstui atrodyti kaip lentos užrašui. */
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-remove {
+  opacity: 0;
+  transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+body.p2-shell .board-note.board-mixed-editor:hover .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor:hover .mixed-editor-remove,
+body.p2-shell .board-note.board-mixed-editor:focus-within .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor:focus-within .mixed-editor-remove,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing .mixed-editor-remove {
+  opacity: 1;
+}
