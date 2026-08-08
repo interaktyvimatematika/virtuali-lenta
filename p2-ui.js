@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.3.2';
+  const BUILD = 'P2-SPLIT-P2.3.3';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -481,11 +481,11 @@
     return next;
   }
 
-  function publishProgress(next) {
+  function publishProgress(next, options = {}) {
     progress = normalizedProgress(next);
     progress.updatedAt = Date.now();
     window.dispatchEvent(new CustomEvent('p2:practice-progress-request', { detail: progress }));
-    renderPanels();
+    if (options.render !== false) renderPanels();
   }
 
   function taskIndex(taskId) {
@@ -835,13 +835,14 @@
     publishProgress(next);
   }
 
-  function hydrateStudentSolutionEditor() {
+  function hydrateStudentSolutionEditor(options = {}) {
     const task = currentTask();
     if (!isSolutionTask(task)) return;
     const item = currentTaskState();
     const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
     const response = solutionResponseForItem(item);
     studentPanel.querySelectorAll('[data-solution-field]').forEach(host => {
+      if (options.onlyEmpty && host.querySelector('math-field')) return;
       const index = Number(host.dataset.solutionField);
       const branchIndex = Math.max(0, Number(host.dataset.solutionBranch || 0));
       const step = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
@@ -898,6 +899,62 @@
     }
   }
 
+  function solutionFieldSelector(index, branchIndex = 0) {
+    return branchIndex === 0
+      ? `[data-testid="p2-step-input-${index}"]`
+      : `[data-testid="p2-step-input-${index}-${branchIndex}"]`;
+  }
+
+  function focusStudentSolutionField(index, branchIndex = 0) {
+    requestAnimationFrame(() => {
+      const target = studentPanel.querySelector(solutionFieldSelector(index, branchIndex));
+      if (!target) return;
+      try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); }
+    });
+  }
+
+  function bindSolutionRowActions(scope = studentPanel) {
+    scope.querySelectorAll('[data-solution-remove]').forEach(button => {
+      if (button.dataset.p2Bound === '1') return;
+      button.dataset.p2Bound = '1';
+      button.addEventListener('click', () => removeSolutionStep(currentTask().id, Number(button.dataset.solutionRemove)));
+    });
+    scope.querySelectorAll('[data-solution-type]').forEach(button => {
+      if (button.dataset.p2Bound === '1') return;
+      button.dataset.p2Bound = '1';
+      button.addEventListener('click', () => setSolutionStepType(
+        currentTask().id,
+        Number(button.dataset.solutionTypeStep),
+        button.dataset.solutionType
+      ));
+    });
+  }
+
+  function appendSolutionStepInPlace(task, index) {
+    const stepsHost = studentPanel.querySelector('.p2-solution-steps');
+    if (!stepsHost || stepsHost.querySelector(`[data-solution-step="${index}"]`)) return false;
+
+    const item = currentTaskState();
+    const response = solutionResponseForItem(item);
+    const scratch = document.createElement('div');
+    scratch.innerHTML = solutionEditorMarkup(task, item);
+    const row = scratch.querySelector(`[data-solution-step="${index}"]`);
+    if (!row) return false;
+
+    // P2-SPLIT-P2.3.3: neperpiešiame visos mokinio pratybų skilties vien dėl naujos
+    // sprendimo eilutės. Senieji MathLive laukai lieka prijungti prie DOM, todėl
+    // universali formulės juosta nepraranda aktyvaus taikinio ir vaizdas nebesumirksi.
+    stepsHost.appendChild(row);
+
+    const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
+    studentPanel.querySelectorAll('[data-solution-remove]').forEach(button => {
+      button.disabled = locked || response.steps.length <= 1;
+    });
+    bindSolutionRowActions(row);
+    hydrateStudentSolutionEditor({ onlyEmpty: true });
+    return true;
+  }
+
   function addSolutionStep(taskId, focusIndex = null) {
     const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
     if (!task || !isSolutionTask(task)) return;
@@ -905,18 +962,33 @@
     if (previous.solved || isTaskExhausted(previous, taskId)) return;
     const response = solutionResponseForItem(previous);
     const nextIndex = focusIndex === null ? response.steps.length : Math.max(0, Number(focusIndex));
-    if (nextIndex >= response.steps.length) {
-      response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
+
+    // Jei Enter prašo pereiti į jau egzistuojančią kitą eilutę, nieko neperrenderiname.
+    if (nextIndex < response.steps.length) {
+      practiceEngine?.holdMathToolbar?.(300);
+      focusStudentSolutionField(nextIndex, 0);
+      return;
     }
+
+    response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
+    const addedIndex = response.steps.length - 1;
     const next = normalizedProgress(progress);
     next.status = 'in_progress';
     next.taskStates = {
       ...next.taskStates,
       [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
     };
-    solutionFocusRequest = { taskId, index: Math.min(nextIndex, response.steps.length - 1) };
+    solutionFocusRequest = { taskId, index: addedIndex };
     practiceEngine?.holdMathToolbar?.(420);
-    publishProgress(next);
+    publishProgress(next, { render: false });
+
+    if (!appendSolutionStepInPlace(task, addedIndex)) {
+      renderPanels();
+      return;
+    }
+    // hydrateStudentSolutionEditor() suvartoja solutionFocusRequest; jei naršyklė fokusą
+    // atideda, papildomas stabilus focus nekoreguoja slinkties.
+    focusStudentSolutionField(addedIndex, 0);
   }
 
   function removeSolutionStep(taskId, index) {
@@ -973,16 +1045,7 @@
     });
 
     studentPanel.querySelector('[data-action="add-solution-step"]')?.addEventListener('click', () => addSolutionStep(currentTask().id));
-    studentPanel.querySelectorAll('[data-solution-remove]').forEach(button => {
-      button.addEventListener('click', () => removeSolutionStep(currentTask().id, Number(button.dataset.solutionRemove)));
-    });
-    studentPanel.querySelectorAll('[data-solution-type]').forEach(button => {
-      button.addEventListener('click', () => setSolutionStepType(
-        currentTask().id,
-        Number(button.dataset.solutionTypeStep),
-        button.dataset.solutionType
-      ));
-    });
+    bindSolutionRowActions(studentPanel);
 
     studentPanel.querySelector('[data-action="check"]')?.addEventListener('click', () => {
       const task = currentTask();
