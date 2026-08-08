@@ -4983,14 +4983,9 @@ body.p2-shell .p2-solution-paper-lines {
   grid-auto-rows: max-content;
   min-height: 252px;
   padding: 7px 12px 24px;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent 55px,
-      rgba(226, 231, 238, .72) 55px,
-      rgba(226, 231, 238, .72) 56px
-    );
+  /* P2.4.2: sprendimo lapas neturi pieštų techninių eilučių.
+     Eilučių struktūra lieka modelyje, bet mokinys mato tik savo matematinį sprendimą. */
+  background: #fff;
 }
 
 body.p2-shell .p2-paper-step,
