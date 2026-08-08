@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.7';
+  const BUILD = 'P2-SPLIT-P1.8';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -52,6 +52,9 @@
   let selectedAnswers = {};
   let libraryModal = null;
   let teacherPreviewModal = null;
+  // Mokytojo pratybų peržiūra yra lokali: ji NIEKADA nekeičia mokinio aktyvios užduoties.
+  let teacherPreviewTaskId = null;
+  let teacherFollowStudent = true;
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char]));
@@ -180,6 +183,16 @@
       if (item.status === 'repeat') repeat += 1;
     });
     return { solved, good, help, repeat, percent: Math.round((solved / DEMO_LESSON.taskCount) * 100) };
+  }
+
+
+  function pedagogicalStatus(item) {
+    const state = item || {};
+    if (state.status === 'repeat') return { key: 'repeat', label: 'Kartoti' };
+    if (state.solved && state.status === 'help') return { key: 'help', label: 'Su pagalba' };
+    if (state.solved && state.status === 'good') return { key: 'good', label: 'Savarankiškai' };
+    if (Number(state.attempts || 0) > 0) return { key: 'working', label: 'Bandoma' };
+    return { key: 'pending', label: 'Nepradėta' };
   }
 
   function publishProgress(next) {
@@ -410,6 +423,7 @@
     const assignmentTitle = assigned ? DEMO_LESSON.shortTitle : 'Pamoka dar nepriskirta';
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${DEMO_LESSON.taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
+    const currentPedagogy = started ? pedagogicalStatus(item) : { key: 'pending', label: '—' };
     const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? 'Mokinys dar neatidarė pratybų' : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
       ? 'Priskirk demonstracinę pamoką Bibliotekoje. Mokinys ją iškart pamatys savo „Mano pratybos“ srityje.'
@@ -430,12 +444,13 @@
           <div class="p2-metrics">
             <div><span>Dabartinė užduotis</span><strong>${started ? currentLabel : '—'}</strong></div>
             <div><span>Bandymų</span><strong>${started ? item?.attempts || 0 : '—'}</strong></div>
-            <div><span>Pagalba</span><strong>${started ? helper : '—'}</strong></div>
+            <div><span>Būsena</span><strong class="p2-metric-status status-${currentPedagogy.key}">${started ? currentPedagogy.label : '—'}</strong></div>
           </div>
         </div>
         <div class="p2-current-task-card">
           <div class="p2-card-heading-row"><div><span class="p2-label">Dabartinė veikla</span><h3>${escapeHtml(activityTitle)}</h3></div><span class="p2-soft-pill">${assigned ? statusLabel(state) : 'Laukiama'}</span></div>
           <p>${escapeHtml(activityText)}</p>
+          ${started ? `<div class="p2-current-meta"><span>Pagalba: <strong>${helper}</strong></span><span>Istorinė būsena: <strong class="status-${currentPedagogy.key}">${currentPedagogy.label}</strong></span></div>` : ''}
           ${started && item?.lastAnswer ? `<div class="p2-last-answer"><span>Paskutinis atsakymas</span><strong>${escapeHtml(item.lastAnswer)}</strong></div>` : ''}
           <div class="p2-card-actions">
             <button type="button" class="p2-secondary" data-action="teacher-open" ${assigned ? '' : 'disabled'}>Atidaryti pratybas</button>
@@ -552,25 +567,125 @@
       teacherPreviewModal.innerHTML = `
         <div class="p2-library-backdrop" data-close></div>
         <section class="p2-library-panel p2-teacher-preview-modal" role="dialog" aria-modal="true" aria-label="Pratybų peržiūra">
-          <header><div><span class="p2-side-kicker">MOKYTOJO PERŽIŪRA</span><h2>${escapeHtml(DEMO_LESSON.shortTitle)}</h2></div><button type="button" data-close aria-label="Uždaryti">×</button></header>
+          <header>
+            <div><span class="p2-side-kicker">MOKYTOJO PERŽIŪRA</span><h2>${escapeHtml(DEMO_LESSON.shortTitle)}</h2></div>
+            <button type="button" data-close aria-label="Uždaryti">×</button>
+          </header>
           <div class="p2-library-body p2-preview-body" id="p2TeacherPreviewBody"></div>
         </section>`;
       document.body.appendChild(teacherPreviewModal);
       teacherPreviewModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => teacherPreviewModal.hidden = true));
     }
+    if (!teacherPreviewTaskId || teacherFollowStudent) teacherPreviewTaskId = currentTask().id;
     renderTeacherPreview();
     teacherPreviewModal.hidden = false;
+  }
+
+  function teacherPreviewTask() {
+    return DEMO_LESSON.tasks.find(task => task.id === teacherPreviewTaskId) || currentTask();
   }
 
   function renderTeacherPreview() {
     if (!teacherPreviewModal) return;
     const host = teacherPreviewModal.querySelector('#p2TeacherPreviewBody');
-    const active = currentTask().id;
-    host.innerHTML = `<p class="p2-preview-note">Tai tik skaitymo peržiūra. Mokinio slinktis ir lango dydis nėra sinchronizuojami.</p><div class="p2-preview-task-list">${DEMO_LESSON.tasks.map((task, index) => {
-      const item = taskState(task.id);
-      const badge = item.solved ? (item.status === 'good' ? 'Savarankiškai' : item.status === 'help' ? 'Su pagalba' : 'Kartoti') : item.status === 'repeat' ? 'Kartoti' : 'Neatlikta';
-      return `<article class="p2-preview-task ${task.id === active ? 'is-current' : ''}"><span class="p2-preview-index">${index + 1}</span><div><strong>${escapeHtml(task.prompt)}</strong><small>${escapeHtml(task.label)} · ${item.attempts || 0} band.</small></div><span class="p2-preview-badge status-${item.status || 'pending'}">${badge}</span></article>`;
-    }).join('')}</div>`;
+    if (!host || !assignment) return;
+
+    const studentTask = currentTask();
+    if (teacherFollowStudent) teacherPreviewTaskId = studentTask.id;
+    const previewTask = teacherPreviewTask();
+    const previewIndex = taskIndex(previewTask.id) + 1;
+    const studentIndex = taskIndex(studentTask.id) + 1;
+    const item = taskState(previewTask.id);
+    const pedagogy = pedagogicalStatus(item);
+    const isStudentTask = previewTask.id === studentTask.id;
+    const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
+    const choices = previewTask.choices.map((choice, index) => {
+      const isCorrect = choice === previewTask.answer;
+      const wasLast = item.lastAnswer === choice;
+      const classes = ['p2-preview-choice', isCorrect ? 'is-correct' : '', wasLast ? 'is-last-answer' : ''].filter(Boolean).join(' ');
+      const marker = isCorrect ? '<span class="p2-preview-choice-note">Teisingas</span>' : wasLast ? '<span class="p2-preview-choice-note is-student">Mokinio atsakymas</span>' : '';
+      return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b>${marker}</div>`;
+    }).join('');
+
+    const taskList = DEMO_LESSON.tasks.map((task, index) => {
+      const taskItem = taskState(task.id);
+      const taskPedagogy = pedagogicalStatus(taskItem);
+      const classes = [
+        'p2-preview-task',
+        task.id === previewTask.id ? 'is-previewed' : '',
+        task.id === studentTask.id ? 'is-student-current' : ''
+      ].filter(Boolean).join(' ');
+      return `<button type="button" class="${classes}" data-preview-task="${task.id}">
+        <span class="p2-preview-index">${index + 1}</span>
+        <span class="p2-preview-task-copy"><strong>${escapeHtml(task.prompt)}</strong><small>${escapeHtml(task.label)} · ${taskItem.attempts || 0} band.</small></span>
+        ${task.id === studentTask.id ? '<span class="p2-student-here">Mokinys dabar čia</span>' : ''}
+        <span class="p2-preview-badge status-${taskPedagogy.key}">${taskPedagogy.label}</span>
+      </button>`;
+    }).join('');
+
+    host.innerHTML = `
+      <div class="p2-preview-toolbar">
+        <div>
+          <span class="p2-label">Mokinio dabartinė vieta</span>
+          <strong>${studentIndex} / ${DEMO_LESSON.taskCount}</strong>
+        </div>
+        <div class="p2-preview-follow-actions">
+          <button type="button" class="p2-secondary ${teacherFollowStudent ? 'is-active' : ''}" data-preview-action="follow">${teacherFollowStudent ? '✓ Seku mokinį' : 'Sekti mokinį'}</button>
+          ${!teacherFollowStudent ? '<button type="button" class="p2-primary" data-preview-action="return">Grįžti prie mokinio</button>' : ''}
+        </div>
+      </div>
+      <p class="p2-preview-note">Naršyk visas pamokos užduotis laisvai. Ši mokytojo peržiūra nekeičia mokinio aktyvios užduoties, atsakymo ar slinkties.</p>
+      <div class="p2-preview-layout">
+        <nav class="p2-preview-task-list" aria-label="Pamokos užduotys">${taskList}</nav>
+        <article class="p2-preview-detail">
+          <header class="p2-preview-detail-head">
+            <div><span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis</span><h3>${isStudentTask ? 'Mokinys šiuo metu sprendžia šią užduotį' : 'Mokytojo pasirinkta užduotis'}</h3></div>
+            <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
+          </header>
+          <p class="p2-preview-prompt">${escapeHtml(previewTask.prompt)}</p>
+          <div class="p2-preview-choice-list">${choices}</div>
+          <div class="p2-preview-detail-metrics">
+            <div><span>Bandymų</span><strong>${item.attempts || 0}</strong></div>
+            <div><span>Pagalba</span><strong>${item.hintUsed ? 'Naudota' : 'Nenaudota'}</strong></div>
+            <div><span>Paskutinis atsakymas</span><strong>${answerText}</strong></div>
+          </div>
+          <div class="p2-preview-hint"><span>Užuomina mokiniui</span><p>${escapeHtml(previewTask.hint)}</p></div>
+          <div class="p2-preview-detail-actions">
+            <button type="button" class="p2-secondary" data-preview-action="previous" ${previewIndex === 1 ? 'disabled' : ''}>← Ankstesnė</button>
+            <button type="button" class="p2-secondary" data-preview-action="next" ${previewIndex === DEMO_LESSON.taskCount ? 'disabled' : ''}>Kita →</button>
+            <span></span>
+            <button type="button" class="p2-primary" disabled title="Bus įgyvendinta kitame etape">Rodyti lentoje</button>
+          </div>
+        </article>
+      </div>`;
+
+    host.querySelectorAll('[data-preview-task]').forEach(button => {
+      button.addEventListener('click', () => {
+        teacherPreviewTaskId = button.dataset.previewTask;
+        teacherFollowStudent = false;
+        renderTeacherPreview();
+      });
+    });
+    host.querySelector('[data-preview-action="follow"]')?.addEventListener('click', () => {
+      teacherFollowStudent = !teacherFollowStudent;
+      if (teacherFollowStudent) teacherPreviewTaskId = currentTask().id;
+      renderTeacherPreview();
+    });
+    host.querySelector('[data-preview-action="return"]')?.addEventListener('click', () => {
+      teacherFollowStudent = true;
+      teacherPreviewTaskId = currentTask().id;
+      renderTeacherPreview();
+    });
+    host.querySelector('[data-preview-action="previous"]')?.addEventListener('click', () => {
+      teacherFollowStudent = false;
+      teacherPreviewTaskId = previousTaskId(previewTask.id);
+      renderTeacherPreview();
+    });
+    host.querySelector('[data-preview-action="next"]')?.addEventListener('click', () => {
+      teacherFollowStudent = false;
+      teacherPreviewTaskId = nextTaskId(previewTask.id);
+      renderTeacherPreview();
+    });
   }
 
   const legacyLibrary = document.getElementById('libraryModal');
@@ -608,6 +723,7 @@
 
   window.addEventListener('p2:progress-state', event => {
     progress = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : null;
+    if (teacherFollowStudent && progress) teacherPreviewTaskId = currentTask().id;
     renderPanels();
     renderTeacherPreview();
   });
