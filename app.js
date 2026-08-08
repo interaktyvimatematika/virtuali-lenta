@@ -6004,11 +6004,33 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
+  // P2-SPLIT-P2.2.2: vien DOM fokusas negali reikšti, kad šis klientas vis dar
+  // "valdo" teksto objektą. Perėjus iš mokinio lango į mokytojo langą Chromium
+  // palieka document.activeElement sename contenteditable, todėl kito kliento
+  // pakeitimai ten būdavo kaupiami pendingRemoteNotes ir atrodydavo "užšalę".
+  // Vietinį DOM saugome tik trumpos realios įvesties sesijos metu. Sustojus rašyti
+  // arba langui praradus fokusą, naujausias nuotolinis tekstas iškart gali būti
+  // pritaikytas.
+  const SHARED_NOTE_EDIT_LEASE_MS = 420;
+  let lastSharedNoteLocalActivityAt = 0;
+  let sharedNoteEditLeaseTimer = null;
+
+  function markSharedNoteLocalActivity() {
+    lastSharedNoteLocalActivityAt = performance.now();
+    clearTimeout(sharedNoteEditLeaseTimer);
+    sharedNoteEditLeaseTimer = window.setTimeout(() => {
+      sharedNoteEditLeaseTimer = null;
+      if (!sharedNoteEditingActive()) {
+        window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
+      }
+    }, SHARED_NOTE_EDIT_LEASE_MS + 30);
+  }
+
   function sharedNoteEditingActive() {
-    // P2-SPLIT-P2.2.1: activeMixedTextEditor yra redagavimo kontekstas, bet jis gali
-    // likti registruotas ir vartotojui jau paspaudus kitur. Nuotolinių tekstų
-    // sinchronizacijos nestabdome vien dėl tokios "lipnios" būsenos. Saugome DOM
-    // tik tada, kai lentoje iš tikrųjų yra fokusas / MathLive redagavimo sesija.
+    if (document.visibilityState === 'hidden') return false;
+    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+    if (performance.now() - lastSharedNoteLocalActivityAt > SHARED_NOTE_EDIT_LEASE_MS) return false;
+
     const activeElement = document.activeElement;
     const editor = activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null;
     if (editor?.closest('.board-note')) {
@@ -6218,9 +6240,10 @@ KOKYBĖS REIKALAVIMAI:
 
   function saveMixedNoteFromEditor(note, editor) {
     if (!note || !editor?.isConnected) return;
+    markSharedNoteLocalActivity();
     note.nodes = mixedNodesFromEditor(editor);
     applyMixedNoteContentSizing(note, editor);
-    // P2-SPLIT-P2.2.1: localStorage išsaugojimas sąmoningai lieka debounce'intas,
+    // P2-SPLIT-P2.2.2: localStorage išsaugojimas sąmoningai lieka debounce'intas,
     // tačiau bendra lenta turi būti gyva ir ilgo nenutrūkstamo rašymo metu.
     // Atskiras notes-live signalas internete throttlinamas, todėl mokytojas mato
     // mokinio tekstą beveik simbolis po simbolio neprarandant mokinio fokuso.
@@ -7850,12 +7873,16 @@ KOKYBĖS REIKALAVIMAI:
       });
       editor.addEventListener('pointerdown', event => {
         event.stopPropagation();
+        markSharedNoteLocalActivity();
         setActiveMixedTextEditor(editor, { save: false });
         if (eventOriginatesInDirectMathField(event)) return;
         if (activeDirectMathField) clearMathEditSession();
         requestAnimationFrame(() => captureMixedTextSelection(editor));
       });
-      editor.addEventListener('focusin', () => setActiveMixedTextEditor(editor, { save: false }));
+      editor.addEventListener('focusin', () => {
+        markSharedNoteLocalActivity();
+        setActiveMixedTextEditor(editor, { save: false });
+      });
       editor.addEventListener('keyup', event => {
         if (!eventOriginatesInDirectMathField(event)) captureMixedTextSelection(editor);
       });
@@ -8379,8 +8406,17 @@ KOKYBĖS REIKALAVIMAI:
     scheduleSave();
   });
 
+  window.addEventListener('blur', () => {
+    window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
+    }
+  });
+
   window.P772OnlineBridge = Object.freeze({
-    version: 'P2-SPLIT-P2.2.1',
+    version: 'P2-SPLIT-P2.2.2',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

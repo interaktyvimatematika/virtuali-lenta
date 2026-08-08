@@ -341,7 +341,7 @@ async function publishNotesLive() {
   } catch (error) {
     forgetLocalEcho('notes', echoFp);
     if (remoteCache.notes === notesFp) remoteCache.notes = previousNotesCache;
-    console.warn('P2-SPLIT-P2.2.1 gyvo lentos teksto sinchronizavimo klaida', error);
+    console.warn('P2-SPLIT-P2.2.2 gyvo lentos teksto sinchronizavimo klaida', error);
   } finally {
     notesLivePublishing = false;
     if (notesLiveQueued) queueNotesLivePublish();
