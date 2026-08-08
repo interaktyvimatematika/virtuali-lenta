@@ -291,8 +291,8 @@
       id: String(safe.id || `note-${Date.now()}-${index}`),
       x: Number.isFinite(Number(safe.x)) ? Number(safe.x) : 0.08,
       y: Number.isFinite(Number(safe.y)) ? Number(safe.y) : 0.1,
-      width: Math.max(250, Math.min(900, Number(safe.width) || 420)),
-      minHeight: Math.max(82, Math.min(700, Number(safe.minHeight || safe.height) || 118)),
+      width: Math.max(110, Math.min(900, Number(safe.width) || 420)),
+      minHeight: 44,
       nodes
     };
   }
@@ -6142,11 +6142,42 @@ KOKYBĖS REIKALAVIMAI:
     return normalizeMixedContentNodes(nodes);
   }
 
+  function mixedNoteContentMinimumWidth(editor) {
+    if (!editor?.isConnected) return 110;
+    let widestFormula = 0;
+    editor.querySelectorAll('.mixed-inline-formula').forEach(wrapper => {
+      const field = wrapper.querySelector('math-field');
+      const width = Math.max(
+        Number(wrapper.scrollWidth) || 0,
+        Number(wrapper.offsetWidth) || 0,
+        Number(field?.scrollWidth) || 0,
+        Number(field?.offsetWidth) || 0
+      );
+      if (Number.isFinite(width)) widestFormula = Math.max(widestFormula, Math.ceil(width));
+    });
+    // 30 px perkėlimo rankenėlė + 30 px šalinimo mygtukas + tarpai/padding.
+    return Math.max(110, Math.min(900, widestFormula ? widestFormula + 78 : 110));
+  }
+
+  function applyMixedNoteContentSizing(note, editor, { expandForFormula = true } = {}) {
+    const element = editor?.closest?.('.board-note');
+    if (!element) return;
+    const minWidth = mixedNoteContentMinimumWidth(editor);
+    element.style.setProperty('--mixed-note-content-min-width', `${minWidth}px`);
+    // Aukščio vartotojui fiksuoti nebereikia: jis visada seka turinį.
+    element.style.removeProperty('height');
+    element.style.minHeight = '44px';
+    if (expandForFormula && element.offsetWidth < minWidth) element.style.width = `${minWidth}px`;
+    if (note) {
+      note.width = Math.max(minWidth, Math.min(900, element.offsetWidth || note.width || 420));
+      note.minHeight = 44;
+    }
+  }
+
   function saveMixedNoteFromEditor(note, editor) {
     if (!note || !editor?.isConnected) return;
     note.nodes = mixedNodesFromEditor(editor);
-    note.width = Math.max(250, Math.min(900, editor.closest('.board-note')?.offsetWidth || note.width || 420));
-    note.minHeight = Math.max(82, Math.min(700, editor.closest('.board-note')?.offsetHeight || note.minHeight || 118));
+    applyMixedNoteContentSizing(note, editor);
     scheduleSave();
   }
 
@@ -6616,7 +6647,7 @@ KOKYBĖS REIKALAVIMAI:
     const visibleWidth = refs.board.clientWidth / zoom;
     const visibleHeight = refs.board.clientHeight / zoom;
     const objectWidth = 430;
-    const objectHeight = 118;
+    const objectHeight = 56;
     let left = visibleLeft + 54 + offset * 22;
     let top = visibleTop + 76 + offset * 26;
     if (!state.window.shelved && refs.practiceWindow?.isConnected) {
@@ -6633,7 +6664,7 @@ KOKYBĖS REIKALAVIMAI:
       x: boardRect.width ? left / boardRect.width : 0.055,
       y: boardRect.height ? top / boardRect.height : 0.08,
       width: objectWidth,
-      minHeight: objectHeight
+      minHeight: 44
     });
     renderBoardObjects();
     scheduleSave();
@@ -7730,8 +7761,8 @@ KOKYBĖS REIKALAVIMAI:
       element.classList.toggle('is-active-object', state.activeBoardObject?.type === 'note' && state.activeBoardObject.id === note.id);
       element.style.left = `${note.x * boardRect.width}px`;
       element.style.top = `${note.y * boardRect.height}px`;
-      element.style.width = `${Math.max(250, Math.min(900, note.width || 420))}px`;
-      element.style.minHeight = `${Math.max(82, Math.min(700, note.minHeight || 118))}px`;
+      element.style.width = `${Math.max(110, Math.min(900, note.width || 420))}px`;
+      element.style.minHeight = '44px';
 
       const handle = document.createElement('button');
       handle.type = 'button';
@@ -7820,11 +7851,15 @@ KOKYBĖS REIKALAVIMAI:
       makeBoardObjectDraggable(element, note, handle, { alwaysAllow: true });
       const resizeObserver = new ResizeObserver(() => {
         if (!element.isConnected) return;
-        note.width = Math.max(250, Math.min(900, element.offsetWidth));
-        note.minHeight = Math.max(82, Math.min(700, element.offsetHeight));
+        const minWidth = mixedNoteContentMinimumWidth(editor);
+        element.style.setProperty('--mixed-note-content-min-width', `${minWidth}px`);
+        note.width = Math.max(minWidth, Math.min(900, element.offsetWidth));
+        note.minHeight = 44;
+        scheduleSave();
       });
       resizeObserver.observe(element);
       refs.objectsLayer.appendChild(element);
+      requestAnimationFrame(() => applyMixedNoteContentSizing(note, editor));
     }
 
     for (const instance of state.boardPractices) {
@@ -7909,9 +7944,12 @@ KOKYBĖS REIKALAVIMAI:
     for (const note of state.notes) {
       const element = refs.objectsLayer.querySelector(`[data-note-id="${note.id}"]`);
       if (!element) continue;
-      const width = Math.min(boardRect.width, Math.max(250, Math.min(900, note.width || element.offsetWidth || 420)));
+      const editor = element.querySelector('.mixed-editor-content');
+      const minWidth = mixedNoteContentMinimumWidth(editor);
+      element.style.setProperty('--mixed-note-content-min-width', `${minWidth}px`);
+      const width = Math.min(boardRect.width, Math.max(minWidth, Math.min(900, note.width || element.offsetWidth || 420)));
       element.style.width = `${width}px`;
-      element.style.minHeight = `${Math.max(82, Math.min(700, note.minHeight || 118))}px`;
+      element.style.minHeight = '44px';
       const left = Math.max(0, Math.min(boardRect.width - width, note.x * boardRect.width));
       const top = Math.max(0, Math.min(boardRect.height - element.offsetHeight, note.y * boardRect.height));
       element.style.left = `${left}px`;
@@ -8261,7 +8299,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P2-SPLIT-P1.3',
+    version: 'P2-SPLIT-P1.4',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

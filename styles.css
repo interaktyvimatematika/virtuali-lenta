@@ -3169,3 +3169,32 @@ body.p2-shell .board-note.board-mixed-editor.is-mixed-editing .mixed-editor-hand
 body.p2-shell .board-note.board-mixed-editor.is-mixed-editing .mixed-editor-remove {
   opacity: 1;
 }
+
+
+/* P2-SPLIT-P1.4 – mišraus teksto/formulės lauko dydis pagal turinį.
+   Neaktyvus objektas neturi naršyklės resize žymos. Redaguojant galima keisti plotį,
+   o aukštis auga pagal turinį, todėl nereikia vidinių slankiklių. */
+body.p2-shell .board-note.board-mixed-editor {
+  min-width: var(--mixed-note-content-min-width, 110px);
+  min-height: 44px;
+  max-height: none;
+  resize: none;
+  overflow: visible;
+}
+body.p2-shell .board-note.board-mixed-editor:focus-within,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing {
+  resize: horizontal;
+  overflow: hidden;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
+  min-height: 30px;
+  overflow: visible;
+}
+@media (pointer: coarse) {
+  body.p2-shell .board-note.board-mixed-editor {
+    min-width: var(--mixed-note-content-min-width, 110px);
+  }
+  body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
+    min-height: 34px;
+  }
+}
