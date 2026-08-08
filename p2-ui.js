@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9.3';
+  const BUILD = 'P2-SPLIT-P1.9.6';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -296,7 +296,7 @@
   function studentPracticeMarkup(state, stats) {
     const task = currentTask();
     const item = currentTaskState();
-    const selected = selectedAnswers[task.id] ?? item.lastAnswer ?? '';
+    const selected = selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '';
     const taskNumber = taskIndex(task.id) + 1;
     const feedback = item.solved
       ? `<div class="p2-practice-feedback is-success">✓ Teisingai. Gali tęsti.</div>`
@@ -356,8 +356,18 @@
     studentPanel.querySelectorAll('[data-choice]').forEach(button => {
       button.addEventListener('click', () => {
         const task = currentTask();
-        selectedAnswers[task.id] = button.dataset.choice || '';
-        renderStudentPanel();
+        const choice = button.dataset.choice || '';
+        selectedAnswers[task.id] = choice;
+
+        // P1.9.6: mokytojas turi matyti tą patį pasirinkimą realiu laiku,
+        // kurį šiuo metu mato mokinys, dar prieš paspaudžiant „Tikrinti“.
+        const next = normalizedProgress(progress);
+        const previous = taskState(task.id);
+        next.taskStates = {
+          ...next.taskStates,
+          [task.id]: { ...previous, liveAnswer: choice, selectionUpdatedAt: Date.now() }
+        };
+        publishProgress(next);
       });
     });
 
@@ -382,7 +392,17 @@
       if (correct) {
         if (status !== 'repeat') status = previous.hintUsed ? 'help' : 'good';
       } else if (wrongAttempts >= 2) status = 'repeat';
-      const state = { ...previous, attempts, wrongAttempts, lastAnswer: answer, solved: correct || Boolean(previous.solved), status };
+      const state = {
+        ...previous,
+        attempts,
+        wrongAttempts,
+        liveAnswer: answer,
+        lastAnswer: answer,
+        lastResult: correct ? 'correct' : 'wrong',
+        submittedAt: Date.now(),
+        solved: correct || Boolean(previous.solved),
+        status
+      };
       next.taskStates = { ...next.taskStates, [task.id]: state };
       const allSolved = DEMO_LESSON.tasks.every(candidate => (candidate.id === task.id ? state : taskState(candidate.id)).solved);
       next.status = allSolved ? 'completed' : 'in_progress';
@@ -684,13 +704,21 @@
     const isStudentTask = previewTask.id === studentTask.id;
     const pedagogy = pedagogicalStatus(item, { current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
     const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
+    const liveAnswer = item.liveAnswer || item.lastAnswer || '';
+    const correctIndex = Math.max(0, previewTask.choices.findIndex(choice => choice === previewTask.answer));
+    const correctLetter = String.fromCharCode(65 + correctIndex);
     const choices = previewTask.choices.map((choice, index) => {
-      const isCorrect = choice === previewTask.answer;
-      const wasLast = item.lastAnswer === choice;
-      const classes = ['p2-preview-choice', isCorrect ? 'is-correct' : '', wasLast ? 'is-last-answer' : ''].filter(Boolean).join(' ');
-      const marker = isCorrect ? '<span class="p2-preview-choice-note">Teisingas</span>' : wasLast ? '<span class="p2-preview-choice-note is-student">Mokinio atsakymas</span>' : '';
-      return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b>${marker}</div>`;
+      const isSelected = liveAnswer === choice;
+      const classes = ['p2-preview-choice', isSelected ? 'is-student-selected' : ''].filter(Boolean).join(' ');
+      return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></div>`;
     }).join('');
+    const previewFeedback = item.solved
+      ? '<div class="p2-practice-feedback is-success p2-teacher-student-feedback">✓ Teisingai. Gali tęsti.</div>'
+      : item.status === 'repeat'
+        ? '<div class="p2-practice-feedback is-repeat p2-teacher-student-feedback">Šią užduotį pažymime „Kartoti“. Gali bandyti dar kartą arba tęsti.</div>'
+        : Number(item.attempts || 0) > 0
+          ? '<div class="p2-practice-feedback is-warning p2-teacher-student-feedback">Dar ne. Patikrink savo pasirinkimą ir bandyk dar kartą.</div>'
+          : '';
 
     const taskNavigation = DEMO_LESSON.tasks.map((task, index) => {
       const taskItem = taskState(task.id);
@@ -724,14 +752,16 @@
             <div>
               <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
               <h3>${escapeHtml(previewTask.prompt)}</h3>
+              <div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>
             </div>
             <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
           </header>
           <div class="p2-preview-choice-list">${choices}</div>
+          ${previewFeedback}
           <div class="p2-preview-detail-metrics">
             <span><b>${item.attempts || 0}</b> band.</span>
             <span>Pagalba: <b>${item.hintUsed ? 'naudota' : 'nenaudota'}</b></span>
-            <span>Paskutinis: <b>${answerText}</b></span>
+            <span>Paskutinis pateiktas: <b>${answerText}</b></span>
           </div>
           <div class="p2-preview-hint"><span>Užuomina</span><p>${escapeHtml(previewTask.hint)}</p></div>
           <div class="p2-preview-detail-actions">

@@ -4295,3 +4295,44 @@ body.p2-shell .p2-teacher-task-dots .p2-task-dot.is-student-current::after {
 }
 body.p2-shell .p2-teacher-task-dots .p2-task-dot { position:relative; }
 /* Senos preview navigacijos taisyklės šiame variante nebenaudojamos. */
+
+
+/* P2-SPLIT-P1.9.6 — mokytojo peržiūra = mokinio vaizdas + atsakymo raktas */
+body.p2-shell .p2-preview-choice.is-correct,
+body.p2-shell .p2-preview-choice.is-last-answer:not(.is-correct) {
+  border-color:#e8ebf0;
+  background:#fcfcfd;
+}
+body.p2-shell .p2-preview-choice.is-correct .p2-preview-choice-letter {
+  border-color:#d8deea;
+  color:#4e5c73;
+}
+body.p2-shell .p2-preview-choice.is-student-selected {
+  border-color:#88a7ee;
+  background:#f2f6ff;
+  box-shadow:0 0 0 1px rgba(92,124,211,.06);
+}
+body.p2-shell .p2-preview-choice.is-student-selected .p2-preview-choice-letter {
+  border-color:#6689df;
+  background:#6689df;
+  color:#fff;
+}
+body.p2-shell .p2-teacher-answer-key {
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  margin-top:10px;
+  color:#748096;
+  font-size:9px;
+}
+body.p2-shell .p2-teacher-answer-key span { font-weight:700; }
+body.p2-shell .p2-teacher-answer-key strong {
+  color:#334057;
+  font-size:10px;
+  font-weight:900;
+}
+body.p2-shell .p2-teacher-student-feedback {
+  margin-top:9px;
+  font-size:9px;
+  padding:8px 10px;
+}
