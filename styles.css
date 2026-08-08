@@ -4275,3 +4275,23 @@ body.p2-shell .p2-preview-task-dot.is-started { border-color:#c4cdec; color:#5d7
   body.p2-shell .p2-preview-task-dots { justify-content:flex-start; padding-inline:4px; }
   body.p2-shell .p2-preview-task-dot { width:36px; height:36px; font-size:11px; }
 }
+
+
+/* P2-SPLIT-P1.9.5 — mokytojo navigacija naudoja tą patį modelį kaip mokinio */
+body.p2-shell .p2-teacher-task-dots {
+  margin-top:14px;
+  padding:0 18px 18px;
+}
+body.p2-shell .p2-teacher-task-dots .p2-task-dot.is-student-current::after {
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-5px;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#55b87a;
+  transform:translateX(-50%);
+}
+body.p2-shell .p2-teacher-task-dots .p2-task-dot { position:relative; }
+/* Senos preview navigacijos taisyklės šiame variante nebenaudojamos. */

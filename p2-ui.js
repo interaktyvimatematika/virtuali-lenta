@@ -696,14 +696,11 @@
       const taskItem = taskState(task.id);
       const taskPedagogy = pedagogicalStatus(taskItem, { current: task.id === studentTask.id && normalizedProgress(progress).status === 'in_progress' });
       const classes = [
-        'p2-preview-task-dot',
-        task.id === previewTask.id ? 'is-previewed' : '',
+        'p2-task-dot',
+        task.id === previewTask.id ? 'is-current' : '',
         task.id === studentTask.id ? 'is-student-current' : '',
-        taskPedagogy.key === 'good' ? 'is-good' : '',
-        taskPedagogy.key === 'help' ? 'is-help' : '',
-        taskPedagogy.key === 'repeat' ? 'is-repeat' : '',
-        taskPedagogy.key === 'working' ? 'is-working' : '',
-        taskPedagogy.key === 'started' ? 'is-started' : ''
+        taskItem.solved ? 'is-done' : '',
+        taskPedagogy.key === 'repeat' ? 'is-repeat' : ''
       ].filter(Boolean).join(' ');
       return `<button type="button" class="${classes}" data-preview-task="${task.id}" title="${index + 1}. ${escapeHtml(task.prompt)} · ${taskPedagogy.label}" aria-label="${index + 1} užduotis, ${taskPedagogy.label}">${index + 1}</button>`;
     }).join('');
@@ -721,7 +718,6 @@
             : '<button type="button" class="p2-secondary" data-preview-action="return">↩ Grįžti prie mokinio</button>'}
         </div>
       </div>
-      <nav class="p2-preview-task-dots" aria-label="Pamokos užduotys">${taskNavigation}</nav>
       <div class="p2-preview-layout">
         <article class="p2-preview-detail">
           <header class="p2-preview-detail-head">
@@ -745,7 +741,8 @@
             <button type="button" class="p2-primary" disabled title="Bus įgyvendinta kitame etape">Rodyti lentoje</button>
           </div>
         </article>
-      </div>`;
+      </div>
+      <nav class="p2-task-dots p2-teacher-task-dots" aria-label="Pamokos užduotys">${taskNavigation}</nav>`;
 
     host.querySelectorAll('[data-preview-task]').forEach(button => {
       button.addEventListener('click', () => {
