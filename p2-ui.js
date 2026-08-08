@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P1.9.1';
+  const BUILD = 'P2-SPLIT-P1.9.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -704,38 +704,40 @@
       return `<button type="button" class="${classes}" data-preview-task="${task.id}">
         <span class="p2-preview-index">${index + 1}</span>
         <span class="p2-preview-task-copy"><strong>${escapeHtml(task.prompt)}</strong><small>${escapeHtml(task.label)} · ${taskItem.attempts || 0} band.</small></span>
-        ${task.id === studentTask.id ? '<span class="p2-student-here">Mokinys dabar čia</span>' : ''}
         <span class="p2-preview-badge status-${taskPedagogy.key}">${taskPedagogy.label}</span>
       </button>`;
     }).join('');
 
+    const locationText = isStudentTask
+      ? `Mokinys · ${studentIndex} / ${DEMO_LESSON.taskCount}`
+      : `Mokinys · ${studentIndex} / ${DEMO_LESSON.taskCount} · Peržiūri ${previewIndex}`;
+
     host.innerHTML = `
       <div class="p2-preview-toolbar">
-        <div>
-          <span class="p2-label">Mokinio dabartinė vieta</span>
-          <strong>${studentIndex} / ${DEMO_LESSON.taskCount}</strong>
-        </div>
+        <div class="p2-preview-location"><span class="p2-live-dot" aria-hidden="true"></span><strong>${locationText}</strong></div>
         <div class="p2-preview-follow-actions">
-          <button type="button" class="p2-secondary ${teacherFollowStudent ? 'is-active' : ''}" data-preview-action="follow">${teacherFollowStudent ? '✓ Seku mokinį' : 'Sekti mokinį'}</button>
-          ${!teacherFollowStudent ? '<button type="button" class="p2-primary" data-preview-action="return">Grįžti prie mokinio</button>' : ''}
+          ${teacherFollowStudent
+            ? '<button type="button" class="p2-secondary is-active" data-preview-action="follow">✓ Sekama</button>'
+            : '<button type="button" class="p2-secondary" data-preview-action="return">↩ Grįžti prie mokinio</button>'}
         </div>
       </div>
-      <p class="p2-preview-note">Naršyk visas pamokos užduotis laisvai. Mokytojo peržiūra nekeičia mokinio aktyvios užduoties, atsakymo ar slinkties.</p>
       <div class="p2-preview-layout">
         <nav class="p2-preview-task-list" aria-label="Pamokos užduotys">${taskList}</nav>
         <article class="p2-preview-detail">
           <header class="p2-preview-detail-head">
-            <div><span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis</span><h3>${isStudentTask ? 'Mokinys šiuo metu sprendžia šią užduotį' : 'Mokytojo pasirinkta užduotis'}</h3></div>
+            <div>
+              <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
+              <h3>${escapeHtml(previewTask.prompt)}</h3>
+            </div>
             <span class="p2-preview-badge status-${pedagogy.key}">${pedagogy.label}</span>
           </header>
-          <p class="p2-preview-prompt">${escapeHtml(previewTask.prompt)}</p>
           <div class="p2-preview-choice-list">${choices}</div>
           <div class="p2-preview-detail-metrics">
-            <div><span>Bandymų</span><strong>${item.attempts || 0}</strong></div>
-            <div><span>Pagalba</span><strong>${item.hintUsed ? 'Naudota' : 'Nenaudota'}</strong></div>
-            <div><span>Paskutinis atsakymas</span><strong>${answerText}</strong></div>
+            <span><b>${item.attempts || 0}</b> band.</span>
+            <span>Pagalba: <b>${item.hintUsed ? 'naudota' : 'nenaudota'}</b></span>
+            <span>Paskutinis: <b>${answerText}</b></span>
           </div>
-          <div class="p2-preview-hint"><span>Užuomina mokiniui</span><p>${escapeHtml(previewTask.hint)}</p></div>
+          <div class="p2-preview-hint"><span>Užuomina</span><p>${escapeHtml(previewTask.hint)}</p></div>
           <div class="p2-preview-detail-actions">
             <button type="button" class="p2-secondary" data-preview-action="previous" ${previewIndex === 1 ? 'disabled' : ''}>← Ankstesnė</button>
             <button type="button" class="p2-secondary" data-preview-action="next" ${previewIndex === DEMO_LESSON.taskCount ? 'disabled' : ''}>Kita →</button>

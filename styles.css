@@ -3970,3 +3970,255 @@ body.p2-shell .p2-side-pane > .p2-teacher-practice-window.is-minimized {
   margin:0;
   z-index:50;
 }
+
+/* ============================================================
+   P2-SPLIT-P1.9.2 — ramesnė mokytojo pratybų peržiūra
+   Mažiau kortelių, mažiau spalvinių ženkliukų, aiškesnė hierarchija.
+   ============================================================ */
+body.p2-shell .p2-preview-toolbar {
+  min-height:42px;
+  margin:0 0 8px;
+  padding:7px 9px;
+  border:0;
+  border-bottom:1px solid #e8ecf2;
+  border-radius:0;
+  background:transparent;
+}
+body.p2-shell .p2-preview-location {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+  color:#526078;
+}
+body.p2-shell .p2-preview-location strong {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  color:#44516a;
+}
+body.p2-shell .p2-live-dot {
+  width:7px;
+  height:7px;
+  flex:0 0 auto;
+  border-radius:50%;
+  background:#55b87a;
+  box-shadow:0 0 0 3px rgba(85,184,122,.10);
+}
+body.p2-shell .p2-preview-follow-actions { gap:5px; }
+body.p2-shell .p2-preview-follow-actions .p2-secondary,
+body.p2-shell .p2-preview-follow-actions .p2-primary {
+  min-height:30px;
+  padding:5px 8px;
+  border-radius:8px;
+  font-size:9px;
+}
+body.p2-shell .p2-preview-follow-actions .is-active {
+  background:#f5f7fb;
+  border-color:#dce2ec;
+  color:#536078;
+}
+body.p2-shell .p2-preview-note { display:none !important; }
+
+body.p2-shell .p2-preview-task-list {
+  gap:0;
+  padding:0;
+  border:1px solid #e6eaf0;
+  border-radius:12px;
+  background:#fff;
+  overflow:hidden auto;
+}
+body.p2-shell .p2-preview-task {
+  position:relative;
+  min-height:50px;
+  padding:9px 10px;
+  border:0;
+  border-bottom:1px solid #eef1f5;
+  border-radius:0;
+  background:#fff;
+  box-shadow:none;
+}
+body.p2-shell .p2-preview-task:last-child { border-bottom:0; }
+body.p2-shell .p2-preview-task:hover { background:#fafbfc; }
+body.p2-shell .p2-preview-task.is-previewed {
+  border-color:#eef1f5;
+  background:#f5f7fc;
+  box-shadow:inset 3px 0 0 #6479d7;
+}
+body.p2-shell .p2-preview-task.is-student-current {
+  border-left:0;
+}
+body.p2-shell .p2-preview-task.is-student-current::after {
+  content:"";
+  position:absolute;
+  left:4px;
+  top:50%;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#55b87a;
+  transform:translateY(-50%);
+}
+body.p2-shell .p2-preview-index {
+  width:24px;
+  height:24px;
+  border-radius:7px;
+  background:#f0f2f7;
+  color:#63708a;
+  font-size:9px;
+}
+body.p2-shell .p2-preview-task.is-previewed .p2-preview-index {
+  background:#e8ecfb;
+  color:#5268c7;
+}
+body.p2-shell .p2-preview-task-copy strong {
+  font-size:10px;
+  color:#344057;
+}
+body.p2-shell .p2-preview-task-copy small {
+  margin-top:2px;
+  color:#929aa8;
+  font-size:8px;
+}
+body.p2-shell .p2-student-here { display:none !important; }
+
+/* Būsenos — ne spalvoti „lipdukai“, o ramus tekstas su mažu tašku. */
+body.p2-shell .p2-preview-badge {
+  position:relative;
+  padding:0 0 0 10px;
+  border-radius:0;
+  background:transparent !important;
+  color:#7a8494;
+  font-size:8px;
+  font-weight:800;
+  white-space:nowrap;
+}
+body.p2-shell .p2-preview-badge::before {
+  content:"";
+  position:absolute;
+  left:0;
+  top:50%;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#aab2bf;
+  transform:translateY(-50%);
+}
+body.p2-shell .p2-preview-badge.status-good { color:#54745e; }
+body.p2-shell .p2-preview-badge.status-good::before { background:#62ad78; }
+body.p2-shell .p2-preview-badge.status-help { color:#7e704f; }
+body.p2-shell .p2-preview-badge.status-help::before { background:#d4ad56; }
+body.p2-shell .p2-preview-badge.status-repeat { color:#865f65; }
+body.p2-shell .p2-preview-badge.status-repeat::before { background:#c87982; }
+body.p2-shell .p2-preview-badge.status-working,
+body.p2-shell .p2-preview-badge.status-started { color:#606f9c; }
+body.p2-shell .p2-preview-badge.status-working::before,
+body.p2-shell .p2-preview-badge.status-started::before { background:#7588d8; }
+body.p2-shell .p2-preview-badge.status-pending { color:#8b93a0; }
+body.p2-shell .p2-preview-badge.status-pending::before { background:#b8bec8; }
+
+body.p2-shell .p2-preview-detail {
+  padding:14px;
+  border:1px solid #e6eaf0;
+  border-radius:12px;
+  box-shadow:none;
+  background:#fff;
+}
+body.p2-shell .p2-preview-detail-head {
+  align-items:flex-start;
+  margin-bottom:11px;
+  padding-bottom:10px;
+  border-bottom:1px solid #eef1f5;
+}
+body.p2-shell .p2-preview-detail-head .p2-label {
+  color:#8a93a2;
+  font-size:8px;
+}
+body.p2-shell .p2-preview-detail-head h3 {
+  margin:4px 0 0;
+  font-size:13px;
+  line-height:1.4;
+  color:#2d384e;
+}
+body.p2-shell .p2-preview-prompt { display:none; }
+body.p2-shell .p2-preview-choice-list { gap:5px; }
+body.p2-shell .p2-preview-choice {
+  min-height:34px;
+  padding:5px 8px;
+  border-color:#e8ebf0;
+  border-radius:8px;
+  background:#fcfcfd;
+}
+body.p2-shell .p2-preview-choice-letter {
+  width:21px;
+  height:21px;
+  font-size:8px;
+}
+body.p2-shell .p2-preview-choice b { font-size:10px; }
+body.p2-shell .p2-preview-choice.is-correct {
+  border-color:#d7e7dc;
+  background:#f9fcfa;
+}
+body.p2-shell .p2-preview-choice.is-last-answer:not(.is-correct) {
+  border-color:#eadcdf;
+  background:#fdfafb;
+}
+body.p2-shell .p2-preview-choice-note {
+  padding:2px 5px;
+  background:transparent;
+  color:#61806a;
+  font-size:7px;
+}
+body.p2-shell .p2-preview-choice-note.is-student {
+  background:transparent;
+  color:#89666b;
+}
+
+body.p2-shell .p2-preview-detail-metrics {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px 13px;
+  margin-top:11px;
+  padding:9px 10px;
+  border:1px solid #edf0f4;
+  border-radius:9px;
+  background:#f8f9fb;
+  color:#7d8796;
+  font-size:8px;
+}
+body.p2-shell .p2-preview-detail-metrics > span { white-space:nowrap; }
+body.p2-shell .p2-preview-detail-metrics b { color:#46526a; font-weight:800; }
+body.p2-shell .p2-preview-detail-metrics > div { display:contents; }
+body.p2-shell .p2-preview-detail-metrics span:not(:first-child) { display:inline; }
+body.p2-shell .p2-preview-detail-metrics strong { display:inline; margin:0; }
+
+body.p2-shell .p2-preview-hint {
+  margin-top:8px;
+  padding:8px 9px;
+  border-color:#e8ebf0;
+  border-radius:9px;
+  background:#fbfbfc;
+}
+body.p2-shell .p2-preview-hint span {
+  color:#838c9b;
+  font-size:7px;
+}
+body.p2-shell .p2-preview-hint p {
+  margin-top:3px;
+  color:#657084;
+  font-size:9px;
+}
+body.p2-shell .p2-preview-detail-actions { margin-top:10px; }
+
+body.p2-shell .p2-teacher-practice-window.is-docked .p2-preview-task-list {
+  max-height:185px;
+}
+body.p2-shell .p2-teacher-practice-window.is-docked .p2-preview-detail-metrics {
+  display:flex;
+}
+
+@media (max-width:900px) {
+  body.p2-shell .p2-preview-toolbar { align-items:center; flex-direction:row; }
+  body.p2-shell .p2-preview-detail-metrics { display:flex; }
+}
