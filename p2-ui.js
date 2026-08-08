@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const BUILD = 'P2-SPLIT-P1.5.1';
+  const BUILD = 'P2-SPLIT-P1.6';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -21,7 +21,7 @@
 
   if (!workspace || !splitter || !sidePane) return;
   body.classList.add('p2-shell');
-  if (brandSubtitle) brandSubtitle.textContent = `Interaktyvios pratybos · ${BUILD}`;
+  if (brandSubtitle) { brandSubtitle.textContent = 'Interaktyvios pratybos'; brandSubtitle.title = BUILD; }
 
   // Senas pratybų langas paliekamas kode suderinamumui, bet P2 sąsajoje jis nebėra canvas objektas.
   const legacyPracticeButton = document.getElementById('practiceOnlyButton');

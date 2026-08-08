@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.5.1</title>
-  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P1.5.1" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.6</title>
+  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P1.6" />
 </head>
 <body>
   <div class="app" id="app">
@@ -14,7 +14,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.5.1</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.6</span>
         </div>
       </div>
 
@@ -34,29 +34,33 @@
       </nav>
 
       <div class="topbar-actions">
-        <div class="online-session" id="onlineSession" aria-label="Bendros lentos sesija">
-          <span class="online-dot" id="onlineDot" aria-hidden="true"></span>
-          <span class="online-status" id="onlineStatus">Jungiamasi…</span>
-          <span class="online-role" id="onlineRoleBadge" title="Prisijungimo rolė">—</span>
-          <code class="online-room" id="onlineRoomCode" title="Pamokos kambario kodas">—</code>
-          <span class="online-users" id="onlineUsers" title="Prisijungusių langų skaičius">0</span>
+        <div class="p2-session-actions" aria-label="Pamokos sesijos valdymas">
+          <div class="online-session" id="onlineSession" aria-label="Bendros lentos sesija">
+            <span class="online-dot" id="onlineDot" aria-hidden="true"></span>
+            <span class="online-status" id="onlineStatus">Jungiamasi…</span>
+            <span class="online-role" id="onlineRoleBadge" title="Prisijungimo rolė">—</span>
+            <code class="online-room" id="onlineRoomCode" title="Pamokos kambario kodas">—</code>
+            <span class="online-users" id="onlineUsers" title="Prisijungusių langų skaičius">0</span>
+          </div>
+          <button class="ghost-button p2-top-action online-copy" id="copySessionLinkButton" type="button" title="Kopijuoti mokiniui skirtą šios bendros lentos nuorodą"><span aria-hidden="true">↗</span><span>Mokinio nuoroda</span></button>
+          <button class="ghost-button p2-top-action online-preview" id="previewStudentButton" type="button" title="Atidaryti tą pačią sesiją naujame lange taip, kaip ją mato mokinys"><span aria-hidden="true">◉</span><span>Mokinio vaizdas</span></button>
+          <button class="ghost-button p2-top-action online-new" id="newSessionButton" type="button" title="Sukurti naują tuščią bendros lentos sesiją ir perkelti į ją visus dalyvius"><span aria-hidden="true">＋</span><span>Nauja sesija</span></button>
+          <button class="ghost-button p2-top-action library-open-button" id="libraryButton" type="button"><span aria-hidden="true">▦</span><span>Biblioteka</span></button>
         </div>
-        <button class="ghost-button online-copy" id="copySessionLinkButton" type="button" title="Kopijuoti mokiniui skirtą šios bendros lentos nuorodą">Mokinio nuoroda</button>
-        <button class="ghost-button online-preview" id="previewStudentButton" type="button" title="Atidaryti tą pačią sesiją naujame lange taip, kaip ją mato mokinys">Mokinio vaizdas</button>
-        <button class="ghost-button online-new" id="newSessionButton" type="button" title="Sukurti naują tuščią bendros lentos sesiją ir perkelti į ją visus dalyvius">Nauja sesija</button>
-        <div class="p2-view-switch" id="p2ViewSwitch" role="group" aria-label="Darbo vaizdas">
-          <button type="button" class="p2-view-button" data-p2-view="board">Lenta</button>
-          <button type="button" class="p2-view-button is-active" data-p2-view="split">Padalintas</button>
-          <button type="button" class="p2-view-button" data-p2-view="practice" id="p2PracticeModeButton">Tik pratybos</button>
+        <div class="p2-view-actions" aria-label="Darbo vaizdo valdymas">
+          <div class="p2-view-switch" id="p2ViewSwitch" role="group" aria-label="Darbo vaizdas">
+            <button type="button" class="p2-view-button" data-p2-view="board"><span aria-hidden="true">□</span><span>Lenta</span></button>
+            <button type="button" class="p2-view-button is-active" data-p2-view="split"><span aria-hidden="true">◫</span><span>Padalintas</span></button>
+            <button type="button" class="p2-view-button" data-p2-view="practice" id="p2PracticeModeButton"><span aria-hidden="true">▤</span><span>Tik pratybos</span></button>
+          </div>
+          <button class="ghost-button practice-only-open-button" id="practiceOnlyButton" type="button" title="Atverti pasirinktas pratybas atskirame režime"><span aria-hidden="true">⛶</span><span>Tik pratybos</span></button>
+          <div class="mode-switch internal-mode-switch" role="group" aria-label="Vidinis darbo režimas" hidden aria-hidden="true">
+            <button class="mode-button is-active" id="studentModeButton" type="button">Mokinys</button>
+            <button class="mode-button" id="teacherModeButton" type="button">Mokytojas</button>
+          </div>
+          <button class="ghost-button" id="centerPracticeButton" hidden>Centruoti pratybas</button>
+          <button class="ghost-button danger p2-reset-action" id="resetButton" title="Išvalyti visą dabartinės sesijos lentą"><span aria-hidden="true">⌫</span><span>Išvalyti</span></button>
         </div>
-        <button class="ghost-button library-open-button" id="libraryButton" type="button"><span aria-hidden="true">▦</span><span>Biblioteka</span></button>
-        <button class="ghost-button practice-only-open-button" id="practiceOnlyButton" type="button" title="Atverti pasirinktas pratybas atskirame režime"><span aria-hidden="true">⛶</span><span>Tik pratybos</span></button>
-        <div class="mode-switch internal-mode-switch" role="group" aria-label="Vidinis darbo režimas" hidden aria-hidden="true">
-          <button class="mode-button is-active" id="studentModeButton" type="button">Mokinys</button>
-          <button class="mode-button" id="teacherModeButton" type="button">Mokytojas</button>
-        </div>
-        <button class="ghost-button" id="centerPracticeButton" hidden>Centruoti pratybas</button>
-        <button class="ghost-button danger" id="resetButton" title="Išvalyti visą dabartinės sesijos lentą">Išvalyti</button>
       </div>
     </header>
 
@@ -435,7 +439,7 @@
             <div class="p2-teacher-dashboard-grid">
               <div class="p2-progress-card">
                 <div class="p2-progress-head">
-                  <div><span class="p2-label">Priskirta pamoka</span><h3>Turinio dar nepriskirta</h3></div>
+                  <div><span class="p2-label">Priskirta pamoka</span><h3>Pamoka dar nepriskirta</h3></div>
                   <strong>— / —</strong>
                 </div>
                 <div class="p2-progress-line"><span style="width:0%"></span></div>
@@ -447,7 +451,7 @@
               </div>
 
               <div class="p2-current-task-card">
-                <div class="p2-card-heading-row"><div><span class="p2-label">Dabartinė veikla</span><h3>Mokinys dar nepradėjo pratybų</h3></div><span class="p2-soft-pill">Laukiama</span></div>
+                <div class="p2-card-heading-row"><div><span class="p2-label">Dabartinė veikla</span><h3>Pratybos dar nepradėtos</h3></div><span class="p2-soft-pill">Laukiama</span></div>
                 <p>Čia matysi tik pedagogiškai svarbią būseną: pamoką, užduotį, bandymus, pagalbą ir rezultatą. Mokinės lango dydis ar slinktis nebus sinchronizuojami.</p>
                 <div class="p2-card-actions">
                   <button type="button" class="p2-secondary" disabled>Atidaryti pratybas</button>
@@ -630,9 +634,9 @@
       MathfieldElement.soundsDirectory = null;
     }
   </script>
-  <script src="tasks.js?v=P2-SPLIT-P1.5.1"></script>
-  <script src="app.js?v=P2-SPLIT-P1.5.1"></script>
-  <script src="p2-ui.js?v=P2-SPLIT-P1.5.1"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P1.5.1"></script>
+  <script src="tasks.js?v=P2-SPLIT-P1.6"></script>
+  <script src="app.js?v=P2-SPLIT-P1.6"></script>
+  <script src="p2-ui.js?v=P2-SPLIT-P1.6"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P1.6"></script>
 </body>
 </html>

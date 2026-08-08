@@ -3336,3 +3336,244 @@ body.p2-shell .p2-workspace[data-view="practice"] .p2-side-pane {
   border-left: 0;
   border-top: 0;
 }
+
+/* =========================================================
+   P2-SPLIT-P1.6 — bendro interfeiso poliravimas.
+   Tik UI sluoksnis. Lentos redagavimo ir Firebase logika nekeičiama.
+   ========================================================= */
+body.p2-shell {
+  --p2-topbar-height:72px;
+  --p2-ui-blue:#4862cf;
+  --p2-ui-blue-soft:#eef2ff;
+  --p2-ui-border:#e2e7f0;
+}
+body.p2-shell .topbar {
+  min-height:var(--p2-topbar-height);
+  grid-template-columns:minmax(205px,auto) minmax(330px,1fr) minmax(0,auto);
+  gap:14px;
+  padding:9px 16px;
+  border-bottom-color:#e5e9f0;
+}
+body.p2-shell .brand { gap:10px; }
+body.p2-shell .brand-mark { width:40px; height:40px; border-radius:12px; font-size:13px; }
+body.p2-shell .brand strong { font-size:15px; letter-spacing:-.015em; }
+body.p2-shell .brand span { margin-top:2px; font-size:10px; color:#8892a3; }
+body.p2-shell .tools {
+  justify-self:start;
+  padding:4px;
+  gap:3px;
+  border:1px solid #e3e8ef;
+  border-radius:14px;
+  background:#f6f8fb;
+}
+body.p2-shell .tool {
+  min-height:36px;
+  padding:0 9px;
+  border-radius:10px;
+  border-color:transparent;
+  background:transparent;
+}
+body.p2-shell .tool.is-active {
+  background:#fff;
+  border-color:#dfe5ef;
+  box-shadow:0 2px 8px rgba(34,46,71,.075);
+}
+body.p2-shell .topbar-actions {
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:9px;
+  min-width:0;
+  overflow:visible;
+}
+body.p2-shell .p2-session-actions,
+body.p2-shell .p2-view-actions {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+body.p2-shell .p2-view-actions {
+  padding-left:9px;
+  border-left:1px solid #e5e9f0;
+}
+body.p2-shell .online-session {
+  min-height:38px;
+  padding:0 7px;
+  border-radius:11px;
+  background:#fafbfc;
+}
+body.p2-shell .online-room {
+  font-size:10px;
+  letter-spacing:.04em;
+  padding:5px 6px;
+}
+body.p2-shell .online-users {
+  min-width:25px;
+  width:auto;
+  padding:0 7px;
+  height:25px;
+  font-size:10px;
+  background:#eef1f6;
+}
+body.p2-shell .p2-top-action,
+body.p2-shell .p2-reset-action {
+  min-height:36px;
+  padding:0 9px;
+  gap:6px;
+  border-radius:10px;
+  white-space:nowrap;
+  font-size:11px;
+  font-weight:800;
+}
+body.p2-shell .p2-top-action > span:first-child,
+body.p2-shell .p2-reset-action > span:first-child {
+  color:#73809a;
+  font-size:13px;
+}
+body.p2-shell .p2-view-switch {
+  padding:3px;
+  border-radius:11px;
+}
+body.p2-shell .p2-view-button {
+  min-height:32px;
+  padding:0 9px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border-radius:8px;
+  font-size:10.5px;
+}
+body.p2-shell .p2-view-button > span:first-child { font-size:12px; opacity:.78; }
+body.p2-shell .p2-reset-action { color:#a84450; border-color:#eed8dc; background:#fffafa; }
+body.p2-shell .p2-reset-action:hover { background:#fff1f3; border-color:#e7c4ca; }
+
+/* Pagrindinė darbo sritis — švaresnės, vizualiai lygiavertės lentos ir pratybų zonos. */
+body.p2-shell .p2-workspace { background:#eef2f7; }
+body.p2-shell .p2-board-pane,
+body.p2-shell .p2-side-pane { background:#fff; }
+body.p2-shell .p2-pane-header {
+  min-height:56px;
+  padding:9px 15px;
+  border-bottom:1px solid #e8ecf2;
+  box-shadow:0 1px 0 rgba(29,41,65,.015);
+}
+body.p2-shell .p2-pane-icon {
+  width:30px;
+  height:30px;
+  border-radius:10px;
+  background:var(--p2-ui-blue-soft);
+  color:var(--p2-ui-blue);
+}
+body.p2-shell .p2-board-live {
+  background:#f5fbf7;
+  border-color:#dbece1;
+  color:#4f725e;
+}
+body.p2-shell .p2-side-kicker { color:#8a94a5; letter-spacing:.08em; }
+body.p2-shell .p2-side-header h2 { font-size:17px; }
+body.p2-shell .p2-side-role-pill { background:#f0f3fb; color:#6676b4; }
+body.p2-shell .p2-icon-button { background:#f9fafc; }
+body.p2-shell .p2-icon-button:hover { background:#f1f4fa; color:#4d61bb; }
+body.p2-shell .p2-side-scroll {
+  padding:20px;
+  background:linear-gradient(180deg,#f8fafe 0%,#f5f7fb 100%);
+}
+body.p2-shell .p2-student-panel,
+body.p2-shell .p2-teacher-panel { max-width:980px; gap:15px; }
+
+/* Studentui — viena aiški pradžios kortelė, mažiau „dashboard“ jausmo. */
+body.p2-shell .p2-student-hero {
+  border-color:#e1e7f0;
+  box-shadow:0 8px 24px rgba(35,48,78,.045);
+}
+body.p2-shell .p2-student-hero-icon {
+  background:linear-gradient(145deg,#edf1ff,#f7f8ff);
+  box-shadow:inset 0 0 0 1px rgba(77,99,202,.04);
+}
+body.p2-shell .p2-count-badge {
+  min-width:44px;
+  height:44px;
+  background:#f1f4fb;
+  color:#77839a;
+}
+body.p2-shell .p2-practice-tabs {
+  width:100%;
+  max-width:none;
+  padding:4px;
+  border:1px solid #e4e9f1;
+  background:#f0f3f8;
+}
+body.p2-shell .p2-practice-tabs button { min-height:40px; }
+body.p2-shell .p2-practice-empty {
+  min-height:280px;
+  border-style:dashed;
+  border-color:#dce3ee;
+  box-shadow:none;
+  background:rgba(255,255,255,.78);
+}
+body.p2-shell .p2-practice-empty strong { color:#344057; }
+body.p2-shell .p2-mini-section { box-shadow:0 6px 20px rgba(35,48,78,.035); }
+body.p2-shell .p2-student-progress > div { min-width:0; }
+
+/* Mokytojui — aiški hierarchija: mokinys -> pamoka -> veikla -> įžvalgos. */
+body.p2-shell .p2-learner-overview {
+  position:relative;
+  overflow:hidden;
+  border-color:#dfe6f1;
+  box-shadow:0 8px 24px rgba(35,48,78,.045);
+}
+body.p2-shell .p2-learner-overview::before {
+  content:"";
+  position:absolute;
+  left:0; top:0; bottom:0;
+  width:3px;
+  background:#536bd0;
+  opacity:.75;
+}
+body.p2-shell .p2-progress-card,
+body.p2-shell .p2-current-task-card,
+body.p2-shell .p2-insight-card {
+  border-color:#e1e7f0;
+  box-shadow:0 7px 22px rgba(35,48,78,.04);
+}
+body.p2-shell .p2-progress-line { height:6px; background:#edf1f6; }
+body.p2-shell .p2-metrics > div { background:#f8f9fc; }
+body.p2-shell .p2-card-actions { padding-top:2px; }
+body.p2-shell .p2-primary,
+body.p2-shell .p2-secondary { min-height:36px; border-radius:10px; font-size:11px; }
+body.p2-shell .p2-primary { background:#4d66cf; border-color:#4d66cf; }
+body.p2-shell .p2-insight-empty { background:linear-gradient(180deg,#fff 0%,#fffdf8 100%); }
+
+/* Skirtukas subtilus, bet aiškiai paimamas pele / pirštu. */
+body.p2-shell .p2-splitter { background:#e9edf4; }
+body.p2-shell .p2-splitter::before { background:#c5cedb; }
+body.p2-shell .p2-splitter span { border-color:#dbe1ea; color:#778296; }
+body.p2-shell .p2-splitter:hover { background:#e3e8f1; }
+
+/* Dideliuose ekranuose mygtukų tekstas lieka, siauresniuose — kompaktiškėja. */
+@media (max-width:1500px) {
+  body.p2-shell .topbar { grid-template-columns:minmax(190px,auto) minmax(300px,1fr) minmax(0,auto); padding-inline:12px; gap:10px; }
+  body.p2-shell .p2-top-action { padding-inline:8px; }
+  body.p2-shell .p2-session-actions { gap:4px; }
+}
+@media (max-width:1280px) {
+  body.p2-shell .brand span { display:none; }
+  body.p2-shell .topbar { grid-template-columns:minmax(150px,auto) minmax(250px,1fr) minmax(0,auto); }
+  body.p2-shell .p2-top-action > span:last-child { display:none; }
+  body.p2-shell .p2-top-action { width:36px; padding:0; justify-content:center; }
+  body.p2-shell .p2-view-button { padding-inline:8px; }
+}
+@media (max-width:1000px) {
+  body.p2-shell .topbar { grid-template-columns:auto minmax(0,1fr); grid-template-areas:"brand actions" "tools tools"; }
+  body.p2-shell .tools { grid-area:tools; width:100%; justify-content:center; }
+  body.p2-shell .topbar-actions { grid-area:actions; }
+}
+@media (max-width:760px) {
+  body.p2-shell .p2-view-button > span:first-child { display:none; }
+  body.p2-shell .p2-side-scroll { padding:12px; }
+  body.p2-shell .p2-student-progress { grid-template-columns:1fr; }
+  body.p2-shell .p2-student-progress > div { border-right:0; border-bottom:1px solid #e8ecf2; }
+  body.p2-shell .p2-student-progress > div:last-child { border-bottom:0; }
+}
