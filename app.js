@@ -6005,10 +6005,23 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function sharedNoteEditingActive() {
-    if (activeMixedTextEditor?.isConnected && activeMixedTextEditor.closest('.board-note')) return true;
-    if (activeDirectMathField?.isConnected && activeDirectMathField.closest('.board-note')) return true;
+    // P2-SPLIT-P2.2.1: activeMixedTextEditor yra redagavimo kontekstas, bet jis gali
+    // likti registruotas ir vartotojui jau paspaudus kitur. Nuotolinių tekstų
+    // sinchronizacijos nestabdome vien dėl tokios "lipnios" būsenos. Saugome DOM
+    // tik tada, kai lentoje iš tikrųjų yra fokusas / MathLive redagavimo sesija.
+    const activeElement = document.activeElement;
+    const editor = activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null;
+    if (editor?.closest('.board-note')) {
+      if (activeElement === editor || editor.contains(activeElement)) return true;
+      const noteElement = editor.closest('.board-note');
+      if (activeElement && noteElement?.contains(activeElement)) return true;
+    }
+    if (activeDirectMathField?.isConnected && activeDirectMathField.closest('.board-note')
+      && directMathFieldHasDomFocus(activeDirectMathField)) return true;
     const registered = mathFieldRegistry.get(mathEditSession.key);
-    return Boolean(registered?.isConnected && registered.closest?.('.board-note') && (mathEditSession.field || mathEditSession.restorePending));
+    return Boolean(registered?.isConnected
+      && registered.closest?.('.board-note')
+      && (directMathFieldHasDomFocus(registered) || mathEditSession.restorePending));
   }
 
   function notifySharedNoteEditingEndedSoon() {
@@ -6207,6 +6220,11 @@ KOKYBĖS REIKALAVIMAI:
     if (!note || !editor?.isConnected) return;
     note.nodes = mixedNodesFromEditor(editor);
     applyMixedNoteContentSizing(note, editor);
+    // P2-SPLIT-P2.2.1: localStorage išsaugojimas sąmoningai lieka debounce'intas,
+    // tačiau bendra lenta turi būti gyva ir ilgo nenutrūkstamo rašymo metu.
+    // Atskiras notes-live signalas internete throttlinamas, todėl mokytojas mato
+    // mokinio tekstą beveik simbolis po simbolio neprarandant mokinio fokuso.
+    window.dispatchEvent(new CustomEvent('p772:shared-notes-live'));
     scheduleSave();
   }
 
@@ -8247,6 +8265,37 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
+  function applyIncomingNotesWithoutBoardRerender(incoming) {
+    if (!Array.isArray(incoming) || incoming.length !== state.notes.length) return false;
+    const currentById = new Map(state.notes.map(note => [note.id, note]));
+    if (incoming.some(note => !currentById.has(note.id))) return false;
+
+    const boardRect = getBoardWorldRect();
+    for (const next of incoming) {
+      const current = currentById.get(next.id);
+      if (!current) return false;
+      if (JSON.stringify(current) === JSON.stringify(next)) continue;
+
+      // Išlaikome tą patį objekto reference: ant esamo contenteditable užkabinti
+      // event listeneriai turi closure į current. Taip nuotolinis tekstas gali būti
+      // atnaujintas be visos lentos renderBoardObjects() perpiešimo.
+      Object.keys(current).forEach(key => { if (!(key in next)) delete current[key]; });
+      Object.assign(current, deepClone(next));
+
+      const element = refs.objectsLayer.querySelector(`[data-note-id="${CSS.escape(String(current.id))}"]`);
+      const editor = element?.querySelector('.mixed-editor-content');
+      if (!element || !editor) return false;
+
+      element.style.left = `${current.x * boardRect.width}px`;
+      element.style.top = `${current.y * boardRect.height}px`;
+      element.style.width = `${Math.max(110, Math.min(900, current.width || 420))}px`;
+      element.style.minHeight = '44px';
+      renderMixedNoteContent(current, editor);
+      applyMixedNoteContentSizing(current, editor, { expandForFormula: false });
+    }
+    return true;
+  }
+
   function applyOnlineSharedPart(part, value) {
     if (part === 'drawing') {
       state.drawing = Array.isArray(value) ? value.filter(Boolean) : [];
@@ -8255,8 +8304,11 @@ KOKYBĖS REIKALAVIMAI:
       return;
     }
     if (part === 'notes') {
-      state.notes = migrateMixedNotes(Array.isArray(value) ? value : [], []);
-      renderBoardObjects();
+      const incoming = migrateMixedNotes(Array.isArray(value) ? value : [], []);
+      if (!applyIncomingNotesWithoutBoardRerender(incoming)) {
+        state.notes = incoming;
+        renderBoardObjects();
+      }
     } else if (part === 'boardTasks') {
       state.boardTasks = (Array.isArray(value) ? value : []).map(normalizeBoardTaskInstance).filter(Boolean);
       if (state.activeBoardTaskId && !state.boardTasks.some(item => item.id === state.activeBoardTaskId)) state.activeBoardTaskId = null;
@@ -8328,7 +8380,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P2-SPLIT-P1.4',
+    version: 'P2-SPLIT-P2.2.1',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

@@ -185,6 +185,11 @@ let remoteCache = {
 };
 let pendingRemoteNotes = null;
 let localNotesRevision = 0;
+let notesLiveTimer = null;
+let notesLiveQueued = false;
+let notesLivePublishing = false;
+let lastNotesLivePublishAt = 0;
+const NOTES_LIVE_INTERVAL_MS = 55;
 
 // P2-SPLIT-P1.1: Firebase gali grąžinti mūsų pačių ankstesnę būseną tuo metu,
 // kai vartotojas jau įvedė kitą raidę / formulės simbolį. Jei tokią senesnę
@@ -303,6 +308,59 @@ async function publishLocalChanges() {
     console.error('P2-SPLIT-P1.7 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
+}
+
+async function publishNotesLive() {
+  if (!bootstrapped || notesLivePublishing) {
+    notesLiveQueued = true;
+    return;
+  }
+
+  const notes = toMap(bridge.getSharedSnapshot().notes);
+  const notesFp = stable(notes);
+  if (notesFp === remoteCache.notes) return;
+
+  let remoteNotes = {};
+  try { remoteNotes = JSON.parse(remoteCache.notes || '{}'); } catch (_) { remoteNotes = {}; }
+  const updates = {};
+  diffMap('workspace/notes', notes, remoteNotes, updates);
+  if (!Object.keys(updates).length) return;
+
+  const previousNotesCache = remoteCache.notes;
+  remoteCache.notes = notesFp;
+  localNotesRevision += 1;
+  updates['workspace/meta/notesUpdatedBy'] = me;
+  updates['workspace/meta/notesRevision'] = localNotesRevision;
+  updates['workspace/meta/updatedAt'] = serverTimestamp();
+  updates['workspace/meta/updatedBy'] = me;
+  const echoFp = rememberLocalEcho('notes', notes);
+
+  notesLivePublishing = true;
+  try {
+    await update(roomRef, updates);
+  } catch (error) {
+    forgetLocalEcho('notes', echoFp);
+    if (remoteCache.notes === notesFp) remoteCache.notes = previousNotesCache;
+    console.warn('P2-SPLIT-P2.2.1 gyvo lentos teksto sinchronizavimo klaida', error);
+  } finally {
+    notesLivePublishing = false;
+    if (notesLiveQueued) queueNotesLivePublish();
+  }
+}
+
+function queueNotesLivePublish() {
+  notesLiveQueued = true;
+  if (!bootstrapped || notesLiveTimer || notesLivePublishing) return;
+  const elapsed = Date.now() - lastNotesLivePublishAt;
+  const delay = Math.max(0, NOTES_LIVE_INTERVAL_MS - elapsed);
+  notesLiveTimer = setTimeout(async () => {
+    notesLiveTimer = null;
+    if (!notesLiveQueued) return;
+    notesLiveQueued = false;
+    lastNotesLivePublishAt = Date.now();
+    await publishNotesLive();
+    if (notesLiveQueued) queueNotesLivePublish();
+  }, delay);
 }
 
 function settleCommittedLiveStrokes(normalizedDrawing) {
@@ -605,6 +663,12 @@ onValue(presenceListRef, snapshot => {
     usersEl.textContent = String(count);
     usersEl.title = `Prisijungę langai: ${count}`;
   }
+});
+
+window.addEventListener('p772:shared-notes-live', () => {
+  // Throttle, ne debounce: net jei mokinys rašo be jokios pauzės kelias sekundes,
+  // mokytojo lenta gauna tarpines teksto būsenas maždaug kas 55 ms.
+  queueNotesLivePublish();
 });
 
 window.addEventListener('p772:shared-state-changed', () => {
