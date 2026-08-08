@@ -1717,6 +1717,24 @@
         return;
       }
       if (eventTouchesMathToolbar(event)) return;
+
+      // P2-SPLIT-P2.3.1: aktyvus MathLive laukas parodo universalią matematikos juostą.
+      // Jei ją paslepiame jau pointerdown metu, visas P2 maketas pasislenka dar iki native click,
+      // todėl pirmas paspaudimas ant „Šakos“, „Atsakymas“, „Pridėti eilutę“, „Tikrinti“ ir pan.
+      // gali tik deaktyvuoti lauką, o ne paspausti mygtuką. P2 mokinio mygtukams sesiją uždarome
+      // tik po trumpo pointer/click gesto lango. Jei pats veiksmas perrenderino ir sufokusavo naują
+      // MathLive lauką, jo neliečiame.
+      const path = eventComposedPath(event);
+      const p2StudentControl = path.find(node => node?.matches?.('#p2StudentPanel button:not(:disabled)')) || null;
+      if (p2StudentControl && activeDirectMathField?.isConnected) {
+        const fieldAtPointerDown = activeDirectMathField;
+        window.setTimeout(() => {
+          const current = activeDirectMathField?.isConnected ? activeDirectMathField : null;
+          if (!current || current === fieldAtPointerDown) clearMathEditSession();
+        }, 180);
+        return;
+      }
+
       clearMathEditSession();
     }, true);
 
