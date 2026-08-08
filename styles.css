@@ -4892,3 +4892,294 @@ body.p2-shell .p2-teacher-solution-branches math-field.p2-teacher-live-math {
   }
   body.p2-shell .p2-solution-step-tools { flex-wrap:wrap; }
 }
+
+
+/* =========================================================
+   P2-SPLIT-P2.4 · Minimalus „sprendimo lapo“ UI
+   Sprendimo sritis skirta matematikai, techniniai valdikliai
+   sutelkti vienoje juostoje virš lapo.
+   ========================================================= */
+body.p2-shell .p2-solution-paper {
+  overflow: hidden;
+  border: 1px solid #e3e7ef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(39, 50, 71, .025);
+}
+
+body.p2-shell .p2-solution-paper-head {
+  min-height: 44px;
+  padding: 9px 13px;
+  background: #fbfcfd;
+}
+body.p2-shell .p2-solution-paper-head > div > span {
+  color: #3f4a5e;
+  font-size: 10px;
+  font-weight: 850;
+}
+body.p2-shell .p2-solution-paper-head small {
+  color: #929baa;
+  font-size: 8.5px;
+}
+
+body.p2-shell .p2-solution-type-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #eef1f5;
+  background: #fff;
+}
+body.p2-shell .p2-solution-type-label {
+  flex: 0 0 auto;
+  color: #8a93a2;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: .025em;
+}
+body.p2-shell .p2-solution-type-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border: 1px solid #e5e9f0;
+  border-radius: 9px;
+  background: #f8f9fb;
+}
+body.p2-shell .p2-solution-type-options button {
+  min-height: 27px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #7a8597;
+  font: 760 8.5px/1.2 inherit;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, box-shadow .12s ease;
+}
+body.p2-shell .p2-solution-type-options button:hover:not(:disabled) {
+  background: #fff;
+  color: #526078;
+}
+body.p2-shell .p2-solution-type-options button.is-active {
+  background: #fff;
+  color: #4f67c7;
+  box-shadow: 0 1px 3px rgba(48, 65, 103, .10);
+}
+body.p2-shell .p2-solution-type-options button:disabled {
+  opacity: .46;
+  cursor: default;
+}
+
+body.p2-shell .p2-solution-paper-lines {
+  position: relative;
+  display: grid;
+  gap: 0;
+  min-height: 252px;
+  padding: 7px 12px 24px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 55px,
+      rgba(226, 231, 238, .72) 55px,
+      rgba(226, 231, 238, .72) 56px
+    );
+}
+
+body.p2-shell .p2-paper-step,
+body.p2-shell .p2-teacher-solution-step.p2-paper-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px 22px;
+  align-items: start;
+  gap: 4px;
+  min-height: 56px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body.p2-shell .p2-paper-step:hover,
+body.p2-shell .p2-paper-step:focus-within {
+  background: rgba(250, 251, 253, .58);
+}
+body.p2-shell .p2-paper-step.is-correct,
+body.p2-shell .p2-paper-step.is-error,
+body.p2-shell .p2-paper-step.is-warning {
+  background: transparent;
+  box-shadow: none;
+}
+body.p2-shell .p2-paper-step.is-error:before,
+body.p2-shell .p2-paper-step.is-warning:before,
+body.p2-shell .p2-paper-step.is-correct:before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+}
+body.p2-shell .p2-paper-step.is-correct:before { background: #69ad84; }
+body.p2-shell .p2-paper-step.is-warning:before { background: #d2ac43; }
+body.p2-shell .p2-paper-step.is-error:before { background: #d96b73; }
+
+body.p2-shell .p2-paper-step .p2-solution-step-main {
+  min-width: 0;
+  padding-top: 1px;
+}
+body.p2-shell .p2-paper-step .p2-solution-single-field,
+body.p2-shell .p2-paper-step .p2-solution-branches {
+  min-height: 48px;
+}
+body.p2-shell .p2-paper-step math-field.p2-solution-math-field {
+  min-height: 48px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 21px;
+}
+body.p2-shell .p2-paper-step math-field.p2-solution-math-field:hover {
+  border-color: transparent;
+  background: rgba(255,255,255,.62);
+}
+body.p2-shell .p2-paper-step math-field.p2-solution-math-field:focus-within,
+body.p2-shell .p2-paper-step math-field.p2-solution-math-field.math-field-is-active {
+  border-color: rgba(121, 145, 232, .34);
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 0 0 2px rgba(104,124,216,.075);
+}
+body.p2-shell .p2-paper-step .p2-solution-step-state {
+  align-self: center;
+  padding-top: 0;
+  color: #8993a3;
+  font-size: 12px;
+}
+body.p2-shell .p2-paper-step .p2-solution-step-message {
+  margin: -2px 8px 2px;
+  font-size: 8px;
+  line-height: 1.25;
+}
+
+body.p2-shell .p2-paper-remove {
+  align-self: center;
+  margin-top: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, background .12s ease;
+}
+body.p2-shell .p2-paper-step:hover .p2-paper-remove:not(:disabled),
+body.p2-shell .p2-paper-step:focus-within .p2-paper-remove:not(:disabled) {
+  opacity: .5;
+  pointer-events: auto;
+}
+body.p2-shell .p2-paper-step .p2-paper-remove:hover:not(:disabled) {
+  opacity: 1;
+}
+body.p2-shell .p2-paper-remove:disabled {
+  display: none;
+}
+
+body.p2-shell .p2-paper-branches {
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  gap: 10px;
+}
+body.p2-shell .p2-paper-branches .p2-solution-branch-separator {
+  color: #a0a8b4;
+  font-size: 8px;
+  font-weight: 700;
+}
+body.p2-shell .p2-solution-answer-prefix {
+  color: #7f8999;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+body.p2-shell .p2-solution-single-field.is-answer {
+  gap: 3px;
+}
+
+body.p2-shell .p2-solution-paper-actions {
+  min-height: 34px;
+  padding: 3px 10px 6px;
+  border-top: 0;
+  background: #fff;
+}
+body.p2-shell .p2-paper-add-line {
+  min-height: 27px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9aa2af;
+  font: 730 8.5px/1.2 inherit;
+  cursor: pointer;
+}
+body.p2-shell .p2-paper-add-line:hover:not(:disabled) {
+  background: #f5f7fa;
+  color: #657188;
+}
+body.p2-shell .p2-paper-add-line:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+/* Mokytojas mato tą patį „lapą“, tik be redagavimo valdiklių. */
+body.p2-shell .p2-teacher-solution-view.p2-solution-paper > header {
+  background: #fbfcfd;
+}
+body.p2-shell .p2-teacher-solution-view .p2-solution-paper-lines {
+  min-height: 0;
+  padding-bottom: 10px;
+}
+body.p2-shell .p2-teacher-solution-step.p2-paper-step {
+  grid-template-columns: minmax(0,1fr) 20px;
+}
+body.p2-shell .p2-teacher-solution-step math-field.p2-teacher-live-math {
+  min-height: 46px;
+  padding: 7px 8px;
+  background: transparent;
+  font-size: 20px;
+}
+body.p2-shell .p2-teacher-solution-step:hover {
+  background: transparent;
+}
+
+@media (max-width: 700px) {
+  body.p2-shell .p2-solution-type-toolbar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  body.p2-shell .p2-solution-type-label { display: none; }
+  body.p2-shell .p2-solution-type-options {
+    width: 100%;
+  }
+  body.p2-shell .p2-solution-type-options button {
+    flex: 1 1 0;
+    padding-inline: 5px;
+  }
+  body.p2-shell .p2-solution-paper-lines {
+    min-height: 220px;
+    padding-inline: 8px;
+  }
+  body.p2-shell .p2-paper-step,
+  body.p2-shell .p2-teacher-solution-step.p2-paper-step {
+    grid-template-columns: minmax(0,1fr) 18px 20px;
+  }
+  body.p2-shell .p2-teacher-solution-step.p2-paper-step {
+    grid-template-columns: minmax(0,1fr) 18px;
+  }
+  body.p2-shell .p2-paper-step math-field.p2-solution-math-field {
+    font-size: 19px;
+  }
+  body.p2-shell .p2-paper-branches,
+  body.p2-shell .p2-teacher-solution-branches {
+    grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    gap: 4px;
+  }
+  body.p2-shell .p2-solution-paper-head > div > small { display: none; }
+}
