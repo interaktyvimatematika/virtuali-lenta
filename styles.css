@@ -4683,3 +4683,133 @@ body.p2-shell math-field.p2-teacher-live-math { display:block; width:100%; min-h
   body.p2-shell math-field.p2-solution-math-field { font-size:17px; }
   body.p2-shell .p2-solution-editor-head > span { display:none; }
 }
+
+/* =========================================================
+   P2-SPLIT-P2.2 · Reiškinio įvedimas + realaus laiko peržiūra
+   ========================================================= */
+body.p2-shell .p2-expression-domain {
+  margin: -3px 0 0;
+  color: #8992a1;
+  font-size: 9px;
+  line-height: 1.35;
+}
+body.p2-shell .p2-expression-editor {
+  overflow: hidden;
+  border: 1px solid #e3e7ef;
+  border-radius: 14px;
+  background: #fff;
+}
+body.p2-shell .p2-expression-editor-head,
+body.p2-shell .p2-teacher-expression-view > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf0f4;
+  background: #fafbfc;
+}
+body.p2-shell .p2-expression-editor-head > div,
+body.p2-shell .p2-teacher-expression-view > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+body.p2-shell .p2-expression-editor-head span,
+body.p2-shell .p2-teacher-expression-view > header strong {
+  color: #3e4a5f;
+  font-size: 11px;
+  font-weight: 850;
+}
+body.p2-shell .p2-expression-editor-head small,
+body.p2-shell .p2-teacher-expression-view > header span {
+  color: #8b94a3;
+  font-size: 9px;
+  line-height: 1.35;
+}
+body.p2-shell .p2-expression-field-host {
+  min-width: 0;
+  padding: 12px;
+}
+body.p2-shell math-field.p2-expression-math-field {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid #e1e5ed;
+  border-radius: 11px;
+  background: #fbfcfe;
+  color: #28344a;
+  font-size: 22px;
+  line-height: 1.3;
+  outline: none;
+  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
+}
+body.p2-shell math-field.p2-expression-math-field:hover {
+  border-color: #d7dce6;
+  background: #fff;
+}
+body.p2-shell math-field.p2-expression-math-field:focus-within,
+body.p2-shell math-field.p2-expression-math-field.math-field-is-active {
+  border-color: #8198ee;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(94, 119, 224, .10);
+}
+body.p2-shell .p2-expression-state {
+  min-width: 18px;
+  color: #8a93a2;
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+}
+body.p2-shell .p2-expression-message {
+  margin: -4px 12px 11px;
+  color: #7c8798;
+  font-size: 9px;
+  line-height: 1.4;
+}
+body.p2-shell .p2-expression-editor.is-correct { border-color: #d8eadf; }
+body.p2-shell .p2-expression-editor.is-correct .p2-expression-state,
+body.p2-shell .p2-expression-editor.is-correct .p2-expression-message { color: #4d8a61; }
+body.p2-shell .p2-expression-editor.is-error { border-color: #efdadd; }
+body.p2-shell .p2-expression-editor.is-error .p2-expression-state,
+body.p2-shell .p2-expression-editor.is-error .p2-expression-message { color: #b45f62; }
+body.p2-shell .p2-expression-editor.is-warning { border-color: #eadfbd; }
+body.p2-shell .p2-expression-editor.is-warning .p2-expression-state,
+body.p2-shell .p2-expression-editor.is-warning .p2-expression-message { color: #9b7827; }
+body.p2-shell .p2-expression-editor.is-locked math-field.p2-expression-math-field { opacity: .86; }
+
+body.p2-shell .p2-teacher-expression-view {
+  overflow: hidden;
+  margin-top: 9px;
+  border: 1px solid #e3e7ef;
+  border-radius: 13px;
+  background: #fff;
+}
+body.p2-shell .p2-teacher-expression-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+body.p2-shell .p2-teacher-expression-value math-field {
+  min-width: 0;
+  font-size: 20px;
+}
+body.p2-shell .p2-teacher-expression-view .p2-expression-message {
+  margin: 0;
+  padding: 0 12px 11px;
+}
+body.p2-shell .p2-teacher-expression-view.is-correct .p2-expression-state,
+body.p2-shell .p2-teacher-expression-view.is-correct .p2-expression-message { color: #4d8a61; }
+body.p2-shell .p2-teacher-expression-view.is-error .p2-expression-state,
+body.p2-shell .p2-teacher-expression-view.is-error .p2-expression-message { color: #b45f62; }
+body.p2-shell .p2-teacher-expression-view.is-warning .p2-expression-state,
+body.p2-shell .p2-teacher-expression-view.is-warning .p2-expression-message { color: #9b7827; }
+
+@media (max-width: 900px) {
+  body.p2-shell math-field.p2-expression-math-field { min-height: 48px; font-size: 19px; }
+}

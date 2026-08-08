@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.1.1';
+  const BUILD = 'P2-SPLIT-P2.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -63,7 +63,31 @@
           }
         }
       },
-      { id: 'c2', section: 'class', label: 'Pamokoje', prompt: 'Kuris taškas priklauso funkcijos y = x + 2 grafikui?', choices: ['(1; 1)', '(1; 3)', '(2; 1)', '(0; 0)'], answer: '(1; 3)', hint: 'Patikrink: kai x = 1, kiek tada lygu y?' },
+      {
+        id: 'c2',
+        type: 'expression',
+        section: 'class',
+        label: 'Pamokoje',
+        title: 'Suprastink reiškinį',
+        prompt: '(2x^2 + 4x) : (2x)',
+        instruction: 'Suprastink reiškinį ir įrašyk galutinį atsakymą.',
+        answer: 'x + 2',
+        hint: 'Skaitiklyje iškelk 2x: 2x(x + 2). Tada sutrumpink bendrąjį daugiklį 2x.',
+        response: {
+          renderer: 'single-math-input',
+          valueType: 'expression',
+          label: 'Galutinis reiškinys',
+          placeholder: 'Pvz., x + 2',
+          validator: 'expression-equivalence',
+          options: {
+            expected: 'x + 2',
+            expectedDisplay: 'x + 2',
+            requireSimplified: true,
+            domain: 'x ≠ 0',
+            samples: [-7, -3, -1, 0.5, 2, 5, 11]
+          }
+        }
+      },
       { id: 'c3', section: 'class', label: 'Pamokoje', prompt: 'Ką reiškia užrašas f(4) = 9?', choices: ['Kai x = 9, y = 4', 'Kai x = 4, funkcijos reikšmė yra 9', 'Funkcija visada lygi 9', 'Grafikas kerta x ašį ties 4'], answer: 'Kai x = 4, funkcijos reikšmė yra 9', hint: 'f(4) nurodo funkcijos reikšmę, kai argumento x reikšmė yra 4.' },
       { id: 'c4', section: 'class', label: 'Pamokoje', prompt: 'Jei f(x) = 3 − x, kokia yra f(−2) reikšmė?', choices: ['1', '5', '−5', '−1'], answer: '5', hint: 'Atsargiai su dviem minuso ženklais: 3 − (−2).' },
       { id: 's1', section: 'self', label: 'Savarankiškai', prompt: 'Jei g(x) = 4x − 3, kokia yra g(2) reikšmė?', choices: ['5', '8', '11', '−5'], answer: '5', hint: 'Įrašyk x = 2 į formulę g(x) = 4x − 3.' },
@@ -98,6 +122,14 @@
 
   function isSolutionTask(task) {
     return task?.type === 'solution' || task?.response?.renderer === 'math-step-list';
+  }
+
+  function isExpressionTask(task) {
+    return task?.type === 'expression' || task?.response?.renderer === 'single-math-input';
+  }
+
+  function isValidatedMathTask(task) {
+    return isSolutionTask(task) || isExpressionTask(task);
   }
 
   function emptySolutionResponse() {
@@ -141,6 +173,39 @@
     return practiceEngine.validateTask(solutionTaskForEngine(task), normalizeSolutionResponse(response));
   }
 
+  function emptyExpressionResponse() {
+    return { answer: '', answerLatex: '' };
+  }
+
+  function normalizeExpressionResponse(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+      answer: String(source.answer || ''),
+      answerLatex: String(source.answerLatex || '')
+    };
+  }
+
+  function expressionResponseForItem(item) {
+    return normalizeExpressionResponse(item?.liveExpression || item?.lastExpression || emptyExpressionResponse());
+  }
+
+  function expressionTaskForEngine(task) {
+    return {
+      id: task.id,
+      title: task.title || 'Suprastink reiškinį',
+      instruction: task.instruction || '',
+      prompt: { kind: 'expression', value: task.prompt },
+      response: deepCopy(task.response)
+    };
+  }
+
+  function validateExpressionTask(task, response) {
+    if (!practiceEngine?.validateTask) {
+      return { status: 'incorrect', title: 'Tikrinimo variklis nepasiekiamas', message: 'Perkrauk puslapį ir bandyk dar kartą.' };
+    }
+    return practiceEngine.validateTask(expressionTaskForEngine(task), normalizeExpressionResponse(response));
+  }
+
   function comparableProgress(value) {
     const copy = deepCopy(value && typeof value === 'object' ? value : {});
     delete copy.updatedAt;
@@ -148,8 +213,8 @@
     return JSON.stringify(copy);
   }
 
-  function studentSolutionFieldActive() {
-    return Boolean(studentPanel.querySelector('math-field.p2-solution-math-field:focus-within, math-field.p2-solution-math-field.math-field-is-active'));
+  function studentMathFieldActive() {
+    return Boolean(studentPanel.querySelector('math-field.p2-solution-math-field:focus-within, math-field.p2-solution-math-field.math-field-is-active, math-field.p2-expression-math-field:focus-within, math-field.p2-expression-math-field.math-field-is-active'));
   }
 
   function publishLiveProgress(next, taskId) {
@@ -334,6 +399,11 @@
     if (isSolutionTask(task) && !raw.liveSolution && !raw.lastSolution && (raw.liveAnswer || raw.lastAnswer || raw.solved)) {
       return { ...baseTaskState(), openedAt: raw.openedAt || null };
     }
+    // P2.2 c2 anksčiau buvo A/B/C/D klausimas. Senas pasirinkimas negali būti
+    // interpretuojamas kaip naujos reiškinio užduoties atsakymas.
+    if (isExpressionTask(task) && !raw.liveExpression && !raw.lastExpression && (raw.liveAnswer || raw.lastAnswer || raw.solved)) {
+      return { ...baseTaskState(), openedAt: raw.openedAt || null };
+    }
     return raw;
   }
 
@@ -494,7 +564,7 @@
     }
 
     if (Number(item.attempts || 0) > 0) {
-      const result = isSolutionTask(task) ? item.validationResult : null;
+      const result = isValidatedMathTask(task) ? item.validationResult : null;
       const detail = result?.message ? `<span>${escapeHtml(result.message)}</span>` : '';
       const title = result?.title ? escapeHtml(result.title) : 'Dar ne.';
       return `<div class="p2-practice-feedback is-warning${extraClass}"><strong>${title}</strong>${detail}<small>${remaining === Infinity ? 'Bandymų skaičius neribojamas.' : `Liko ${remaining} ${remaining === 1 ? 'bandymas' : 'bandymai'}.`}</small></div>`;
@@ -535,11 +605,77 @@
       </section>`;
   }
 
+
+  function expressionEditorMarkup(task, item) {
+    const response = expressionResponseForItem(item);
+    const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
+    const result = item.validationResult || null;
+    const stateClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
+    const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+    return `
+      <section class="p2-expression-editor${stateClass} ${locked ? 'is-locked' : ''}">
+        <header class="p2-expression-editor-head">
+          <div><span>${escapeHtml(task.response?.label || 'Atsakymas')}</span><small>Įrašyk matematinį reiškinį. Tikrinama matematinė lygybė, ne teksto sutapimas.</small></div>
+          <b class="p2-expression-state" aria-hidden="true">${stateMark}</b>
+        </header>
+        <div class="p2-expression-field-host" data-expression-field></div>
+        ${result?.message ? `<p class="p2-expression-message">${escapeHtml(result.message)}</p>` : ''}
+      </section>`;
+  }
+
+  function updateLiveExpression(task, plain, latex) {
+    const next = normalizedProgress(progress);
+    const previous = taskState(task.id);
+    const response = { answer: plain, answerLatex: latex };
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [task.id]: {
+        ...previous,
+        liveExpression: response,
+        expressionUpdatedAt: Date.now(),
+        validationResult: null
+      }
+    };
+    publishLiveProgress(next, task.id);
+  }
+
+  function hydrateStudentExpressionEditor() {
+    const task = currentTask();
+    if (!isExpressionTask(task)) return;
+    const item = currentTaskState();
+    const locked = Boolean(item.solved || isTaskExhausted(item, task.id));
+    const response = expressionResponseForItem(item);
+    const host = studentPanel.querySelector('[data-expression-field]');
+    if (!host) return;
+    if (!practiceEngine?.createMathField) {
+      host.textContent = response.answer || '';
+      return;
+    }
+    const field = practiceEngine.createMathField({
+      source: response.answer,
+      latexSource: response.answerLatex,
+      kind: 'expression',
+      fieldKey: `p2:${task.id}:expression`,
+      testid: 'p2-expression-input',
+      placeholder: task.response?.placeholder || 'Įrašyk reiškinį',
+      contextLabel: 'P2 pratybų reiškinio atsakymas',
+      onCommit: (plain, latex) => updateLiveExpression(task, plain, latex)
+    });
+    field.classList.add('p2-expression-math-field');
+    if (locked) {
+      field.setAttribute('read-only', '');
+      field.setAttribute('disabled', '');
+    }
+    host.replaceChildren(field);
+  }
+
   function studentPracticeMarkup(state, stats) {
     const task = currentTask();
     const item = currentTaskState();
     const solutionTask = isSolutionTask(task);
-    const selected = solutionTask ? '' : (selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '');
+    const expressionTask = isExpressionTask(task);
+    const selected = (solutionTask || expressionTask) ? '' : (selectedAnswers[task.id] ?? item.liveAnswer ?? item.lastAnswer ?? '');
     const taskNumber = taskIndex(task.id) + 1;
     const exhausted = isTaskExhausted(item, task.id);
     const feedback = taskFeedbackMarkup(task, item);
@@ -547,15 +683,18 @@
 
     const answerMarkup = solutionTask
       ? solutionEditorMarkup(task, item)
-      : `<div class="p2-choice-list">${task.choices.map((choice, index) => {
-          const active = selected === choice ? ' is-selected' : '';
-          return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></button>`;
-        }).join('')}</div>`;
+      : expressionTask
+        ? expressionEditorMarkup(task, item)
+        : `<div class="p2-choice-list">${task.choices.map((choice, index) => {
+            const active = selected === choice ? ' is-selected' : '';
+            return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></button>`;
+          }).join('')}</div>`;
 
-    const conditionMarkup = solutionTask
+    const conditionMarkup = (solutionTask || expressionTask)
       ? `<div class="p2-solution-condition">
           <p class="p2-task-instruction">${escapeHtml(task.instruction || task.title || 'Išspręsk užduotį.')}</p>
           <math-field class="p2-static-math p2-task-equation" read-only tabindex="-1">${escapeHtml(task.prompt)}</math-field>
+          ${expressionTask && task.response?.options?.domain ? `<p class="p2-expression-domain">Apibrėžimo sąlyga: ${escapeHtml(task.response.options.domain)}</p>` : ''}
         </div>`
       : `<p class="p2-task-prompt">${escapeHtml(task.prompt)}</p>`;
 
@@ -576,8 +715,8 @@
           <button type="button" data-section="class" class="${task.section === 'class' ? 'is-active' : ''}">▤ Pamokoje</button>
           <button type="button" data-section="self" class="${task.section === 'self' ? 'is-active' : ''}">⌂ Savarankiškai</button>
         </div>
-        <article class="p2-task-card ${solutionTask ? 'p2-solution-task-card' : ''}">
-          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>${escapeHtml(solutionTask ? (task.title || 'Užduotis') : 'Užduotis')}</h3></div><span class="p2-soft-pill">${attemptUsageLabel(item, task.id)}</span></div>
+        <article class="p2-task-card ${(solutionTask || expressionTask) ? 'p2-solution-task-card' : ''}">
+          <div class="p2-task-card-head"><span class="p2-task-number">${taskNumber}.</span><div><span class="p2-label">${escapeHtml(task.label)}</span><h3>${escapeHtml((solutionTask || expressionTask) ? (task.title || 'Užduotis') : 'Užduotis')}</h3></div><span class="p2-soft-pill">${attemptUsageLabel(item, task.id)}</span></div>
           ${conditionMarkup}
           ${answerMarkup}
           ${hint}${feedback}
@@ -587,7 +726,7 @@
             <button type="button" class="p2-secondary" data-action="previous" ${taskNumber === 1 ? 'disabled' : ''}>← Ankstesnė</button>
             ${item.solved || exhausted
               ? '<button type="button" class="p2-primary" data-action="next">Toliau →</button>'
-              : `<button type="button" class="p2-primary" data-action="check">${solutionTask ? 'Patikrinti sprendimą' : 'Tikrinti'}</button>`}
+              : `<button type="button" class="p2-primary" data-action="check">${solutionTask ? 'Patikrinti sprendimą' : expressionTask ? 'Patikrinti atsakymą' : 'Tikrinti'}</button>`}
           </div>
         </article>
         <nav class="p2-task-dots" aria-label="Užduočių navigacija">${dots}</nav>
@@ -715,7 +854,7 @@
     studentPanel.querySelectorAll('[data-choice]').forEach(button => {
       button.addEventListener('click', () => {
         const task = currentTask();
-        if (isSolutionTask(task)) return;
+        if (isSolutionTask(task) || isExpressionTask(task)) return;
         const choice = button.dataset.choice || '';
         selectedAnswers[task.id] = choice;
         const next = normalizedProgress(progress);
@@ -758,6 +897,12 @@
         validationResult = validateSolutionTask(task, response);
         correct = validationResult.status === 'correct';
         submittedSolution = response;
+      } else if (isExpressionTask(task)) {
+        const response = expressionResponseForItem(previous);
+        submittedAnswer = response.answer.trim();
+        if (!submittedAnswer) { toast('Įrašyk reiškinį'); return; }
+        validationResult = validateExpressionTask(task, response);
+        correct = validationResult.status === 'correct';
       } else {
         const answer = selectedAnswers[task.id] ?? previous.liveAnswer ?? '';
         if (!answer) { toast('Pasirink atsakymą'); return; }
@@ -784,7 +929,9 @@
         status,
         ...(isSolutionTask(task)
           ? { liveSolution: submittedSolution, lastSolution: submittedSolution, validationResult }
-          : { liveAnswer: submittedAnswer })
+          : isExpressionTask(task)
+            ? { liveExpression: expressionResponseForItem(previous), lastExpression: expressionResponseForItem(previous), validationResult }
+            : { liveAnswer: submittedAnswer })
       };
       next.taskStates = { ...next.taskStates, [task.id]: state };
       const allFinished = DEMO_LESSON.tasks.every(candidate => {
@@ -833,6 +980,7 @@
     });
 
     hydrateStudentSolutionEditor();
+    hydrateStudentExpressionEditor();
   }
 
   function renderTeacherPanel() {
@@ -1183,6 +1331,23 @@
       </section>`;
   }
 
+
+  function teacherExpressionMarkup(task, item) {
+    const response = expressionResponseForItem(item);
+    const result = item.validationResult || null;
+    const stateClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
+    const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+    return `
+      <section class="p2-teacher-expression-view${stateClass}">
+        <header><div><strong>Mokinio atsakymas</strong><span>Tas pats MathLive laukas realiu laiku</span></div><b class="p2-live-label">● gyvai</b></header>
+        <div class="p2-teacher-expression-value">
+          <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(response.answer || '')}</math-field>
+          <b class="p2-expression-state" aria-hidden="true">${stateMark}</b>
+        </div>
+        ${result?.message ? `<p class="p2-expression-message">${escapeHtml(result.message)}</p>` : ''}
+      </section>`;
+  }
+
   function renderTeacherPreview() {
     if (!teacherPreviewWindow || teacherPreviewMode === 'closed') return;
     const host = teacherPreviewWindow.querySelector('#p2TeacherPreviewBody');
@@ -1196,6 +1361,7 @@
     const item = taskState(previewTask.id);
     const isStudentTask = previewTask.id === studentTask.id;
     const solutionTask = isSolutionTask(previewTask);
+    const expressionTask = isExpressionTask(previewTask);
     const pedagogy = pedagogicalStatus(item, { taskId: previewTask.id, current: isStudentTask && normalizedProgress(progress).status === 'in_progress' });
     const answerText = item.lastAnswer ? escapeHtml(item.lastAnswer) : '—';
     const liveAnswer = item.liveAnswer || item.lastAnswer || '';
@@ -1210,6 +1376,14 @@
         <math-field class="p2-static-math p2-preview-equation" read-only tabindex="-1">${escapeHtml(previewTask.prompt)}</math-field>`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
       responseMarkup = teacherSolutionMarkup(previewTask, item);
+    } else if (expressionTask) {
+      conditionMarkup = `
+        <h3>${escapeHtml(previewTask.title || 'Suprastink reiškinį')}</h3>
+        <p class="p2-preview-instruction">${escapeHtml(previewTask.instruction || '')}</p>
+        <math-field class="p2-static-math p2-preview-equation" read-only tabindex="-1">${escapeHtml(previewTask.prompt)}</math-field>
+        ${previewTask.response?.options?.domain ? `<p class="p2-expression-domain">Apibrėžimo sąlyga: ${escapeHtml(previewTask.response.options.domain)}</p>` : ''}`;
+      answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
+      responseMarkup = teacherExpressionMarkup(previewTask, item);
     } else {
       const correctIndex = Math.max(0, previewTask.choices.findIndex(choice => choice === previewTask.answer));
       const correctLetter = String.fromCharCode(65 + correctIndex);
@@ -1253,7 +1427,7 @@
       </div>
       <div class="p2-preview-layout">
         <div class="p2-preview-main">
-          <article class="p2-preview-detail ${solutionTask ? 'p2-solution-preview-detail' : ''}">
+          <article class="p2-preview-detail ${(solutionTask || expressionTask) ? 'p2-solution-preview-detail' : ''}">
             <header class="p2-preview-detail-head">
               <div>
                 <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
@@ -1361,7 +1535,7 @@
     const ownLiveEcho = role() === 'student'
       && incoming
       && progress
-      && studentSolutionFieldActive()
+      && studentMathFieldActive()
       && comparableProgress(incoming) === comparableProgress(progress);
     progress = incoming;
     if (teacherFollowStudent && progress) teacherPreviewTaskId = currentTask().id;
