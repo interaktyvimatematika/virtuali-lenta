@@ -273,7 +273,10 @@
         return;
       }
       if (node.type === 'break' || node.type === 'lineBreak') {
-        if (normalized[normalized.length - 1]?.type !== 'break') normalized.push({ type: 'break' });
+        // P2-SPLIT-P2.2.3: keli iš eilės break mazgai yra prasmingi – jie reiškia
+        // vartotojo paliktas tuščias eilutes. Jų nebesuspaudžiame į vieną, kad
+        // mokytojo ir mokinio lentose išliktų identiškas vertikalus išdėstymas.
+        normalized.push({ type: 'break' });
         return;
       }
       appendText(node.text ?? '');
@@ -6166,7 +6169,9 @@ KOKYBĖS REIKALAVIMAI:
       return;
     }
     if (node.type === 'break') {
-      if (nodes[nodes.length - 1]?.type !== 'break') nodes.push({ type: 'break' });
+      // P2-SPLIT-P2.2.3: saugome kiekvieną realų eilutės lūžį. Ankstesnis
+      // deduplikavimas prarasdavo kelias tuščias eilutes siunčiant tekstą internetu.
+      nodes.push({ type: 'break' });
       return;
     }
     nodes.push(node);
@@ -8416,7 +8421,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P2-SPLIT-P2.2.2',
+    version: 'P2-SPLIT-P2.2.3',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
