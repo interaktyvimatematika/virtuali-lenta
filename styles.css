@@ -3592,3 +3592,135 @@ body.p2-shell[data-online-role="teacher"] #p2StudentPanel,
 body.p2-shell[data-online-role="student"] #p2TeacherPanel {
   display: none !important;
 }
+
+/* =========================================================
+   P2-SPLIT-P1.7 — pirmas pilnas darbo srauto prototipas:
+   Biblioteka → Priskirti → Mano pratybos → Mokinio eiga.
+   ========================================================= */
+body.p2-shell .p2-assigned-lesson-card,
+body.p2-shell .p2-practice-shell {
+  background:#fff;
+  border:1px solid #dfe6f0;
+  border-radius:18px;
+  box-shadow:0 8px 24px rgba(35,48,78,.045);
+}
+body.p2-shell .p2-assigned-lesson-card {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  grid-template-areas:"icon copy status" "icon copy action";
+  align-items:center;
+  gap:10px 15px;
+  padding:20px;
+}
+body.p2-shell .p2-assigned-lesson-icon,
+body.p2-shell .p2-library-lesson-icon {
+  width:50px;
+  height:50px;
+  display:grid;
+  place-items:center;
+  border-radius:15px;
+  background:linear-gradient(145deg,#edf1ff,#f7f8ff);
+  color:#536bd0;
+  font-size:25px;
+  font-weight:900;
+}
+body.p2-shell .p2-assigned-lesson-icon { grid-area:icon; }
+body.p2-shell .p2-assigned-lesson-copy { grid-area:copy; min-width:0; }
+body.p2-shell .p2-assigned-lesson-copy h3,
+body.p2-shell .p2-library-lesson-copy h3 { margin:5px 0 5px; font-size:18px; letter-spacing:-.015em; }
+body.p2-shell .p2-assigned-lesson-copy p,
+body.p2-shell .p2-library-lesson-copy p { margin:0; color:#727d90; font-size:12px; line-height:1.55; }
+body.p2-shell .p2-open-assignment { grid-area:action; justify-self:end; min-width:112px; }
+body.p2-shell .p2-status-badge {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:28px;
+  padding:0 10px;
+  border-radius:999px;
+  background:#f1f4f9;
+  color:#728096;
+  font-size:10px;
+  font-weight:900;
+  white-space:nowrap;
+}
+body.p2-shell .p2-status-badge.is-new { grid-area:status; justify-self:end; background:#eef2ff; color:#4f65c7; }
+body.p2-shell .p2-status-badge.is-assigned { background:#edf8f1; color:#3c7a56; }
+body.p2-shell .p2-assignment-meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+body.p2-shell .p2-assignment-meta span { padding:5px 8px; border-radius:999px; background:#f3f5f9; color:#6e788a; font-size:10px; font-weight:800; }
+
+body.p2-shell .p2-practice-shell { overflow:hidden; }
+body.p2-shell .p2-practice-shell-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:17px 18px 13px;
+  border-bottom:1px solid #e8ecf2;
+}
+body.p2-shell .p2-practice-shell-head h3 { margin:5px 0 0; font-size:18px; }
+body.p2-shell .p2-practice-progress { display:flex; align-items:center; gap:10px; color:#5264b9; font-size:11px; font-weight:900; }
+body.p2-shell .p2-practice-progress i { width:74px; height:6px; overflow:hidden; border-radius:999px; background:#edf1f6; }
+body.p2-shell .p2-practice-progress b { display:block; height:100%; border-radius:inherit; background:#4f67d2; }
+body.p2-shell .p2-live-tabs { margin:14px 18px 0; }
+body.p2-shell .p2-task-card { margin:14px 18px 16px; padding:18px; border:1px solid #e2e8f1; border-radius:16px; background:#fff; }
+body.p2-shell .p2-task-card-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; }
+body.p2-shell .p2-task-number { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; background:#eef2ff; color:#4d66cf; font-weight:900; }
+body.p2-shell .p2-task-card-head h3 { margin:3px 0 0; font-size:15px; }
+body.p2-shell .p2-task-prompt { margin:19px 0 15px; color:#273247; font-size:17px; line-height:1.5; font-weight:700; }
+body.p2-shell .p2-choice-list { display:grid; gap:8px; }
+body.p2-shell .p2-choice { min-height:44px; display:flex; align-items:center; gap:10px; padding:6px 12px; border:1px solid #dfe5ee; border-radius:12px; background:#fff; color:#354155; text-align:left; }
+body.p2-shell .p2-choice:hover { border-color:#bdc9ec; background:#fafbff; }
+body.p2-shell .p2-choice.is-selected { border-color:#6e82dc; background:#f3f5ff; box-shadow:0 0 0 2px rgba(83,107,208,.07); }
+body.p2-shell .p2-choice > span { width:27px; height:27px; display:grid; place-items:center; border:1px solid #d4dbe6; border-radius:50%; font-size:11px; font-weight:900; }
+body.p2-shell .p2-choice.is-selected > span { background:#536bd0; border-color:#536bd0; color:#fff; }
+body.p2-shell .p2-choice b { font-size:13px; }
+body.p2-shell .p2-hint-box { margin-top:13px; padding:11px 13px; border:1px solid #e4def8; border-radius:12px; background:#faf8ff; color:#5b527a; font-size:12px; }
+body.p2-shell .p2-hint-box strong { display:block; margin-bottom:3px; color:#6557a0; }
+body.p2-shell .p2-practice-feedback { margin-top:13px; padding:10px 12px; border-radius:11px; font-size:11px; font-weight:800; }
+body.p2-shell .p2-practice-feedback.is-success { background:#edf8f1; color:#397451; }
+body.p2-shell .p2-practice-feedback.is-warning { background:#fff7e8; color:#936612; }
+body.p2-shell .p2-practice-feedback.is-repeat { background:#fff0f1; color:#9a4b54; }
+body.p2-shell .p2-task-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:16px; }
+body.p2-shell .p2-task-actions-spacer { flex:1 1 auto; }
+body.p2-shell .p2-task-dots { display:flex; flex-wrap:wrap; justify-content:center; gap:7px; padding:0 18px 18px; }
+body.p2-shell .p2-task-dot { width:31px; height:31px; border:1px solid #dfe5ee; border-radius:50%; background:#fff; color:#68758b; font-size:10px; font-weight:900; }
+body.p2-shell .p2-task-dot.is-current { border-color:#536bd0; color:#536bd0; box-shadow:0 0 0 2px rgba(83,107,208,.08); }
+body.p2-shell .p2-task-dot.is-done { background:#edf8f1; border-color:#cde8d6; color:#377450; }
+body.p2-shell .p2-task-dot.is-repeat { background:#fff0f1; border-color:#efd3d6; color:#a24e58; }
+
+body.p2-shell .p2-teacher-status-line { margin:5px 0 0; color:#7a8495; font-size:11px; }
+body.p2-shell .p2-last-answer { margin-top:13px; padding:10px 12px; border-radius:11px; background:#f7f9fc; border:1px solid #edf0f5; }
+body.p2-shell .p2-last-answer span { display:block; color:#7a8495; font-size:9px; text-transform:uppercase; letter-spacing:.05em; font-weight:900; }
+body.p2-shell .p2-last-answer strong { display:block; margin-top:3px; color:#334057; font-size:13px; }
+
+body.p2-shell .p2-library-panel-wide { width:min(760px,100%); }
+body.p2-shell .p2-library-body { text-align:left; }
+body.p2-shell .p2-library-intro { margin-bottom:18px; }
+body.p2-shell .p2-library-intro h3 { margin:5px 0 4px; font-size:18px; }
+body.p2-shell .p2-library-intro p { margin:0; max-width:650px; }
+body.p2-shell .p2-library-lesson-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:15px; padding:17px; border:1px solid #dfe6f0; border-radius:16px; background:#fff; }
+body.p2-shell .p2-library-lesson-card.is-assigned { border-color:#cfe3d6; background:#fcfffd; }
+body.p2-shell .p2-library-lesson-actions { display:grid; justify-items:end; gap:9px; }
+body.p2-shell .p2-library-flow { margin-top:18px; }
+body.p2-shell .p2-teacher-preview-modal { width:min(760px,100%); }
+body.p2-shell .p2-preview-body { text-align:left; }
+body.p2-shell .p2-preview-note { margin:0 0 14px; padding:10px 12px; border-radius:10px; background:#f5f7fb; color:#6f798a; font-size:11px; }
+body.p2-shell .p2-preview-task-list { display:grid; gap:8px; }
+body.p2-shell .p2-preview-task { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding:11px 12px; border:1px solid #e5e9ef; border-radius:11px; background:#fff; }
+body.p2-shell .p2-preview-task.is-current { border-color:#aebce9; background:#f8f9ff; }
+body.p2-shell .p2-preview-index { width:28px; height:28px; display:grid; place-items:center; border-radius:9px; background:#eef2ff; color:#536bd0; font-weight:900; font-size:10px; }
+body.p2-shell .p2-preview-task strong { display:block; font-size:11px; color:#344057; }
+body.p2-shell .p2-preview-task small { display:block; margin-top:3px; color:#8791a1; font-size:9px; }
+body.p2-shell .p2-preview-badge { padding:5px 7px; border-radius:999px; background:#f1f4f8; color:#748094; font-size:9px; font-weight:900; }
+body.p2-shell .p2-preview-badge.status-good { background:#edf8f1; color:#397451; }
+body.p2-shell .p2-preview-badge.status-help { background:#fff7e8; color:#936612; }
+body.p2-shell .p2-preview-badge.status-repeat { background:#fff0f1; color:#9a4b54; }
+
+@media (max-width:760px) {
+  body.p2-shell .p2-assigned-lesson-card { grid-template-columns:auto minmax(0,1fr); grid-template-areas:"icon copy" "status status" "action action"; }
+  body.p2-shell .p2-open-assignment, body.p2-shell .p2-status-badge.is-new { justify-self:stretch; }
+  body.p2-shell .p2-library-lesson-card { grid-template-columns:auto minmax(0,1fr); }
+  body.p2-shell .p2-library-lesson-actions { grid-column:1/-1; justify-items:stretch; }
+  body.p2-shell .p2-task-actions-spacer { display:none; }
+}

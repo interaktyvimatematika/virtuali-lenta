@@ -170,6 +170,12 @@ const presenceListRef = ref(db, `p772Rooms/${roomId}/presence`);
 const transitionRef = ref(db, `p772Rooms/${roomId}/control/transition`);
 const connectedRef = ref(db, '.info/connected');
 
+// P2-SPLIT-P1.7: individualios pratybos nėra canvas objektas. Vienai dabartinio
+// prototipo mokinio vietai kambaryje saugome tik priskyrimą ir pedagogiškai
+// svarbią eigą. Langų dydžiai, split santykis ir scroll pozicijos čia nepatenka.
+const p2AssignmentRef = ref(db, `p772Rooms/${roomId}/p2/student/assignment`);
+const p2ProgressRef = ref(db, `p772Rooms/${roomId}/p2/student/progress`);
+
 let bootstrapped = false;
 let liveTimer = null;
 let pendingLive = null;
@@ -268,7 +274,7 @@ async function publishLocalChanges() {
 
   if (!Object.keys(updates).length) return;
 
-  // P2-SPLIT-P1.2: tekstas ir MathLive negali būti perpiešiami nuo mūsų pačių
+  // P2-SPLIT-P1.7: tekstas ir MathLive negali būti perpiešiami nuo mūsų pačių
   // Firebase aido. Notes pakeitimui pridedame aiškią autoriaus/revizijos žymą,
   // o remote cache atnaujiname optimistiškai dar prieš tinklo round-trip.
   let previousNotesCache = null;
@@ -294,7 +300,7 @@ async function publishLocalChanges() {
     if (changed.notes && remoteCache.notes === stable(parts.notes) && previousNotesCache !== null) {
       remoteCache.notes = previousNotesCache;
     }
-    console.error('P2-SPLIT-P1.2 publish klaida', error);
+    console.error('P2-SPLIT-P1.7 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -447,7 +453,7 @@ async function initializeWorkspace() {
     bootstrapped = true;
     subscribeWorkspaceParts();
   } catch (error) {
-    console.error('P2-SPLIT-P1.2 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P1.7 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
   }
 }
@@ -469,6 +475,61 @@ onValue(liveRef, snapshot => {
     }
   }
   bridge.setRemoteLiveStrokes(strokes);
+});
+
+// P2 priskyrimo / eigos kanalas. UI yra klasikiniame p2-ui.js, todėl
+// Firebase modulis su juo kalbasi per CustomEvent ir neturi valdyti DOM.
+onValue(p2AssignmentRef, snapshot => {
+  window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: snapshot.val() || null }));
+});
+onValue(p2ProgressRef, snapshot => {
+  window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: snapshot.val() || null }));
+});
+
+window.addEventListener('p2:assignment-request', async event => {
+  if (onlineRole !== 'teacher') return;
+  const detail = event.detail || {};
+  try {
+    if (detail.action === 'unassign') {
+      await remove(p2AssignmentRef);
+      await remove(p2ProgressRef);
+      bridge.showToast?.('Pamokos priskyrimas atšauktas');
+      return;
+    }
+    if (detail.action !== 'assign') return;
+    const assignment = {
+      lessonId: String(detail.lessonId || ''),
+      title: String(detail.title || 'Pamokos prototipas'),
+      taskCount: Math.max(0, Number(detail.taskCount) || 0),
+      assignedAt: Date.now(),
+      assignedBy: me
+    };
+    await set(p2AssignmentRef, assignment);
+    await set(p2ProgressRef, {
+      assignmentId: assignment.lessonId,
+      status: 'not_started',
+      currentTaskId: 'c1',
+      taskStates: {},
+      startedAt: null,
+      updatedAt: Date.now()
+    });
+    bridge.showToast?.('Pamoka priskirta mokiniui');
+  } catch (error) {
+    console.error('P2-SPLIT-P1.7 priskyrimo klaida', error);
+    bridge.showToast?.('Nepavyko pakeisti pamokos priskyrimo');
+  }
+});
+
+window.addEventListener('p2:practice-progress-request', async event => {
+  if (onlineRole !== 'student') return;
+  const value = event.detail;
+  if (!value || typeof value !== 'object') return;
+  try {
+    await set(p2ProgressRef, { ...value, updatedAt: Date.now(), updatedBy: me });
+  } catch (error) {
+    console.error('P2-SPLIT-P1.7 mokinio eigos klaida', error);
+    bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
+  }
 });
 
 let transitionInProgress = false;
@@ -494,7 +555,7 @@ onValue(connectedRef, snapshot => {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('P2-SPLIT-P1.2 connection klaida', error);
+  console.error('P2-SPLIT-P1.7 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
@@ -516,7 +577,7 @@ async function writeLiveStroke(stroke) {
   try {
     await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
   } catch (error) {
-    console.warn('P2-SPLIT-P1.2 live stroke klaida', error);
+    console.warn('P2-SPLIT-P1.7 live stroke klaida', error);
   }
 }
 
@@ -614,7 +675,7 @@ if (newButton) {
       // nukreips į naujausią sesiją.
       await set(transitionRef, { toRoom: nextRoom, issuedBy: me, issuedAt: serverTimestamp() });
     } catch (error) {
-      console.error('P2-SPLIT-P1.2 naujos sesijos klaida', error);
+      console.error('P2-SPLIT-P1.7 naujos sesijos klaida', error);
       newButton.disabled = false;
       bridge.showToast?.('Nepavyko pradėti naujos sesijos');
     }
@@ -627,5 +688,5 @@ window.addEventListener('beforeunload', () => {
 });
 
 if (location.protocol === 'file:') {
-  console.info('P2-SPLIT-P1.2 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
+  console.info('P2-SPLIT-P1.7 veikia su Firebase ir iš lokalaus failo, tačiau bendrinama file:// nuoroda kitame kompiuteryje neveiks. Patalpinkite aplanką statiniame hostinge.');
 }
