@@ -320,41 +320,79 @@
   }
 
   const BUILTIN_PRACTICE_SETS = Object.freeze([
-    {
-      id: 'builtin-vbe-a-01-pamoka-funkcija-fx-v1-6',
-      kind: 'external-module',
-      title: 'VBE A · 1 pamoka — Funkcija ir f(x)',
-      description: 'Artimiausiai pamokai · 5 užduotys Pamokoje + 3 Savarankiškai',
-      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html?lesson=1',
-      moduleId: 'vbe-funkcija-grafikas-v1-6',
-      moduleVersion: '1.6 · 1 pamoka',
-      taskCount: 8,
-      classTaskCount: 5,
-      selfTaskCount: 3,
-      builtIn: true,
-      createdAt: '2026-08-08T00:00:00.000Z',
-      updatedAt: '2026-08-08T00:00:00.000Z',
-      taskRefs: [],
-      snapshots: []
-    },
-    {
-      id: 'builtin-vbe-a-01-funkcija-grafikas-v1-6',
-      kind: 'external-module',
-      title: 'VBE A · Funkcija ir jos grafikas — visas modulis',
-      description: '4 pamokos · 34 užduotys · Pamokoje ir Savarankiškai',
-      moduleUrl: 'vbe-a-01-funkcija-ir-jos-grafikas-v1.6.html',
-      moduleId: 'vbe-funkcija-grafikas-v1-6',
-      moduleVersion: '1.6',
-      taskCount: 34,
-      classTaskCount: 22,
-      selfTaskCount: 12,
-      builtIn: true,
-      createdAt: '2026-08-07T18:39:00.000Z',
-      updatedAt: '2026-08-08T00:00:00.000Z',
-      taskRefs: [],
-      snapshots: []
-    }
-  ]);
+  {
+    "id": "builtin-vbe-a-funkcijos-pamoka-1-v2",
+    "kind": "external-module",
+    "title": "VBE A · 1 pamoka — Funkcija ir f(x)",
+    "description": "12 Pamokoje + 7 Savarankiškai · funkcijos sąvoka, f(x), reikšmė ir taškas grafike",
+    "moduleUrl": "vbe-a-funkcijos-1-4-pamokos-v2.html?lesson=1",
+    "moduleId": "vbe-a-funkcijos-1-4-v2",
+    "moduleVersion": "2.0 · 1 pamoka",
+    "taskCount": 19,
+    "classTaskCount": 12,
+    "selfTaskCount": 7,
+    "handoutUrl": "konspektai/1-pamoka-funkcija-ir-fx.pdf",
+    "builtIn": true,
+    "createdAt": "2026-08-08T08:00:00.000Z",
+    "updatedAt": "2026-08-08T08:00:00.000Z",
+    "taskRefs": [],
+    "snapshots": []
+  },
+  {
+    "id": "builtin-vbe-a-funkcijos-pamoka-2-v2",
+    "kind": "external-module",
+    "title": "VBE A · 2 pamoka — Funkcijos grafiko skaitymas",
+    "description": "14 Pamokoje + 8 Savarankiškai · nuliai, ženklas, intervalai, D(f), E(f), didėjimas ir mažėjimas",
+    "moduleUrl": "vbe-a-funkcijos-1-4-pamokos-v2.html?lesson=2",
+    "moduleId": "vbe-a-funkcijos-1-4-v2",
+    "moduleVersion": "2.0 · 2 pamoka",
+    "taskCount": 22,
+    "classTaskCount": 14,
+    "selfTaskCount": 8,
+    "handoutUrl": "konspektai/2-pamoka-grafiko-skaitymas.pdf",
+    "builtIn": true,
+    "createdAt": "2026-08-08T08:00:00.000Z",
+    "updatedAt": "2026-08-08T08:00:00.000Z",
+    "taskRefs": [],
+    "snapshots": []
+  },
+  {
+    "id": "builtin-vbe-a-funkcijos-pamoka-3-v2",
+    "kind": "external-module",
+    "title": "VBE A · 3 pamoka — Tiesinė funkcija",
+    "description": "13 Pamokoje + 8 Savarankiškai · f(x)=kx+b, grafikas, nulis ir formulės sudarymas",
+    "moduleUrl": "vbe-a-funkcijos-1-4-pamokos-v2.html?lesson=3",
+    "moduleId": "vbe-a-funkcijos-1-4-v2",
+    "moduleVersion": "2.0 · 3 pamoka",
+    "taskCount": 21,
+    "classTaskCount": 13,
+    "selfTaskCount": 8,
+    "handoutUrl": "konspektai/3-pamoka-tiesine-funkcija.pdf",
+    "builtIn": true,
+    "createdAt": "2026-08-08T08:00:00.000Z",
+    "updatedAt": "2026-08-08T08:00:00.000Z",
+    "taskRefs": [],
+    "snapshots": []
+  },
+  {
+    "id": "builtin-vbe-a-funkcijos-pamoka-4-v2",
+    "kind": "external-module",
+    "title": "VBE A · 4 pamoka — Funkcija kaip problemų sprendimo įrankis",
+    "description": "11 Pamokoje + 7 Savarankiškai · modeliai, palyginimas, koeficientų prasmė ir diagnostika",
+    "moduleUrl": "vbe-a-funkcijos-1-4-pamokos-v2.html?lesson=4",
+    "moduleId": "vbe-a-funkcijos-1-4-v2",
+    "moduleVersion": "2.0 · 4 pamoka",
+    "taskCount": 18,
+    "classTaskCount": 11,
+    "selfTaskCount": 7,
+    "handoutUrl": "konspektai/4-pamoka-funkciju-taikymas.pdf",
+    "builtIn": true,
+    "createdAt": "2026-08-08T08:00:00.000Z",
+    "updatedAt": "2026-08-08T08:00:00.000Z",
+    "taskRefs": [],
+    "snapshots": []
+  }
+]);
 
   function builtInPracticeSetCopies() {
     return BUILTIN_PRACTICE_SETS.map(item => deepClone(item));
@@ -3419,9 +3457,12 @@
         taskCount: external ? Math.max(0, Number(set?.taskCount) || 0) : 0,
         classTaskCount: external ? Math.max(0, Number(set?.classTaskCount) || 0) : 0,
         selfTaskCount: external ? Math.max(0, Number(set?.selfTaskCount) || 0) : 0,
-        builtIn: Boolean(set?.builtIn)
+        builtIn: Boolean(set?.builtIn),
+        handoutUrl: external ? String(set?.handoutUrl || '') : ''
       };
     }) : [];
+    const currentBuiltinIds = new Set(BUILTIN_PRACTICE_SETS.map(item => item.id));
+    for (let i = practiceSets.length - 1; i >= 0; i--) { if (practiceSets[i].builtIn && !currentBuiltinIds.has(practiceSets[i].id)) practiceSets.splice(i,1); }
     for (const builtin of builtInPracticeSetCopies()) {
       const existingIndex = practiceSets.findIndex(item => item.id === builtin.id);
       if (existingIndex < 0) practiceSets.unshift(builtin);
@@ -4020,6 +4061,7 @@
       open.type = 'button'; open.className = 'primary-button compact'; open.textContent = 'Įterpti pratybas';
       open.addEventListener('click', () => insertPracticeSetIntoBoard(set));
       actions.appendChild(open);
+      if (set.handoutUrl) { const handout=document.createElement('a'); handout.className='secondary-button compact'; handout.href=set.handoutUrl; handout.target='_blank'; handout.rel='noopener'; handout.textContent='Konspektas PDF'; actions.appendChild(handout); }
       if (!set.builtIn) {
         const remove = document.createElement('button');
         remove.type = 'button'; remove.className = 'secondary-button compact danger-text'; remove.textContent = 'Pašalinti';
@@ -7444,7 +7486,7 @@ KOKYBĖS REIKALAVIMAI:
       frame.className = 'external-practice-module-frame';
       frame.dataset.externalPracticeId = instance.id;
       const joiner = instance.moduleUrl.includes('?') ? '&' : '?';
-      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.8.4`;
+      frame.src = `${instance.moduleUrl}${joiner}embed=1&practiceId=${encodeURIComponent(instance.id)}&role=${onlineAccessRole}&hostBuild=ONLINE-P1.1.9`;
       frame.title = instance.title;
       frame.setAttribute('allow', 'clipboard-write');
       frame.addEventListener('load', () => syncExternalPracticeFrame(instance));
@@ -8203,7 +8245,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.8.4',
+    version: 'P7.7.2-ONLINE-P1.1.9',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

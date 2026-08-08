@@ -1,0 +1,19 @@
+VBE A · FUNKCIJOS · 1-4 PAMOKŲ PLANAS
+
+1 PAMOKA · FUNKCIJA IR f(x)
+Tikslas: funkcijos sąvoka, f(x), reikšmės skaičiavimas ir nuskaitymas iš grafiko, taško priklausymas grafikui.
+40 min: 5 min aktyvinimas; 10 min sąvoka ir f(x); 10 min reikšmės; 10 min grafikas ir taškas; 5 min patikrinimas. 12 + 7 užduotys.
+
+2 PAMOKA · FUNKCIJOS GRAFIKO SKAITYMAS
+Tikslas: nuliai, ženklas, intervalai ir ∪, didėjimas/mažėjimas, maksimumas/minimumas, D(f), E(f).
+40 min: 5 min kartojimas; 10 min nuliai ir ženklas; 10 min intervalai; 10 min kitimo savybės; 5 min D(f), E(f). 14 + 8.
+
+3 PAMOKA · TIESINĖ FUNKCIJA
+Tikslas: f(x)=kx+b, k ir b, lentelė ir grafikas, nulis, paprastas formulės sudarymas.
+40 min: 5 min aktyvinimas; 10 min k ir b; 10 min formulė-lentelė-grafikas; 10 min nulis; 5 min formulės sudarymas. 13 + 8.
+
+4 PAMOKA · FUNKCIJA KAIP PROBLEMŲ SPRENDIMO ĮRANKIS
+Tikslas: modelių koeficientų prasmė, modelių palyginimas, lygybė A(x)=B(x), situacija→formulė, paprasčiausias sprendimo būdas. Pabaigoje trumpa kvadratinės funkcijos diagnostika, ne naujos temos mokymas.
+40 min: 5 min kartojimas; 10 min modelio prasmė; 10 min modelių palyginimas; 10 min situacija→formulė; 5 min diagnostika. 11 + 7.
+
+Savarankiškame režime nėra naujų terminų ar algoritmų - tik tie patys gebėjimai su naujais skaičiais, grafikais ar situacijomis.

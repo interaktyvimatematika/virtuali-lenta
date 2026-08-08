@@ -146,6 +146,8 @@ window.MathJax = {
     .top-actions{width:100%}
     .top-actions button{flex:1}
   }
+
+  .interval-answer{display:grid;gap:8px;margin-top:12px}.interval-tools{display:flex;gap:6px;flex-wrap:wrap}.interval-symbol{border:1px solid #d0d5dd;background:#fff;border-radius:8px;padding:7px 10px;font:inherit;font-weight:700;cursor:pointer}.handout-link{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -179,11 +181,13 @@ window.MathJax = {
 </div>
 
 <script>
-const MODULE_ID = "vbe-funkcija-grafikas-v1-6";
+const MODULE_ID = "vbe-a-funkcijos-1-4-v2";
 const EMBED_PARAMS = new URLSearchParams(location.search);
 const EMBEDDED = EMBED_PARAMS.get("embed") === "1";
 const EMBED_ROLE = EMBED_PARAMS.get("role") === "student" ? "student" : "teacher";
 const EMBED_PRACTICE_ID = EMBED_PARAMS.get("practiceId") || "";
+const REQUESTED_LESSON = Number(EMBED_PARAMS.get("lesson"));
+const LESSON_FILTER = [1,2,3,4].includes(REQUESTED_LESSON) ? REQUESTED_LESSON : null;
 const letters = ["A","B","C","D","E","F"];
 const skills = {
   "Funkcijos sąvoka":"Funkcijos sąvoka",
@@ -200,132 +204,1336 @@ const skills = {
 };
 
 const taskData = [
-  {id:1,lesson:1,mode:"class",skill:"Funkcijos sąvoka",type:"multigraph",
-   prompt:"Pažymėk visus grafikus, kurie gali būti funkcijos \\(y=f(x)\\) grafikais.",
-   correct:["A","C"], hint1:"Kiekvienai pasirinktai x reikšmei funkcija gali priskirti tik vieną y reikšmę.",
-   hint2:"Mintyse brauk vertikalią tiesę. Jei ji grafiką kerta daugiau nei vieną kartą, toks grafikas nėra funkcijos y=f(x) grafikas."},
-  {id:2,lesson:1,mode:"class",skill:"f(x)",type:"number",
-   prompt:"Duota \\(f(x)=2x+3\\). Apskaičiuok \\(f(4)\\).",
-   correct:["11"], hint1:"f(4) reiškia, kad visur vietoje x reikia įrašyti 4.", hint2:"Pradėk taip: \\(f(4)=2\\cdot 4+3\\)."},
-  {id:3,lesson:1,mode:"class",skill:"Algebra",type:"number",
-   prompt:"Duota \\(f(x)=x^2-1\\). Apskaičiuok \\(f(-2)\\).",
-   correct:["3"], hint1:"Nepamiršk skliaustų: čia kvadratu keliama visa reikšmė −2.", hint2:"Pradėk: \\(f(-2)=(-2)^2-1=4-1\\)."},
-  {id:4,lesson:1,mode:"class",skill:"Taškas ir grafikas",type:"choice",
-   prompt:"Duota \\(f(x)=x^2-1\\). Ar taškas \\((2;3)\\) priklauso šios funkcijos grafikui?",
-   options:["Taip","Ne"], correct:["Taip"], hint1:"Patikrink, kokią reikšmę gauni apskaičiavęs f(2).", hint2:"\\(f(2)=2^2-1=3\\). Palygink ją su taško y koordinate."},
-  {id:5,lesson:1,mode:"class",skill:"Terminija",type:"choice",
-   prompt:"Ką reiškia užrašas \\(f(3)=7\\)?",
-   options:["Kai x=7, funkcijos reikšmė yra 3.","Kai x=3, funkcijos reikšmė yra 7.","Funkcijos nulis yra 7.","Funkcijos formulė yra 3x=7."],
-   correct:["Kai x=3, funkcijos reikšmė yra 7."], hint1:"Skaičius skliaustuose yra argumento x reikšmė.", hint2:"Užrašas f(3)=7 sako: į funkciją įvedus x=3, gaunama reikšmė 7."},
-
-  {id:6,lesson:1,mode:"self",skill:"f(x)",type:"number",
-   prompt:"Duota \\(g(x)=5-3x\\). Rask \\(g(2)\\).",
-   correct:["-1","−1"], hint1:"Įrašyk 2 vietoje x.", hint2:"\\(g(2)=5-3\\cdot 2\\)."},
-  {id:7,lesson:1,mode:"self",skill:"Algebra",type:"number",
-   prompt:"Duota \\(h(x)=\\frac{x+4}{2}\\). Rask \\(h(-2)\\).",
-   correct:["1"], hint1:"Pirmiausia įrašyk −2 vietoje x skliaustuose.", hint2:"\\(h(-2)=\\frac{-2+4}{2}=\\frac22\\)."},
-  {id:8,lesson:1,mode:"self",skill:"Taškas ir grafikas",type:"choice",
-   prompt:"Duota \\(f(x)=2x+3\\). Ar taškas \\((-1;0)\\) priklauso grafikui?",
-   options:["Taip","Ne"], correct:["Ne"], hint1:"Apskaičiuok f(−1).", hint2:"\\(f(-1)=2\\cdot(-1)+3=1\\), o taško y koordinatė yra 0."},
-
-  {id:9,lesson:2,mode:"class",skill:"Grafiko skaitymas",type:"mainGraphNumber",
-   prompt:"Pagal grafiką rask \\(f(0)\\).",
-   correct:["3"], hint1:"Surask x=0 ir pažiūrėk, kokiame aukštyje yra grafikas.", hint2:"Kai x=0, grafikas yra ties y=3."},
-  {id:10,lesson:2,mode:"class",skill:"Terminija",type:"graphZeros",
-   prompt:"Spustelėk abu funkcijos nulius grafike.",
-   correct:["-3","2"], hint1:"Funkcijos nulis yra tokia x reikšmė, kuriai f(x)=0.", hint2:"Ieškok grafiko sankirtų su horizontaliąja x ašimi."},
-  {id:11,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
-   prompt:"Kada \\(f(x)>0\\)? Užrašyk intervalą.",
-   correct:["(-3;2)","(-3,2)"], hint1:"Ieškok tos grafiko dalies, kuri yra virš x ašies.", hint2:"Grafikas virš x ašies yra tarp nulių −3 ir 2; patys nuliai netinka, nes nelygybė griežta."},
-  {id:12,lesson:2,showMainGraph:true,mode:"class",skill:"Grafiko skaitymas",type:"choice",
-   prompt:"Kuriame intervale funkcija didėja?",
-   options:["Nuo x=−4 iki x=−1","Nuo x=−1 iki x=1","Nuo x=1 iki x=4","Visame intervale [−4;4]"],
-   correct:["Nuo x=−4 iki x=−1"], hint1:"Didėjant x, stebėk, kur grafikas kyla aukštyn.", hint2:"Grafikas kyla nuo taško (−4;−1) iki (−1;3)."},
-  {id:13,lesson:2,showMainGraph:true,mode:"class",skill:"Grafiko skaitymas",type:"number",
-   prompt:"Kokia didžiausia pavaizduotos funkcijos reikšmė?",
-   correct:["3"], hint1:"Funkcijos reikšmė yra y, ne x.", hint2:"Aukščiausia grafiko vieta yra ties y=3."},
-
-  {id:33,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
-   prompt:"Funkcijos <b>apibrėžimo sritis</b> \\(D(f)\\) – visos argumento \\(x\\) reikšmės, kurioms funkcija apibrėžta. Pagal grafiką užrašyk \\(D(f)\\).",
-   correct:["[-4;4]","[-4,4]"], hint1:"Žiūrėk, nuo kurios iki kurios x reikšmės yra nubrėžtas grafikas.", hint2:"Grafikas prasideda ties \\(x=-4\\) ir baigiasi ties \\(x=4\\); abu galai įtraukti, todėl \\(D(f)=[-4;4]\\)."},
-  {id:34,lesson:2,showMainGraph:true,mode:"class",skill:"Intervalai",type:"text",
-   prompt:"Funkcijos <b>reikšmių sritis</b> \\(E(f)\\) – visos galimos funkcijos reikšmės \\(y=f(x)\\). Pagal grafiką užrašyk \\(E(f)\\).",
-   correct:["[-2;3]","[-2,3]"], hint1:"Žiūrėk į žemiausią ir aukščiausią grafiko y reikšmę.", hint2:"Mažiausia reikšmė yra \\(-2\\), didžiausia – \\(3\\), todėl \\(E(f)=[-2;3]\\)."},
-
-  {id:14,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
-   prompt:"Pagal tą patį grafiką užrašyk funkcijos apibrėžimo sritį \\(D(f)\\).",
-   correct:["[-5;5]","[-5,5]"], hint1:"Kokias x reikšmes apima visas pavaizduotas grafikas?", hint2:"Grafikas prasideda ties \(x=-5\) ir baigiasi ties \(x=5\); abu galai priklauso grafikui, todėl \(D(f)=[-5;5]\)."},
-  {id:15,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
-   prompt:"Užrašyk funkcijos reikšmių sritį \\(E(f)\\).",
-   correct:["[-2;2]","[-2,2]"], hint1:"Dabar žiūrėk į visas galimas \(y=f(x)\) reikšmes.", hint2:"Mažiausia pavaizduota reikšmė yra \(-2\), didžiausia – \(2\), todėl \(E(f)=[-2;2]\)."},
-  {id:16,lesson:2,showPracticeGraph:true,mode:"self",skill:"Intervalai",type:"text",
-   prompt:"Kada \\(f(x)<0\\)?",
-   correct:["[-5;-4)∪(3;5]","[-5,-4)∪(3,5]","[-5;-4)u(3;5]","[-5,-4)u(3,5]"],
-   hint1:"Ieškok grafiko dalių žemiau \(x\) ašies.", hint2:"Žemiau \(x\) ašies grafikas yra nuo \(-5\) iki \(-4\) ir nuo \(3\) iki \(5\); ties nuliais \(f(x)=0\), todėl \(-4\) ir \(3\) neįtraukiami."},
-
-  {id:17,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"dual",
-   prompt:"Duota \\(f(x)=2x-1\\). Įrašyk koeficientą prie x ir reikšmę \\(f(0)\\).",
-   labels:["Koeficientas prie x","f(0)"], correct:["2","-1"], hint1:"Koeficientas prie x yra skaičius, iš kurio x dauginamas.", hint2:"Čia a=2, o <span class='math'>f(0)=2·0−1=−1</span>."},
-  {id:18,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"lineGraphs",
-   prompt:"Pasirink grafiką funkcijos \\(f(x)=2x-1\\).",
-   correct:["C"], hint1:"Koeficientas 2 yra teigiamas, todėl tiesė kyla; kai x=0, y=−1.", hint2:"Ieškok kylančios tiesės, kuri y ašį kerta ties −1. Šiame paveiksle tai grafikas C."},
-  {id:19,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"table",
-   prompt:"Duota \\(f(x)=2x-1\\). Užpildyk lentelę.",
-   xs:["0","1","2"], correct:["-1","1","3"], hint1:"Kiekvieną x reikšmę paeiliui įstatyk į formulę.", hint2:"Gauname: f(0)=−1, f(1)=1, f(2)=3."},
-  {id:20,lesson:3,mode:"class",skill:"Algebra",type:"number",
-   prompt:"Duota \\(f(x)=2x-4\\). Rask funkcijos nulį.",
-   correct:["2"], hint1:"Funkcijos nuliui f(x)=0.", hint2:"Spręsk lygtį \\(2x-4=0\\)."},
-  {id:21,lesson:3,mode:"class",skill:"Tiesinė funkcija",type:"text",
-   prompt:"Tiesė eina per taškus \\((0;3)\\) ir \\((2;7)\\). Užrašyk jos formulę.",
-   correct:["f(x)=2x+3","y=2x+3","2x+3"], hint1:"Pirmiausia rask, kiek y pasikeičia, kai x padidėja 2 vienetais.", hint2:"Nuolydis yra (7−3)/(2−0)=2, o kai x=0, y=3."},
-
-  {id:22,lesson:3,mode:"self",skill:"Tiesinė funkcija",type:"choice",
-   prompt:"Duota \\(f(x)=-\\frac12x+4\\). Funkcija didėja ar mažėja?",
-   options:["Didėja","Mažėja"], correct:["Mažėja"], hint1:"Pažiūrėk į koeficiento prie x ženklą.", hint2:"Koeficientas −1/2 yra neigiamas, todėl tiesinė funkcija mažėja."},
-  {id:23,lesson:3,mode:"self",skill:"Algebra",type:"number",
-   prompt:"Duota \\(f(x)=-\\frac12x+4\\). Rask x, jeigu \\(f(x)=1\\).",
-   correct:["6"], hint1:"Sudaryk lygtį: −(1/2)x+4=1.", hint2:"Atėmus 4 gauni −(1/2)x=−3, todėl x=6."},
-  {id:24,lesson:3,mode:"self",skill:"Modeliavimas",type:"choice",
-   prompt:"Taksi kelionės kaina aprašoma \\(K(x)=3+2x\\), kur x – nuvažiuotų kilometrų skaičius. Ką modelyje reiškia skaičius 2?",
-   options:["Pradinį 3 € mokestį","Kainą už vieną papildomą kilometrą","Kelionės kilometrų skaičių","Didžiausią kelionės kainą"],
-   correct:["Kainą už vieną papildomą kilometrą"], hint1:"Pagalvok, kuris dėmuo kinta kartu su x.", hint2:"Dėmuo 2x reiškia, kad už kiekvieną x kilometrą pridedama po 2 €."},
-
-  {id:25,lesson:4,mode:"class",skill:"Modeliavimas",type:"number",
-   prompt:"Įmonė A taiko \\(A(x)=5+2x\\), o įmonė B – \\(B(x)=11+x\\). Kada kainos vienodos? Rask x.",
-   correct:["6"], hint1:"Kai kainos vienodos, A(x)=B(x).", hint2:"Spręsk lygtį \\(5+2x=11+x\\)."},
-  {id:26,lesson:4,mode:"class",skill:"Modeliavimas",type:"choice",
-   prompt:"Kuri įmonė pigesnė, kai \\(x=10\\)?",
-   options:["A","B","Kainos vienodos"], correct:["B"], hint1:"Apskaičiuok A(10) ir B(10).", hint2:"A(10)=25, B(10)=21."},
-  {id:27,lesson:4,mode:"class",skill:"Uždavinio analizė",type:"number",
-   prompt:"Duota \\(f(x)=4x-3\\). Rask \\(f(5)\\).",
-   correct:["17"], hint1:"Ko prašoma? Funkcijos reikšmės, kai x=5.", hint2:"\\(f(5)=4\\cdot5-3=20-3\\)",
-   scaffold:["Ko prašoma? → funkcijos reikšmės","Kokia x reikšmė duota? → 5","Ką reikia padaryti? → įstatyti 5 vietoje x"]},
-  {id:28,lesson:4,mode:"class",skill:"Kvadratinė bazė",type:"number",
-   prompt:"Duota \\(g(x)=x^2-4x+3\\). Rask \\(g(2)\\).",
-   correct:["-1","−1"], hint1:"Įstatyk 2 vietoje x į visą formulę.", hint2:"\\(g(2)=2^2-4\\cdot2+3=4-8+3\\)."},
-  {id:29,lesson:4,mode:"class",skill:"Kvadratinė bazė",type:"dual",
-   prompt:"Rask funkcijos \\(g(x)=x^2-4x+3\\) nulius.",
-   labels:["Pirmas nulis","Antras nulis"], correct:["1","3"], unordered:true,
-   hint1:"Funkcijos nuliai tenkina lygtį x²−4x+3=0.", hint2:"Išskaidyk: \\((x-1)(x-3)=0\\)."},
-
-  {id:30,lesson:4,mode:"self",skill:"Algebra",type:"number",
-   prompt:"Duota \\(g(x)=3x-6\\). Rask funkcijos nulį.",
-   correct:["2"], hint1:"Funkcijos nuliui \\(g(x)=0\\).", hint2:"Spręsk lygtį \\(3x-6=0\\)."},
-  {id:31,lesson:4,mode:"self",skill:"Modeliavimas",type:"choice",
-   prompt:"Automobilių stovėjimo kaina aprašoma formule \\(K(x)=4+1{,}5x\\), kur \\(x\\) – stovėjimo valandų skaičius. Ką reiškia skaičius \\(1{,}5\\)?",
-   options:["Pradinį 4 € mokestį","Vienos stovėjimo valandos kainą","Didžiausią stovėjimo laiką","Bendrą kelionės kainą"],
-   correct:["Vienos stovėjimo valandos kainą"], hint1:"Pažiūrėk, kuris skaičius dauginamas iš kintamojo \\(x\\).", hint2:"Dėmuo \\(1{,}5x\\) reiškia po 1,5 € už kiekvieną stovėjimo valandą."},
-  {id:32,lesson:4,mode:"self",skill:"Modeliavimas",type:"scenario",
-   prompt:"Grafikas vaizduoja žmogaus atstumą nuo namų priklausomai nuo laiko.",
-   correct:["10–15 min.","Atstumas nuo namų nekito.","25"], hint1:"Žiūrėk į didžiausią atstumą, horizontaliąją dalį ir momentą, kai atstumas vėl tampa 0.",
-   hint2:"Didžiausias atstumas 2 km išlieka 10–15 min.; horizontali dalis reiškia nekintantį atstumą; namo grįžtama po 25 min."}
+  {
+    "id": 1,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Funkcijos sąvoka",
+    "type": "choice",
+    "prompt": "Kuris teiginys tiksliausiai apibūdina funkciją?",
+    "options": [
+      "Kiekvienai pasirinktos srities \\(x\\) reikšmei priskiriama lygiai viena \\(y\\) reikšmė.",
+      "Kiekvienai \\(x\\) reikšmei galima priskirti dvi skirtingas \\(y\\) reikšmes.",
+      "Funkcija visada turi būti tiesė.",
+      "Funkcijoje \\(x\\) ir \\(y\\) visada turi būti teigiami."
+    ],
+    "correct": [
+      "Kiekvienai pasirinktos srities \\(x\\) reikšmei priskiriama lygiai viena \\(y\\) reikšmė."
+    ],
+    "hint1": "Svarbiausia - kiek \\(y\\) reikšmių tenka vienai \\(x\\) reikšmei.",
+    "hint2": "Funkcija kiekvienai leistinai \\(x\\) reikšmei priskiria vieną ir tik vieną \\(y\\) reikšmę."
+  },
+  {
+    "id": 2,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Funkcijos sąvoka",
+    "type": "multigraph",
+    "prompt": "Pažymėk visus grafikus, kurie gali būti funkcijos \\(y=f(x)\\) grafikais.",
+    "correct": [
+      "A",
+      "C"
+    ],
+    "hint1": "Mintyse per pasirinktą \\(x\\) reikšmę nubrėžk vertikalią tiesę.",
+    "hint2": "Jei vertikali tiesė grafiką kerta daugiau nei vieną kartą, tai nėra funkcijos grafikas."
+  },
+  {
+    "id": 3,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "f(x)",
+    "type": "choice",
+    "prompt": "Ką reiškia simbolis \\(f(4)\\)?",
+    "options": [
+      "Funkcijos reikšmę, kai \\(x=4\\).",
+      "Funkcijos nulį ties \\(x=4\\).",
+      "Skaičių, iš kurio reikia atimti 4.",
+      "Taško \\((f;4)\\) koordinates."
+    ],
+    "correct": [
+      "Funkcijos reikšmę, kai \\(x=4\\)."
+    ],
+    "hint1": "Skaičius skliaustuose nurodo argumento reikšmę.",
+    "hint2": "\\(f(4)\\) yra funkcijos reikšmė, kai \\(x=4\\)."
+  },
+  {
+    "id": 4,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "f(x)",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=2x+3\\). Apskaičiuok \\(f(4)\\).",
+    "correct": [
+      "11"
+    ],
+    "hint1": "Vietoje \\(x\\) įrašyk 4.",
+    "hint2": "\\(f(4)=2\\cdot4+3=11\\)."
+  },
+  {
+    "id": 5,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=x^2-1\\). Apskaičiuok \\(f(-2)\\).",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Neigiamą skaičių įrašyk skliaustuose.",
+    "hint2": "\\(f(-2)=(-2)^2-1=3\\)."
+  },
+  {
+    "id": 6,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "f(x)",
+    "type": "table",
+    "prompt": "Duota \\(f(x)=3-x\\). Užpildyk reikšmių lentelę.",
+    "xs": [
+      "-1",
+      "0",
+      "2"
+    ],
+    "correct": [
+      "4",
+      "3",
+      "1"
+    ],
+    "hint1": "Kiekvieną \\(x\\) įstatyk į formulę.",
+    "hint2": "\\(f(-1)=4\\), \\(f(0)=3\\), \\(f(2)=1\\)."
+  },
+  {
+    "id": 7,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Pagal grafiką rask \\(f(4)\\).",
+    "correct": [
+      "-2"
+    ],
+    "hint1": "Surask \\(x=4\\) ir nuskaityk \\(y\\).",
+    "hint2": "Taškas \\((4;-2)\\), todėl \\(f(4)=-2\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 8,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Pagal grafiką rask \\(f(1)\\).",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Nuo \\(x=1\\) kilk iki grafiko.",
+    "hint2": "Kai \\(x=1\\), \\(y=3\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 9,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=x^2-1\\). Ar taškas \\((2;3)\\) priklauso grafikui?",
+    "options": [
+      "Taip",
+      "Ne"
+    ],
+    "correct": [
+      "Taip"
+    ],
+    "hint1": "Palygink \\(f(2)\\) su taško \\(y\\) koordinate.",
+    "hint2": "\\(f(2)=3\\), todėl taškas priklauso grafikui."
+  },
+  {
+    "id": 10,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=2x+3\\). Ar taškas \\((-1;0)\\) priklauso grafikui?",
+    "options": [
+      "Taip",
+      "Ne"
+    ],
+    "correct": [
+      "Ne"
+    ],
+    "hint1": "Apskaičiuok \\(f(-1)\\).",
+    "hint2": "\\(f(-1)=1\\neq0\\), todėl taškas nepriklauso grafikui."
+  },
+  {
+    "id": 11,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Terminija",
+    "type": "choice",
+    "prompt": "Ką reiškia užrašas \\(f(3)=7\\)?",
+    "options": [
+      "Kai \\(x=7\\), funkcijos reikšmė yra 3.",
+      "Kai \\(x=3\\), funkcijos reikšmė yra 7.",
+      "Funkcijos nulis yra 7.",
+      "Funkcijos formulė yra \\(3x=7\\)."
+    ],
+    "correct": [
+      "Kai \\(x=3\\), funkcijos reikšmė yra 7."
+    ],
+    "hint1": "Skaičius skliaustuose - argumento reikšmė.",
+    "hint2": "Kai \\(x=3\\), gauname \\(y=7\\)."
+  },
+  {
+    "id": 12,
+    "lesson": 1,
+    "mode": "class",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Jeigu \\(q(-2)=5\\), kuris taškas būtinai priklauso funkcijos \\(q\\) grafikui?",
+    "options": [
+      "\\((-2;5)\\)",
+      "\\((5;-2)\\)",
+      "\\((-2;-5)\\)",
+      "\\((2;5)\\)"
+    ],
+    "correct": [
+      "\\((-2;5)\\)"
+    ],
+    "hint1": "\\(q(a)=b\\) atitinka tašką \\((a;b)\\).",
+    "hint2": "Grafike yra taškas \\((-2;5)\\)."
+  },
+  {
+    "id": 13,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "f(x)",
+    "type": "number",
+    "prompt": "Duota \\(g(x)=5-3x\\). Rask \\(g(2)\\).",
+    "correct": [
+      "-1",
+      "−1"
+    ],
+    "hint1": "Įrašyk 2 vietoje \\(x\\).",
+    "hint2": "\\(g(2)=5-6=-1\\)."
+  },
+  {
+    "id": 14,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "f(x)",
+    "type": "number",
+    "prompt": "Duota \\(h(x)=\\frac{x+4}{2}\\). Rask \\(h(-2)\\).",
+    "correct": [
+      "1"
+    ],
+    "hint1": "Įrašyk -2 vietoje \\(x\\).",
+    "hint2": "\\(h(-2)=1\\)."
+  },
+  {
+    "id": 15,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "f(x)",
+    "type": "table",
+    "prompt": "Duota \\(p(x)=2x-5\\). Užpildyk lentelę.",
+    "xs": [
+      "0",
+      "1",
+      "3"
+    ],
+    "correct": [
+      "-5",
+      "-3",
+      "1"
+    ],
+    "hint1": "Įstatyk kiekvieną \\(x\\).",
+    "hint2": "Gauname -5, -3, 1."
+  },
+  {
+    "id": 16,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Pagal grafiką rask \\(f(0)\\).",
+    "correct": [
+      "2"
+    ],
+    "hint1": "Surask \\(x=0\\).",
+    "hint2": "Kai \\(x=0\\), \\(y=2\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 17,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Pagal grafiką rask \\(f(3)\\).",
+    "correct": [
+      "0"
+    ],
+    "hint1": "Žiūrėk, kur grafikas yra ties \\(x=3\\).",
+    "hint2": "Ties \\(x=3\\) grafikas kerta \\(x\\) ašį.",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 18,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=3x-2\\). Ar taškas \\((2;4)\\) priklauso grafikui?",
+    "options": [
+      "Taip",
+      "Ne"
+    ],
+    "correct": [
+      "Taip"
+    ],
+    "hint1": "Apskaičiuok \\(f(2)\\).",
+    "hint2": "\\(f(2)=4\\), todėl taškas priklauso."
+  },
+  {
+    "id": 19,
+    "lesson": 1,
+    "mode": "self",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Jeigu \\(q(-4)=1\\), kuris taškas priklauso grafikui?",
+    "options": [
+      "\\((-4;1)\\)",
+      "\\((1;-4)\\)",
+      "\\((4;1)\\)",
+      "\\((-4;-1)\\)"
+    ],
+    "correct": [
+      "\\((-4;1)\\)"
+    ],
+    "hint1": "\\(q(a)=b\\) reiškia tašką \\((a;b)\\).",
+    "hint2": "Taškas yra \\((-4;1)\\)."
+  },
+  {
+    "id": 20,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Pagal grafiką rask \\(f(0)\\).",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Surask \\(x=0\\).",
+    "hint2": "\\(f(0)=3\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 21,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Terminija",
+    "type": "graphZeros",
+    "prompt": "Spustelėk abu funkcijos nulius grafike.",
+    "correct": [
+      "-3",
+      "2"
+    ],
+    "hint1": "Nulis - kai \\(f(x)=0\\).",
+    "hint2": "Nuliai yra \\(x=-3\\) ir \\(x=2\\)."
+  },
+  {
+    "id": 22,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Pagal grafiką užrašyk, kada \\(f(x)>0\\).",
+    "correct": [
+      "(-3;2)",
+      "(-3,2)"
+    ],
+    "hint1": "Ieškok grafiko virš \\(x\\) ašies.",
+    "hint2": "\\(x\\in(-3;2)\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 23,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "choice",
+    "prompt": "Kuris užrašas reiškia \\(-3<x<2\\)?",
+    "options": [
+      "\\((-3;2)\\)",
+      "\\([-3;2]\\)",
+      "\\([-3;2)\\)",
+      "\\((-3;2]\\)"
+    ],
+    "correct": [
+      "\\((-3;2)\\)"
+    ],
+    "hint1": "Griežta nelygybė kraštų neįtraukia.",
+    "hint2": "Rašome \\((-3;2)\\)."
+  },
+  {
+    "id": 24,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Pagal grafiką užrašyk, kada \\(f(x)<0\\).",
+    "correct": [
+      "[-4;-3)∪(2;4]",
+      "[-4,-3)∪(2,4]",
+      "[-4;-3)u(2;4]",
+      "[-4,-3)u(2,4]"
+    ],
+    "hint1": "Yra dvi atskiros dalys - reikės sąjungos.",
+    "hint2": "\\([-4;-3)\\cup(2;4]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 25,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "choice",
+    "prompt": "Kuriame intervale funkcija didėja?",
+    "options": [
+      "Nuo \\(x=-4\\) iki \\(x=-1\\)",
+      "Nuo \\(x=-1\\) iki \\(x=1\\)",
+      "Nuo \\(x=1\\) iki \\(x=4\\)",
+      "Visame \\([-4;4]\\)"
+    ],
+    "correct": [
+      "Nuo \\(x=-4\\) iki \\(x=-1\\)"
+    ],
+    "hint1": "Ieškok, kur grafikas kyla.",
+    "hint2": "Didėja nuo -4 iki -1.",
+    "showMainGraph": true
+  },
+  {
+    "id": 26,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "choice",
+    "prompt": "Kuriame intervale funkcijos reikšmė nekinta?",
+    "options": [
+      "\\([-4;-1]\\)",
+      "\\([-1;1]\\)",
+      "\\([1;4]\\)",
+      "Nė viename"
+    ],
+    "correct": [
+      "\\([-1;1]\\)"
+    ],
+    "hint1": "Ieškok horizontalios dalies.",
+    "hint2": "Nekinta \\([-1;1]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 27,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "choice",
+    "prompt": "Kuriame intervale funkcija mažėja?",
+    "options": [
+      "\\([-4;-1]\\)",
+      "\\([-1;1]\\)",
+      "\\([1;4]\\)",
+      "\\([-4;4]\\)"
+    ],
+    "correct": [
+      "\\([1;4]\\)"
+    ],
+    "hint1": "Ieškok, kur grafikas leidžiasi.",
+    "hint2": "Mažėja \\([1;4]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 28,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Kokia didžiausia funkcijos reikšmė?",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Žiūrėk į aukščiausią \\(y\\).",
+    "hint2": "Didžiausia reikšmė 3.",
+    "showMainGraph": true
+  },
+  {
+    "id": 29,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "number",
+    "prompt": "Kokia mažiausia funkcijos reikšmė?",
+    "correct": [
+      "-2"
+    ],
+    "hint1": "Žiūrėk į žemiausią \\(y\\).",
+    "hint2": "Mažiausia reikšmė -2.",
+    "showMainGraph": true
+  },
+  {
+    "id": 30,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Užrašyk \\(D(f)\\).",
+    "correct": [
+      "[-4;4]",
+      "[-4,4]"
+    ],
+    "hint1": "Apibrėžimo sritis - visos \\(x\\).",
+    "hint2": "\\(D(f)=[-4;4]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 31,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Užrašyk \\(E(f)\\).",
+    "correct": [
+      "[-2;3]",
+      "[-2,3]"
+    ],
+    "hint1": "Reikšmių sritis - visos \\(y\\).",
+    "hint2": "\\(E(f)=[-2;3]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 32,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Grafiko skaitymas",
+    "type": "choice",
+    "prompt": "Kuris teiginys teisingas?",
+    "options": [
+      "Didžiausia reikšmė yra 4.",
+      "Funkcija turi du nulius.",
+      "Funkcija visur didėja.",
+      "\\(D(f)=[-2;3]\\)."
+    ],
+    "correct": [
+      "Funkcija turi du nulius."
+    ],
+    "hint1": "Patikrink teiginius grafike.",
+    "hint2": "Nuliai yra -3 ir 2.",
+    "showMainGraph": true
+  },
+  {
+    "id": 33,
+    "lesson": 2,
+    "mode": "class",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Kokioms \\(x\\) reikšmėms \\(f(x)=3\\)?",
+    "correct": [
+      "[-1;1]",
+      "[-1,1]"
+    ],
+    "hint1": "Ieškok horizontalios dalies ties \\(y=3\\).",
+    "hint2": "\\(x\\in[-1;1]\\).",
+    "showMainGraph": true
+  },
+  {
+    "id": 34,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Terminija",
+    "type": "dual",
+    "prompt": "Pagal grafiką užrašyk abu funkcijos nulius.",
+    "labels": [
+      "Pirmas nulis",
+      "Antras nulis"
+    ],
+    "correct": [
+      "-4",
+      "3"
+    ],
+    "hint1": "Sankirtos su \\(x\\) ašimi.",
+    "hint2": "Nuliai -4 ir 3.",
+    "unordered": true,
+    "showPracticeGraph": true
+  },
+  {
+    "id": 35,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Kada \\(f(x)>0\\)?",
+    "correct": [
+      "(-4;3)",
+      "(-4,3)"
+    ],
+    "hint1": "Ieškok virš \\(x\\) ašies.",
+    "hint2": "\\((-4;3)\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 36,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Kada \\(f(x)<0\\)?",
+    "correct": [
+      "[-5;-4)∪(3;5]",
+      "[-5,-4)∪(3,5]",
+      "[-5;-4)u(3;5]",
+      "[-5,-4)u(3,5]"
+    ],
+    "hint1": "Yra dvi dalys.",
+    "hint2": "\\([-5;-4)\\cup(3;5]\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 37,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Grafiko skaitymas",
+    "type": "interval",
+    "prompt": "Kuriame intervale funkcija didėja?",
+    "correct": [
+      "[-5;-2]",
+      "[-5,-2]"
+    ],
+    "hint1": "Kur grafikas kyla?",
+    "hint2": "\\([-5;-2]\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 38,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Grafiko skaitymas",
+    "type": "interval",
+    "prompt": "Kuriame intervale funkcija mažėja?",
+    "correct": [
+      "[1;5]",
+      "[1,5]"
+    ],
+    "hint1": "Kur grafikas leidžiasi?",
+    "hint2": "\\([1;5]\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 39,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Grafiko skaitymas",
+    "type": "dual",
+    "prompt": "Įrašyk mažiausią ir didžiausią funkcijos reikšmes.",
+    "labels": [
+      "Mažiausia",
+      "Didžiausia"
+    ],
+    "correct": [
+      "-2",
+      "2"
+    ],
+    "hint1": "Žiūrėk į žemiausią ir aukščiausią \\(y\\).",
+    "hint2": "-2 ir 2.",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 40,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Užrašyk \\(D(f)\\).",
+    "correct": [
+      "[-5;5]",
+      "[-5,5]"
+    ],
+    "hint1": "Visos \\(x\\) reikšmės.",
+    "hint2": "\\([-5;5]\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 41,
+    "lesson": 2,
+    "mode": "self",
+    "skill": "Intervalai",
+    "type": "interval",
+    "prompt": "Užrašyk \\(E(f)\\).",
+    "correct": [
+      "[-2;2]",
+      "[-2,2]"
+    ],
+    "hint1": "Visos \\(y\\) reikšmės.",
+    "hint2": "\\([-2;2]\\).",
+    "showPracticeGraph": true
+  },
+  {
+    "id": 42,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "dual",
+    "prompt": "Duota \\(f(x)=2x-1\\). Įrašyk \\(k\\) ir \\(b\\).",
+    "labels": [
+      "k",
+      "b"
+    ],
+    "correct": [
+      "2",
+      "-1"
+    ],
+    "hint1": "Koeficientas prie \\(x\\) yra \\(k\\).",
+    "hint2": "\\(k=2\\), \\(b=-1\\)."
+  },
+  {
+    "id": 43,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=2x-1\\). Rask \\(f(0)\\).",
+    "correct": [
+      "-1"
+    ],
+    "hint1": "Įrašyk 0.",
+    "hint2": "\\(f(0)=-1\\), tai sutampa su \\(b\\)."
+  },
+  {
+    "id": 44,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=2x-1\\). Rask \\(f(3)\\).",
+    "correct": [
+      "5"
+    ],
+    "hint1": "Įrašyk 3.",
+    "hint2": "\\(f(3)=5\\)."
+  },
+  {
+    "id": 45,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "table",
+    "prompt": "Duota \\(f(x)=2x-1\\). Užpildyk lentelę.",
+    "xs": [
+      "0",
+      "1",
+      "2"
+    ],
+    "correct": [
+      "-1",
+      "1",
+      "3"
+    ],
+    "hint1": "Įstatyk kiekvieną \\(x\\).",
+    "hint2": "Gauname -1, 1, 3."
+  },
+  {
+    "id": 46,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "lineGraphs",
+    "prompt": "Pasirink grafiką funkcijos \\(f(x)=2x-1\\).",
+    "correct": [
+      "C"
+    ],
+    "hint1": "\\(k>0\\), todėl tiesė kyla; \\(b=-1\\).",
+    "hint2": "Tinka C."
+  },
+  {
+    "id": 47,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Duotos \\(f(x)=2x+1\\) ir \\(g(x)=2x-3\\). Koks grafikų ryšys?",
+    "options": [
+      "Tiesės lygiagrečios.",
+      "Tiesės statmenos.",
+      "Tai ta pati tiesė.",
+      "Abi tiesės mažėja."
+    ],
+    "correct": [
+      "Tiesės lygiagrečios."
+    ],
+    "hint1": "Palygink \\(k\\).",
+    "hint2": "Abiejų \\(k=2\\), todėl tiesės lygiagrečios."
+  },
+  {
+    "id": 48,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=-3x+2\\). Funkcija didėja ar mažėja?",
+    "options": [
+      "Didėja",
+      "Mažėja"
+    ],
+    "correct": [
+      "Mažėja"
+    ],
+    "hint1": "Koks \\(k\\) ženklas?",
+    "hint2": "\\(k<0\\), todėl mažėja."
+  },
+  {
+    "id": 49,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Jei \\(k>0\\), tiesinė funkcija...",
+    "options": [
+      "didėja",
+      "mažėja",
+      "visada lygi nuliui",
+      "negali turėti grafiko"
+    ],
+    "correct": [
+      "didėja"
+    ],
+    "hint1": "Teigiamas nuolydis kyla į dešinę.",
+    "hint2": "Kai \\(k>0\\), funkcija didėja."
+  },
+  {
+    "id": 50,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=2x-4\\). Rask funkcijos nulį.",
+    "correct": [
+      "2"
+    ],
+    "hint1": "Prilygink \\(f(x)\\) nuliui.",
+    "hint2": "\\(2x-4=0\\Rightarrow x=2\\)."
+  },
+  {
+    "id": 51,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=2x+1\\). Rask \\(x\\), kai \\(f(x)=7\\).",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Sudaryk \\(2x+1=7\\).",
+    "hint2": "\\(x=3\\)."
+  },
+  {
+    "id": 52,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Tiesė eina per \\((0;-1)\\) ir \\((1;1)\\). Kuri formulė tinkama?",
+    "options": [
+      "\\(y=2x-1\\)",
+      "\\(y=x-1\\)",
+      "\\(y=-2x-1\\)",
+      "\\(y=2x+1\\)"
+    ],
+    "correct": [
+      "\\(y=2x-1\\)"
+    ],
+    "hint1": "Pokytis: kai x +1, y +2; ties x=0 y=-1.",
+    "hint2": "\\(y=2x-1\\)."
+  },
+  {
+    "id": 53,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "text",
+    "prompt": "Tiesė eina per \\((0;3)\\) ir \\((2;7)\\). Užrašyk formulę.",
+    "correct": [
+      "f(x)=2x+3",
+      "y=2x+3",
+      "2x+3"
+    ],
+    "hint1": "Rask nuolydį ir \\(b\\).",
+    "hint2": "\\(k=2\\), \\(b=3\\), todėl \\(y=2x+3\\)."
+  },
+  {
+    "id": 54,
+    "lesson": 3,
+    "mode": "class",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=-x+4\\). Kur grafikas kerta \\(y\\) ašį?",
+    "options": [
+      "Taške \\((0;4)\\)",
+      "Taške \\((4;0)\\)",
+      "Taške \\((0;-1)\\)",
+      "Taške \\((-1;4)\\)"
+    ],
+    "correct": [
+      "Taške \\((0;4)\\)"
+    ],
+    "hint1": "Ant \\(y\\) ašies \\(x=0\\).",
+    "hint2": "\\(f(0)=4\\), taigi \\((0;4)\\)."
+  },
+  {
+    "id": 55,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Tiesinė funkcija",
+    "type": "dual",
+    "prompt": "Duota \\(f(x)=-2x+5\\). Įrašyk \\(k\\) ir \\(b\\).",
+    "labels": [
+      "k",
+      "b"
+    ],
+    "correct": [
+      "-2",
+      "5"
+    ],
+    "hint1": "Koeficientas prie x ir laisvasis narys.",
+    "hint2": "\\(k=-2\\), \\(b=5\\)."
+  },
+  {
+    "id": 56,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=-2x+5\\). Funkcija didėja ar mažėja?",
+    "options": [
+      "Didėja",
+      "Mažėja"
+    ],
+    "correct": [
+      "Mažėja"
+    ],
+    "hint1": "Koks k ženklas?",
+    "hint2": "Mažėja."
+  },
+  {
+    "id": 57,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Tiesinė funkcija",
+    "type": "table",
+    "prompt": "Duota \\(f(x)=-2x+5\\). Užpildyk lentelę.",
+    "xs": [
+      "0",
+      "1",
+      "2"
+    ],
+    "correct": [
+      "5",
+      "3",
+      "1"
+    ],
+    "hint1": "Įstatyk x.",
+    "hint2": "5, 3, 1."
+  },
+  {
+    "id": 58,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=-2x+6\\). Rask nulį.",
+    "correct": [
+      "3"
+    ],
+    "hint1": "Prilygink nuliui.",
+    "hint2": "\\(x=3\\)."
+  },
+  {
+    "id": 59,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=-2x+5\\). Rask \\(x\\), kai \\(f(x)=1\\).",
+    "correct": [
+      "2"
+    ],
+    "hint1": "Sudaryk lygtį.",
+    "hint2": "\\(x=2\\)."
+  },
+  {
+    "id": 60,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Tiesinė funkcija",
+    "type": "choice",
+    "prompt": "Tiesė eina per \\((0;5)\\) ir \\((2;1)\\). Kuri formulė tinkama?",
+    "options": [
+      "\\(y=-2x+5\\)",
+      "\\(y=2x+5\\)",
+      "\\(y=-x+5\\)",
+      "\\(y=-2x+1\\)"
+    ],
+    "correct": [
+      "\\(y=-2x+5\\)"
+    ],
+    "hint1": "Rask nuolydį.",
+    "hint2": "\\(y=-2x+5\\)."
+  },
+  {
+    "id": 61,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Tiesinė funkcija",
+    "type": "text",
+    "prompt": "Tiesė eina per \\((0;-2)\\) ir \\((3;4)\\). Užrašyk formulę.",
+    "correct": [
+      "f(x)=2x-2",
+      "y=2x-2",
+      "2x-2"
+    ],
+    "hint1": "\\(k=(4-(-2))/(3-0)\\).",
+    "hint2": "\\(y=2x-2\\)."
+  },
+  {
+    "id": 62,
+    "lesson": 3,
+    "mode": "self",
+    "skill": "Taškas ir grafikas",
+    "type": "choice",
+    "prompt": "Duota \\(f(x)=3x-6\\). Ar taškas \\((4;6)\\) priklauso grafikui?",
+    "options": [
+      "Taip",
+      "Ne"
+    ],
+    "correct": [
+      "Taip"
+    ],
+    "hint1": "Patikrink \\(f(4)\\).",
+    "hint2": "\\(f(4)=6\\), todėl taip."
+  },
+  {
+    "id": 63,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "number",
+    "prompt": "A taiko \\(A(x)=5+2x\\), B - \\(B(x)=11+x\\). Kada kainos vienodos?",
+    "correct": [
+      "6"
+    ],
+    "hint1": "Spręsk \\(A(x)=B(x)\\).",
+    "hint2": "\\(5+2x=11+x\\Rightarrow x=6\\)."
+  },
+  {
+    "id": 64,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Kuri įmonė pigesnė, kai \\(x=10\\)?",
+    "options": [
+      "A",
+      "B",
+      "Kainos vienodos"
+    ],
+    "correct": [
+      "B"
+    ],
+    "hint1": "Apskaičiuok abi reikšmes.",
+    "hint2": "A=25, B=21, todėl B."
+  },
+  {
+    "id": 65,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Ką \\(A(x)=5+2x\\) reiškia skaičius 5?",
+    "options": [
+      "Pradinį mokestį, nepriklausantį nuo \\(x\\).",
+      "Kainą už vieną \\(x\\) vienetą.",
+      "Didžiausią kainą.",
+      "Funkcijos nulį."
+    ],
+    "correct": [
+      "Pradinį mokestį, nepriklausantį nuo \\(x\\)."
+    ],
+    "hint1": "Kas lieka, kai x=0?",
+    "hint2": "5 yra pradinis mokestis."
+  },
+  {
+    "id": 66,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Ką \\(A(x)=5+2x\\) reiškia skaičius 2?",
+    "options": [
+      "Pradinį mokestį.",
+      "Kainos padidėjimą už vieną \\(x\\) vienetą.",
+      "Didžiausią kainą.",
+      "Laiką, kai kaina lygi nuliui."
+    ],
+    "correct": [
+      "Kainos padidėjimą už vieną \\(x\\) vienetą."
+    ],
+    "hint1": "2 dauginamas iš x.",
+    "hint2": "Kaina didėja po 2 už vieną x vienetą."
+  },
+  {
+    "id": 67,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Paslaugos kaina: 4 € pradinis mokestis ir po 1,5 € už valandą \\(x\\). Kuri formulė?",
+    "options": [
+      "\\(K(x)=4+1{,}5x\\)",
+      "\\(K(x)=1{,}5+4x\\)",
+      "\\(K(x)=4x\\)",
+      "\\(K(x)=5{,}5x\\)"
+    ],
+    "correct": [
+      "\\(K(x)=4+1{,}5x\\)"
+    ],
+    "hint1": "Atskirk pastovią ir kintamą dalį.",
+    "hint2": "\\(K(x)=4+1{,}5x\\)."
+  },
+  {
+    "id": 68,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Lentelėje: \\(x=0,1,2\\), \\(F(x)=5,7,9\\). Kuri formulė?",
+    "options": [
+      "\\(F(x)=5+2x\\)",
+      "\\(F(x)=2+5x\\)",
+      "\\(F(x)=5x\\)",
+      "\\(F(x)=7+2x\\)"
+    ],
+    "correct": [
+      "\\(F(x)=5+2x\\)"
+    ],
+    "hint1": "F(0) parodo b, tada žiūrėk pokytį.",
+    "hint2": "\\(F(x)=5+2x\\)."
+  },
+  {
+    "id": 69,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "number",
+    "prompt": "Duota \\(A(x)=5+2x\\). Rask \\(x\\), kai \\(A(x)=17\\).",
+    "correct": [
+      "6"
+    ],
+    "hint1": "Sudaryk lygtį.",
+    "hint2": "\\(x=6\\)."
+  },
+  {
+    "id": 70,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Uždavinio analizė",
+    "type": "number",
+    "prompt": "Duota \\(f(x)=4x-3\\). Rask \\(f(5)\\).",
+    "correct": [
+      "17"
+    ],
+    "hint1": "Ko klausiama? Funkcijos reikšmės.",
+    "hint2": "\\(f(5)=17\\).",
+    "scaffold": [
+      "Ko klausiama? → funkcijos reikšmės",
+      "Kas duota? → \\(x=5\\)",
+      "Kokia tema? → funkcijos reikšmė",
+      "Paprasčiausias būdas? → įstatyti 5 vietoje \\(x\\)"
+    ]
+  },
+  {
+    "id": 71,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Kai \\(x=4\\), kuri įmonė pigesnė: \\(A(x)=5+2x\\) ar \\(B(x)=11+x\\)?",
+    "options": [
+      "A",
+      "B",
+      "Kainos vienodos"
+    ],
+    "correct": [
+      "A"
+    ],
+    "hint1": "Pakanka apskaičiuoti abi reikšmes.",
+    "hint2": "A(4)=13, B(4)=15, todėl A."
+  },
+  {
+    "id": 72,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Kvadratinė bazė",
+    "type": "number",
+    "prompt": "Diagnostika: \\(g(x)=x^2-4x+3\\). Rask \\(g(2)\\).",
+    "correct": [
+      "-1",
+      "−1"
+    ],
+    "hint1": "Įstatyk x=2.",
+    "hint2": "\\(g(2)=-1\\)."
+  },
+  {
+    "id": 73,
+    "lesson": 4,
+    "mode": "class",
+    "skill": "Kvadratinė bazė",
+    "type": "dual",
+    "prompt": "Diagnostika: rask \\(g(x)=x^2-4x+3\\) nulius.",
+    "labels": [
+      "Pirmas nulis",
+      "Antras nulis"
+    ],
+    "correct": [
+      "1",
+      "3"
+    ],
+    "hint1": "Nuliai tenkina \\(g(x)=0\\).",
+    "hint2": "\\((x-1)(x-3)=0\\), todėl 1 ir 3.",
+    "unordered": true
+  },
+  {
+    "id": 74,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Algebra",
+    "type": "number",
+    "prompt": "Duota \\(g(x)=3x-6\\). Rask nulį.",
+    "correct": [
+      "2"
+    ],
+    "hint1": "Prilygink nuliui.",
+    "hint2": "\\(x=2\\)."
+  },
+  {
+    "id": 75,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Stovėjimo kaina \\(K(x)=4+1{,}5x\\). Ką reiškia 1,5?",
+    "options": [
+      "Pradinį 4 € mokestį.",
+      "Vienos stovėjimo valandos kainą.",
+      "Didžiausią laiką.",
+      "Bendrą kainą."
+    ],
+    "correct": [
+      "Vienos stovėjimo valandos kainą."
+    ],
+    "hint1": "Kuris skaičius dauginamas iš x?",
+    "hint2": "1,5 € už valandą."
+  },
+  {
+    "id": 76,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "number",
+    "prompt": "Duota \\(K(x)=4+1{,}5x\\). Kiek kainuos 4 valandos?",
+    "correct": [
+      "10"
+    ],
+    "hint1": "Apskaičiuok K(4).",
+    "hint2": "10 €."
+  },
+  {
+    "id": 77,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Dviračio nuoma: 6 € pradinis mokestis ir po 3 € už valandą \\(x\\). Kuri formulė?",
+    "options": [
+      "\\(N(x)=6+3x\\)",
+      "\\(N(x)=3+6x\\)",
+      "\\(N(x)=9x\\)",
+      "\\(N(x)=6x\\)"
+    ],
+    "correct": [
+      "\\(N(x)=6+3x\\)"
+    ],
+    "hint1": "Pastovi dalis + valandinė dalis.",
+    "hint2": "\\(N(x)=6+3x\\)."
+  },
+  {
+    "id": 78,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "choice",
+    "prompt": "Duota \\(C(x)=4+2x\\), \\(D(x)=10+x\\). Kuri pigesnė, kai \\(x=5\\)?",
+    "options": [
+      "C",
+      "D",
+      "Kainos vienodos"
+    ],
+    "correct": [
+      "C"
+    ],
+    "hint1": "Apskaičiuok abi.",
+    "hint2": "C=14, D=15, todėl C."
+  },
+  {
+    "id": 79,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "scenario",
+    "prompt": "Grafikas vaizduoja žmogaus atstumą nuo namų priklausomai nuo laiko.",
+    "correct": [
+      "10–15 min.",
+      "Atstumas nuo namų nekito.",
+      "25"
+    ],
+    "hint1": "Žiūrėk į didžiausią atstumą, horizontalią dalį ir grįžimą į 0.",
+    "hint2": "10–15 min.; atstumas nekito; namo grįžo po 25 min."
+  },
+  {
+    "id": 80,
+    "lesson": 4,
+    "mode": "self",
+    "skill": "Modeliavimas",
+    "type": "number",
+    "prompt": "Duota \\(K(x)=2+4x\\). Rask \\(x\\), kai \\(K(x)=18\\).",
+    "correct": [
+      "4"
+    ],
+    "hint1": "Sudaryk lygtį.",
+    "hint2": "\\(x=4\\)."
+  }
 ];
+
+const moduleTaskData = LESSON_FILTER ? taskData.filter(t=>t.lesson===LESSON_FILTER) : taskData;
 
 const lessonNames = {
   1:"1 pamoka · Funkcija ir f(x)",
-  2:"2 pamoka · Skaitome grafiką",
+  2:"2 pamoka · Funkcijos grafiko skaitymas",
   3:"3 pamoka · Tiesinė funkcija",
   4:"4 pamoka · Funkcija kaip problemų sprendimo įrankis"
+};
+const lessonDetails = {
+  1:{title:"Funkcija ir f(x)",summary:"Funkcijos sąvoka, žymėjimas f(x), funkcijos reikšmė, grafiko skaitymo pradžia ir taško priklausymas grafikui.",outcomes:["suprasti funkciją kaip taisyklę x → viena y reikšmė","suprasti žymėjimą f(x)","apskaičiuoti funkcijos reikšmę","nuskaityti funkcijos reikšmę iš grafiko","patikrinti taško priklausymą grafikui"],handout:"konspektai/1-pamoka-funkcija-ir-fx.pdf"},
+  2:{title:"Funkcijos grafiko skaitymas",summary:"Nuliniai taškai, funkcijos ženklas, intervalai, didėjimas ir mažėjimas, maksimumas ir minimumas, D(f) ir E(f).",outcomes:["rasti funkcijos nulius","nustatyti, kada f(x)>0 ir f(x)<0","taisyklingai užrašyti intervalus ir jų sąjungą","nustatyti didėjimą ir mažėjimą","rasti didžiausią ir mažiausią reikšmę","užrašyti D(f) ir E(f)"],handout:"konspektai/2-pamoka-grafiko-skaitymas.pdf"},
+  3:{title:"Tiesinė funkcija",summary:"Tiesinės funkcijos f(x)=kx+b formulė, koeficientų prasmė, reikšmių lentelė, grafikas, funkcijos nulis ir paprastas formulės sudarymas.",outcomes:["atpažinti k ir b","susieti k ženklą su didėjimu ar mažėjimu","užpildyti reikšmių lentelę","parinkti funkcijai grafiką","rasti tiesinės funkcijos nulį","sudaryti paprastą tiesės formulę"],handout:"konspektai/3-pamoka-tiesine-funkcija.pdf"},
+  4:{title:"Funkcija kaip problemų sprendimo įrankis",summary:"Funkcijų modeliai realiose situacijose, dviejų modelių palyginimas, koeficientų interpretavimas ir paprasčiausio sprendimo būdo pasirinkimas.",outcomes:["paaiškinti modelio koeficientų prasmę","apskaičiuoti modelio reikšmę","palyginti du modelius","rasti, kada modelių reikšmės sutampa","iš situacijos parinkti funkcijos formulę","taikyti keturių klausimų sprendimo rutiną"],handout:"konspektai/4-pamoka-funkciju-taikymas.pdf"}
 };
 
 let mode = EMBEDDED ? "class" : (localStorage.getItem(MODULE_ID+":mode") || "class");
@@ -357,7 +1565,7 @@ function saveState(){
   }
   publishEmbeddedState();
 }
-function activeTasks(){ return taskData.filter(t=>t.mode===mode); }
+function activeTasks(){ return moduleTaskData.filter(t=>t.mode===mode); }
 function currentTask(){ return activeTasks()[currentIndex]; }
 
 function norm(s){
@@ -390,7 +1598,8 @@ function taskState(id){
   return state[id];
 }
 function lessonDots(task){
-  return [1,2,3,4].map(n=>`<span class="lesson-pill ${n===task.lesson?'current':''}">${lessonNames[n]}</span>`).join("");
+  const lessons = LESSON_FILTER ? [LESSON_FILTER] : [1,2,3,4];
+  return lessons.map(n=>`<span class="lesson-pill ${n===task.lesson?'current':''}">${lessonNames[n]}</span>`).join("");
 }
 function setMode(newMode){
   mode=newMode; currentIndex=0; selectedChoice=null; graphZeroClicks=[]; saveState();
@@ -413,33 +1622,12 @@ function updateProgress(){
 function startScreen(){
   moduleView="start";
   const main=document.getElementById("main");
-  main.innerHTML=`
-    <section class="card start-card">
-      <div class="task-num">VBE A KURSAS · 1 MODULIS</div>
-      <h2>Funkcija ir jos grafikas</h2>
-      <p>Šis modulis skirtas ne vien pasitikrinti. Jame trumpai prisiminsime funkcijos kalbą, taisyklingai skaitysime funkcijų grafikus, jungsime formulę su grafiku ir spręsime pirmas VBE tipo situacijas.</p>
-      <div class="outcomes">
-        <div>✓ suprasti, ką reiškia \\(f(x)\\)</div>
-        <div>✓ apskaičiuoti funkcijos reikšmę</div>
-        <div>✓ rasti funkcijos nulius ir ženklą</div>
-        <div>✓ skaityti didėjimą, mažėjimą ir sritis</div>
-        <div>✓ suprasti tiesinės funkcijos formulę</div>
-        <div>✓ pereiti nuo situacijos prie funkcijos modelio</div>
-      </div>
-      <p class="tiny">Režimas <b>${mode==="class"?"Pamokoje":"Savarankiškai"}</b>: ${activeTasks().length} užduočių. Rezultatas saugomas šiame naršyklės įrenginyje.</p>
-      <div class="start-actions">
-        <button class="primary" id="startNow">Pradėti</button>
-        <button class="secondary" id="continueBtn">Tęsti nuo pirmos nebaigtos</button>
-      </div>
-    </section>`;
+  const lessonNo=LESSON_FILTER || 1; const info=lessonDetails[lessonNo];
+  const classCount=moduleTaskData.filter(t=>t.mode==="class").length; const selfCount=moduleTaskData.filter(t=>t.mode==="self").length;
+  main.innerHTML=`<section class="card start-card"><div class="task-num">VBE A KURSAS · ${LESSON_FILTER ? `${LESSON_FILTER} PAMOKA` : "FUNKCIJŲ BLOKAS"}</div><h2>${LESSON_FILTER ? info.title : "Funkcijos · 1-4 pamokos"}</h2><p>${LESSON_FILTER ? info.summary : "Keturių nuoseklių pamokų blokas."}</p><div class="outcomes">${(LESSON_FILTER?info.outcomes:["Funkcija ir f(x)","Grafiko skaitymas","Tiesinė funkcija","Funkcijų taikymas"]).map(x=>`<div>✓ ${x}</div>`).join("")}</div>${LESSON_FILTER?`<p class="tiny"><b>Pamokoje:</b> ${classCount} užduočių · <b>Savarankiškai:</b> ${selfCount} užduočių.</p>`:""}<p class="tiny">Aktyvus režimas: <b>${mode==="class"?"Pamokoje":"Savarankiškai"}</b>.</p><div class="start-actions"><button class="primary" id="startNow">Pradėti</button><button class="secondary" id="continueBtn">Tęsti nuo pirmos nebaigtos</button>${LESSON_FILTER?`<a class="secondary handout-link" href="${info.handout}" target="_blank" rel="noopener">Pamokos konspektas PDF</a>`:""}</div></section>`;
   document.getElementById("startNow").onclick=()=>{currentIndex=0;renderTask();publishEmbeddedState()};
-  document.getElementById("continueBtn").onclick=()=>{
-    const tasks=activeTasks();
-    const idx=tasks.findIndex(t=>!taskState(t.id).completed);
-    currentIndex=idx===-1?0:idx; renderTask(); publishEmbeddedState();
-  };
-  updateProgress();
-  setTimeout(()=>typesetMath(main),0);
+  document.getElementById("continueBtn").onclick=()=>{const ts=activeTasks();const idx=ts.findIndex(t=>!taskState(t.id).completed);currentIndex=idx===-1?0:idx;renderTask();publishEmbeddedState();};
+  updateProgress(); setTimeout(()=>typesetMath(main),0);
 }
 
 function miniAxes(linePath="", curvePath="", vertical=false, circle=false){
@@ -564,6 +1752,9 @@ function answerUI(task){
   if(task.type==="number" || task.type==="text"){
     return `<div class="inline-inputs"><input id="answerInput" class="input math-input" autocomplete="off" placeholder="Įrašyk atsakymą"></div>`;
   }
+  if(task.type==="interval"){
+    return `<div class="interval-answer"><input id="answerInput" class="input math-input" autocomplete="off" placeholder="pvz. [-4;-3)∪(2;4]"><div class="interval-tools">${["[","]","(",")",";","∪","-∞","+∞"].map(s=>`<button type="button" class="interval-symbol" data-interval-symbol="${s}">${s}</button>`).join("")}</div><div class="tiny">Sąjungos ženklą ∪ gali įterpti mygtuku. Sistema taip pat priima raidę <b>u</b>.</div></div>`;
+  }
   if(task.type==="choice"){
     return `<div class="answers">${task.options.map((o,i)=>`
       <button class="choice" type="button" data-choice="${escapeHtml(o)}"><span class="letter">${letters[i]}</span><span>${o}</span></button>
@@ -609,7 +1800,7 @@ function restoreTaskAnswerUI(task, st){
   const ans=Array.isArray(st?.answer) ? st.answer : [];
   if(!ans.length) return;
 
-  if(task.type==="number" || task.type==="text" || task.type==="mainGraphNumber"){
+  if(task.type==="number" || task.type==="text" || task.type==="interval" || task.type==="mainGraphNumber"){
     const input=document.getElementById("answerInput");
     if(input) input.value=ans[0] ?? "";
     return;
@@ -756,6 +1947,7 @@ function bindTask(task){
   document.getElementById("solutionBtn").onclick=()=>showFullSolution(task);
   const inp=document.getElementById("answerInput");
   if(inp) inp.addEventListener("keydown",e=>{if(e.key==="Enter") checkAnswer(task)});
+  document.querySelectorAll("[data-interval-symbol]").forEach(btn=>{btn.onclick=()=>{const input=document.getElementById("answerInput");if(!input)return;const symbol=btn.dataset.intervalSymbol||"";const a=input.selectionStart??input.value.length,b=input.selectionEnd??a;input.value=input.value.slice(0,a)+symbol+input.value.slice(b);const p=a+symbol.length;input.focus();input.setSelectionRange(p,p);};});
   document.querySelectorAll("[data-choice]").forEach(btn=>{
     btn.onclick=()=>{
       selectedChoice=btn.dataset.choice;
@@ -804,7 +1996,7 @@ function drawZeroClicks(){
   marks.innerHTML=graphZeroClicks.map(x=>`<circle cx="${sx(x)}" cy="${sy()}" r="8" fill="rgba(49,87,213,.20)" stroke="#3157d5" stroke-width="2"/>`).join("");
 }
 function collectAnswer(task){
-  if(task.type==="number"||task.type==="text"||task.type==="mainGraphNumber") return [document.getElementById("answerInput")?.value||""];
+  if(task.type==="number"||task.type==="text"||task.type==="interval"||task.type==="mainGraphNumber") return [document.getElementById("answerInput")?.value||""];
   if(task.type==="choice"||task.type==="lineGraphs") return [selectedChoice||""];
   if(task.type==="multigraph") return [...document.querySelectorAll("[data-mg].selected")].map(b=>b.dataset.mg).sort();
   if(task.type==="graphZeros") return graphZeroClicks.slice();
@@ -831,7 +2023,7 @@ function isCorrect(task, ans){
     const a=ans.map(norm), c=task.correct.map(norm);
     return a.every((v,i)=>v===c[i]);
   }
-  if(task.type==="text"){
+  if(task.type==="text" || task.type==="interval"){
     const a=flexibleTextNorm(ans[0]);
     return task.correct.some(c=>flexibleTextNorm(c)===a);
   }
@@ -852,7 +2044,7 @@ function showHint(html){
 
 function freezeTaskInputs(){
   document.querySelectorAll(
-    "#answerInput,.dualInput,.tableInput,.scenarioInput,[data-choice],[data-mg],[data-lg]"
+    "#answerInput,.dualInput,.tableInput,.scenarioInput,[data-choice],[data-mg],[data-lg],[data-interval-symbol]"
   ).forEach(el=>{
     if("disabled" in el) el.disabled=true;
     el.style.pointerEvents="none";
@@ -1022,7 +2214,7 @@ function aggregate(tasks){
 }
 function renderTeacher(){
   const panel=document.getElementById("teacherPanel");
-  const all=taskData;
+  const all=moduleTaskData;
   const completed=all.filter(t=>taskState(t.id).completed).length;
   const independent=all.filter(t=>taskState(t.id).status==="independent").length;
   const help=all.filter(t=>taskState(t.id).status==="with_help").length;
@@ -1035,7 +2227,7 @@ function renderTeacher(){
       <div class="task-head"><div><div class="task-num">MOKYTOJO SUVESTINĖ</div><h2 style="margin:6px 0 0">Mokymosi profilis</h2></div>
       <button id="closeTeacher" class="ghost" type="button">Uždaryti</button></div>
       <div class="teacher-grid">
-        <div class="metric">Atlikta<b>${completed}/${taskData.length}</b></div>
+        <div class="metric">Atlikta<b>${completed}/${moduleTaskData.length}</b></div>
         <div class="metric">Iš pirmo karto<b>${independent}</b></div>
         <div class="metric">Su pagalba<b>${help}</b></div>
         <div class="metric">Kartoti<b>${repeat}</b></div>
@@ -1054,7 +2246,7 @@ function renderTeacher(){
   document.getElementById("closeTeacher").onclick=()=>panel.classList.remove("show");
   document.getElementById("copySummary").onclick=()=>{
     const lines=["Funkcija ir jos grafikas · mokytojo suvestinė",
-      `Atlikta: ${completed}/${taskData.length}`, `Savarankiškai: ${independent}`, `Su pagalba: ${help}`, `Kartoti: ${repeat}`,"",
+      `Atlikta: ${completed}/${moduleTaskData.length}`, `Savarankiškai: ${independent}`, `Su pagalba: ${help}`, `Kartoti: ${repeat}`,"",
       ...agg.map(x=>`${skills[x.skill]||x.skill}: savarankiškai ${x.independent}, su pagalba ${x.help}, kartoti ${x.repeat}`)];
     navigator.clipboard?.writeText(lines.join("\n")).then(()=>alert("Suvestinė nukopijuota."));
   };
