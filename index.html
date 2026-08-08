@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.4</title>
-  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P1.4" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.5</title>
+  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P1.5" />
 </head>
 <body>
   <div class="app" id="app">
@@ -14,7 +14,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.4</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P1.5</span>
         </div>
       </div>
 
@@ -77,8 +77,8 @@
     <main class="p2-workspace" id="p2Workspace" data-view="split">
       <section class="p2-board-pane" id="p2BoardPane" aria-label="Bendra lenta">
         <header class="p2-pane-header p2-board-pane-header">
-          <div><span class="p2-pane-icon" aria-hidden="true">◎</span><strong>Bendra lenta</strong></div>
-          <span class="p2-pane-note">Bendra realaus laiko erdvė</span>
+          <div class="p2-board-heading"><span class="p2-pane-icon" aria-hidden="true">◎</span><div><strong>Bendra lenta</strong><span class="p2-board-subtitle">Bendra realaus laiko erdvė</span></div></div>
+          <span class="p2-board-live"><i aria-hidden="true"></i><span id="p2BoardPresenceText">Prisijungta</span></span>
         </header>
         <div class="board-shell">
       <section class="board" id="board" aria-label="Virtualios lentos darbo plotas">
@@ -385,37 +385,44 @@
             <span class="p2-side-kicker" id="p2SideKicker">MOKINIO ERDVĖ</span>
             <h2 id="p2SideTitle">Mano pratybos</h2>
           </div>
-          <button class="p2-icon-button" type="button" id="p2SideRefreshButton" title="Atnaujinti vaizdą" aria-label="Atnaujinti">↻</button>
+          <div class="p2-side-header-actions"><span class="p2-side-role-pill" id="p2SideRolePill">Mokinys</span><button class="p2-icon-button" type="button" id="p2SideRefreshButton" title="Atnaujinti vaizdą" aria-label="Atnaujinti">↻</button></div>
         </header>
 
         <div class="p2-side-scroll">
           <section class="p2-student-panel" id="p2StudentPanel">
-            <div class="p2-assignment-summary">
-              <div>
+            <div class="p2-student-hero">
+              <div class="p2-student-hero-icon" aria-hidden="true">∑</div>
+              <div class="p2-student-hero-copy">
                 <span class="p2-label">Mano pratybos</span>
-                <h3>Priskirtos užduotys atsiras čia</h3>
-                <p>Mokytojas galės priskirti pamoką iš savo bibliotekos. Pratybų būsena bus individuali ir nekeis bendros lentos vaizdo.</p>
+                <h3>Čia bus tavo mokytojo priskirtos pamokos</h3>
+                <p>Pratybos veiks atskirai nuo bendros lentos, todėl galėsi spręsti savo tempu, o lenta liks bendra darbo erdvė.</p>
               </div>
-              <span class="p2-count-badge">0</span>
+              <span class="p2-count-badge" title="Priskirtų pamokų skaičius">0</span>
             </div>
-            <div class="p2-tabs" role="tablist" aria-label="Pratybų dalys">
-              <button type="button" class="is-active">Pamokoje</button>
-              <button type="button">Savarankiškai</button>
+
+            <div class="p2-tabs p2-practice-tabs" role="tablist" aria-label="Pratybų dalys">
+              <button type="button" class="is-active"><span aria-hidden="true">▤</span>Pamokoje</button>
+              <button type="button"><span aria-hidden="true">⌂</span>Savarankiškai</button>
             </div>
-            <div class="p2-empty-card">
-              <div class="p2-empty-icon" aria-hidden="true">∑</div>
+
+            <div class="p2-empty-card p2-practice-empty">
+              <div class="p2-empty-illustration" aria-hidden="true"><span>f(x)</span><i></i></div>
               <strong>Kol kas nėra priskirtų pratybų</strong>
-              <p>Šiame P2 prototipe pirmiausia tikriname lentos ir pratybų vaizdų architektūrą. Turinį prijungsime stabilizavę sąsają.</p>
+              <p>Kai mokytojas priskirs pamoką, ji atsiras čia. Tada galėsi pasirinkti „Padalintas“ arba „Tik pratybos“ vaizdą.</p>
             </div>
-            <div class="p2-student-progress">
-              <div><span>Šiandien atlikta</span><strong>0</strong></div>
-              <div><span>Su pagalba</span><strong>0</strong></div>
-              <div><span>Kartoti</span><strong>0</strong></div>
-            </div>
+
+            <section class="p2-mini-section" aria-label="Mano pažanga">
+              <header><div><span class="p2-label">Mano pažanga</span><h3>Šiandien</h3></div><span class="p2-soft-pill">Pasiruošusi pradėti</span></header>
+              <div class="p2-student-progress">
+                <div><span>Savarankiškai</span><strong>0</strong></div>
+                <div><span>Su pagalba</span><strong>0</strong></div>
+                <div><span>Kartoti</span><strong>0</strong></div>
+              </div>
+            </section>
           </section>
 
           <section class="p2-teacher-panel" id="p2TeacherPanel" hidden>
-            <div class="p2-learner-card">
+            <div class="p2-learner-card p2-learner-overview">
               <div class="p2-avatar" aria-hidden="true">M</div>
               <div class="p2-learner-copy">
                 <span class="p2-label">Mokinio eiga</span>
@@ -425,32 +432,33 @@
               <span class="p2-presence-pill" id="p2PresencePill">1 įrenginys</span>
             </div>
 
-            <div class="p2-progress-card">
-              <div class="p2-progress-head">
-                <div><span class="p2-label">Priskirta pamoka</span><h3>Turinio dar nepriskirta</h3></div>
-                <strong>— / —</strong>
+            <div class="p2-teacher-dashboard-grid">
+              <div class="p2-progress-card">
+                <div class="p2-progress-head">
+                  <div><span class="p2-label">Priskirta pamoka</span><h3>Turinio dar nepriskirta</h3></div>
+                  <strong>— / —</strong>
+                </div>
+                <div class="p2-progress-line"><span style="width:0%"></span></div>
+                <div class="p2-metrics">
+                  <div><span>Dabartinė užduotis</span><strong>—</strong></div>
+                  <div><span>Bandymų</span><strong>—</strong></div>
+                  <div><span>Pagalba</span><strong>—</strong></div>
+                </div>
               </div>
-              <div class="p2-progress-line"><span style="width:0%"></span></div>
-              <div class="p2-metrics">
-                <div><span>Dabartinė užduotis</span><strong>—</strong></div>
-                <div><span>Bandymų</span><strong>—</strong></div>
-                <div><span>Pagalba</span><strong>—</strong></div>
+
+              <div class="p2-current-task-card">
+                <div class="p2-card-heading-row"><div><span class="p2-label">Dabartinė veikla</span><h3>Mokinys dar nepradėjo pratybų</h3></div><span class="p2-soft-pill">Laukiama</span></div>
+                <p>Čia matysi tik pedagogiškai svarbią būseną: pamoką, užduotį, bandymus, pagalbą ir rezultatą. Mokinės lango dydis ar slinktis nebus sinchronizuojami.</p>
+                <div class="p2-card-actions">
+                  <button type="button" class="p2-secondary" disabled>Atidaryti pratybas</button>
+                  <button type="button" class="p2-primary" disabled>Rodyti lentoje</button>
+                </div>
               </div>
             </div>
 
-            <div class="p2-current-task-card">
-              <span class="p2-label">Dabartinė veikla</span>
-              <h3>Čia matysi mokinio eigą, o ne jo lango kopiją</h3>
-              <p>Sinchronizuosime tik pedagogiškai svarbią būseną: pasirinktą pamoką, užduotį, bandymus, pagalbą ir rezultatą.</p>
-              <div class="p2-card-actions">
-                <button type="button" class="p2-secondary" disabled>Atidaryti pratybas</button>
-                <button type="button" class="p2-primary" disabled>Rodyti lentoje</button>
-              </div>
-            </div>
-
-            <div class="p2-insight-card">
-              <span class="p2-label">Mokinio įžvalgos</span>
-              <p>Įžvalgos atsiras tik pradėjus naudoti realų pratybų turinį.</p>
+            <div class="p2-insight-card p2-insight-empty">
+              <div class="p2-insight-icon" aria-hidden="true">✦</div>
+              <div><span class="p2-label">Mokinio įžvalgos</span><h3>Įžvalgos atsiras pradėjus spręsti</h3><p>Vėliau čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.</p></div>
             </div>
           </section>
         </div>
@@ -622,9 +630,9 @@
       MathfieldElement.soundsDirectory = null;
     }
   </script>
-  <script src="tasks.js?v=P2-SPLIT-P1.4"></script>
-  <script src="app.js?v=P2-SPLIT-P1.4"></script>
-  <script src="p2-ui.js?v=P2-SPLIT-P1.4"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P1.4"></script>
+  <script src="tasks.js?v=P2-SPLIT-P1.5"></script>
+  <script src="app.js?v=P2-SPLIT-P1.5"></script>
+  <script src="p2-ui.js?v=P2-SPLIT-P1.5"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P1.5"></script>
 </body>
 </html>

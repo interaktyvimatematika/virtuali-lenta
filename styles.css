@@ -3198,3 +3198,117 @@ body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
     min-height: 34px;
   }
 }
+
+
+/* =========================================================
+   P2-SPLIT-P1.5 — split-view UX polish pagal patvirtintas vizualizacijas.
+   Tik vaizdavimo/sąsajos sluoksnis; lentos redagavimo ir Firebase branduolio neliečia.
+   ========================================================= */
+body.p2-shell {
+  --p2-panel-bg:#f6f8fc;
+  --p2-card-border:#e4e9f2;
+  --p2-card-shadow:0 8px 28px rgba(35,48,78,.055);
+}
+body.p2-shell .topbar {
+  background:rgba(255,255,255,.985);
+  box-shadow:0 4px 18px rgba(35,48,78,.055);
+}
+body.p2-shell .brand-mark {
+  background:linear-gradient(145deg,#6078e5,#4259c7);
+  box-shadow:0 7px 20px rgba(74,103,214,.24);
+}
+body.p2-shell .online-session {
+  border-color:#e3e8f0;
+  box-shadow:0 2px 8px rgba(34,46,71,.035);
+}
+body.p2-shell .p2-view-switch { background:#f1f4f9; border-color:#e1e6ef; }
+body.p2-shell .p2-view-button { color:#6d788b; transition:background .15s ease,color .15s ease,box-shadow .15s ease; }
+body.p2-shell .p2-view-button.is-active { color:#3f59c3; box-shadow:0 3px 12px rgba(54,74,139,.11); }
+
+.p2-workspace { background:#edf1f6; }
+.p2-board-pane { background:#f5f7fb; }
+.p2-side-pane { background:var(--p2-panel-bg); border-left-color:#e3e8f0; }
+.p2-pane-header { min-height:58px; padding:9px 16px; }
+.p2-board-heading { display:flex!important; align-items:center; gap:10px; min-width:0; }
+.p2-board-heading > div { display:grid; min-width:0; }
+.p2-board-heading strong { font-size:15px; line-height:1.15; }
+.p2-board-subtitle { margin-top:3px; color:#8791a2; font-size:10px; white-space:nowrap; }
+.p2-board-live { display:inline-flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid #dce9e1; border-radius:999px; background:#f7fcf9; color:#4b6e5b; font-size:10px; font-weight:800; white-space:nowrap; }
+.p2-board-live i { width:7px; height:7px; border-radius:50%; background:#39a86f; box-shadow:0 0 0 3px rgba(57,168,111,.10); }
+.p2-side-header { background:rgba(255,255,255,.96); }
+.p2-side-header-actions { display:flex; align-items:center; gap:8px; }
+.p2-side-role-pill { padding:6px 9px; border-radius:999px; background:#eef2ff; color:#4961c4; font-size:10px; font-weight:900; }
+.p2-icon-button { border-color:#e2e7ef; color:#66738a; }
+.p2-side-scroll { padding:18px; background:linear-gradient(180deg,#f8fafe 0%,#f5f7fb 100%); }
+.p2-student-panel,.p2-teacher-panel { gap:16px; max-width:960px; }
+
+.p2-student-hero,.p2-mini-section,.p2-learner-card,.p2-progress-card,.p2-current-task-card,.p2-insight-card,.p2-empty-card {
+  background:#fff; border:1px solid var(--p2-card-border); border-radius:18px; box-shadow:var(--p2-card-shadow);
+}
+.p2-student-hero { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:14px; padding:18px; }
+.p2-student-hero-icon { width:48px; height:48px; display:grid; place-items:center; border-radius:15px; background:linear-gradient(145deg,#eef2ff,#f6f7ff); color:#536bd0; font-size:23px; font-weight:900; }
+.p2-student-hero-copy { min-width:0; }
+.p2-student-hero h3 { margin:5px 0 4px; font-size:17px; letter-spacing:-.015em; }
+.p2-student-hero p { margin:0; color:#727d90; font-size:12px; line-height:1.55; }
+.p2-practice-tabs { width:min(410px,100%); background:#edf1f7; }
+.p2-practice-tabs button { display:flex; align-items:center; justify-content:center; gap:7px; }
+.p2-practice-empty { min-height:300px; padding:42px 26px; }
+.p2-empty-illustration { position:relative; width:76px; height:64px; margin-bottom:16px; display:grid; place-items:center; border-radius:20px; background:#f0f3ff; color:#526ad0; font-weight:900; font-size:20px; }
+.p2-empty-illustration::before,.p2-empty-illustration::after { content:""; position:absolute; background:#8597df; opacity:.55; }
+.p2-empty-illustration::before { left:14px; right:14px; bottom:14px; height:2px; }
+.p2-empty-illustration::after { left:20px; top:12px; bottom:12px; width:2px; }
+.p2-empty-illustration i { position:absolute; width:30px; height:18px; right:11px; bottom:14px; border-top:2px solid #526ad0; transform:rotate(-28deg); transform-origin:right center; }
+.p2-mini-section { overflow:hidden; }
+.p2-mini-section > header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 17px 4px; }
+.p2-mini-section > header h3 { margin:4px 0 0; font-size:16px; }
+.p2-soft-pill { display:inline-flex; align-items:center; min-height:28px; padding:0 9px; border-radius:999px; background:#f1f4f9; color:#728096; font-size:10px; font-weight:800; white-space:nowrap; }
+.p2-mini-section .p2-student-progress { border:0; box-shadow:none; border-radius:0; background:transparent; }
+
+.p2-learner-overview { border-color:#e0e7f1; }
+.p2-learner-overview .p2-avatar { width:48px; height:48px; background:linear-gradient(145deg,#edf2ff,#e7ecff); }
+.p2-teacher-dashboard-grid { display:grid; grid-template-columns:1fr; gap:16px; }
+.p2-progress-card,.p2-current-task-card { padding:19px; }
+.p2-progress-head h3 { margin-top:5px; }
+.p2-metrics > div { background:#f7f9fc; border:1px solid #edf0f5; }
+.p2-card-heading-row { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.p2-card-heading-row h3 { margin:5px 0 0; }
+.p2-insight-empty { display:grid; grid-template-columns:auto minmax(0,1fr); gap:13px; align-items:start; }
+.p2-insight-icon { width:40px; height:40px; display:grid; place-items:center; border-radius:13px; background:#fff7df; color:#a47400; font-size:18px; }
+.p2-insight-empty h3 { margin:5px 0 4px; font-size:16px; }
+
+/* Tik pratybos / Mokinio eiga: be nereikalingų lentos įrankių, ta pati app struktūra. */
+body[data-p2-view="practice"].p2-shell .tools { display:none; }
+body[data-p2-view="practice"].p2-shell .topbar { grid-template-columns:minmax(210px,1fr) minmax(0,auto); grid-template-areas:"brand actions"; }
+body[data-p2-view="practice"].p2-shell .p2-side-scroll { padding:22px clamp(16px,4vw,46px); }
+body[data-p2-view="practice"].p2-shell .p2-student-panel,
+body[data-p2-view="practice"].p2-shell .p2-teacher-panel { max-width:1120px; }
+
+/* Planšetėje horizontaliai split išlieka šalia; vertikaliai/siaurai persirikiuoja. */
+@media (max-width: 900px) and (min-width: 761px) {
+  .p2-workspace { grid-template-columns:minmax(280px,var(--p2-split)) var(--p2-divider) minmax(320px,1fr)!important; grid-template-rows:minmax(0,1fr)!important; }
+  .p2-workspace[data-view="board"] { grid-template-columns:minmax(0,1fr) 0 0!important; grid-template-rows:minmax(0,1fr)!important; }
+  .p2-workspace[data-view="practice"] { grid-template-columns:0 0 minmax(0,1fr)!important; grid-template-rows:minmax(0,1fr)!important; }
+  .p2-side-pane { border-left:1px solid #e2e7ef; border-top:0; }
+  .p2-splitter { cursor:col-resize; min-width:10px; min-height:0; }
+  .p2-splitter::before { width:2px; height:44px; }
+  .p2-splitter span { width:24px; height:36px; }
+  body.p2-resizing { cursor:col-resize; }
+}
+@media (max-width:760px) {
+  .p2-workspace { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(250px,var(--p2-split)) 10px minmax(300px,1fr); }
+  .p2-workspace[data-view="board"] { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) 0 0; }
+  .p2-workspace[data-view="practice"] { grid-template-columns:minmax(0,1fr); grid-template-rows:0 0 minmax(0,1fr); }
+  .p2-side-pane { border-left:0; border-top:1px solid #e2e7ef; }
+  .p2-splitter { cursor:row-resize; min-width:0; min-height:10px; }
+  .p2-splitter::before { width:44px; height:2px; }
+  .p2-splitter span { width:36px; height:24px; }
+  body.p2-resizing { cursor:row-resize; }
+  .p2-student-hero { grid-template-columns:auto minmax(0,1fr); }
+  .p2-student-hero .p2-count-badge { grid-column:1/-1; justify-self:start; }
+}
+@media (max-width:620px) {
+  .p2-board-subtitle { display:none; }
+  .p2-board-live { padding-inline:7px; }
+  .p2-side-role-pill { display:none; }
+  .p2-side-scroll { padding:12px; }
+}

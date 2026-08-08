@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const BUILD = 'P2-SPLIT-P1.4';
+  const BUILD = 'P2-SPLIT-P1.5';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -15,6 +15,8 @@
   const learnerTitle = document.getElementById('p2LearnerStatusTitle');
   const learnerText = document.getElementById('p2LearnerStatusText');
   const presencePill = document.getElementById('p2PresencePill');
+  const sideRolePill = document.getElementById('p2SideRolePill');
+  const boardPresenceText = document.getElementById('p2BoardPresenceText');
   const brandSubtitle = document.querySelector('.brand span');
 
   if (!workspace || !splitter || !sidePane) return;
@@ -49,6 +51,7 @@
     sideKicker.textContent = isTeacher ? 'MOKYTOJO STEBĖJIMAS' : 'MOKINIO ERDVĖ';
     sideTitle.textContent = isTeacher ? 'Mokinio eiga' : 'Mano pratybos';
     practiceModeButton.textContent = isTeacher ? 'Mokinio eiga' : 'Tik pratybos';
+    if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : 'Mokinys';
     document.querySelectorAll('.p2-teacher-only').forEach(el => el.hidden = !isTeacher);
     const p2LibraryButton = document.getElementById('libraryButton');
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
@@ -112,6 +115,7 @@
 
   function updatePresence() {
     const count = Math.max(0, Number(userCount?.textContent || 0));
+    if (boardPresenceText) boardPresenceText.textContent = count > 1 ? `${count} prisijungę` : 'Prisijungta';
     if (!presencePill) return;
     presencePill.textContent = `${count} ${count === 1 ? 'įrenginys' : 'įrenginiai'}`;
     if (role() !== 'teacher') return;
