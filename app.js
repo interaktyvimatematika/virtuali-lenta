@@ -8245,7 +8245,7 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   window.P772OnlineBridge = Object.freeze({
-    version: 'P7.7.2-ONLINE-P1.1.9',
+    version: 'P2-SPLIT-P1.1',
     setOnlineRole: applyOnlineAccessRole,
     openStudentPreview() {
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));

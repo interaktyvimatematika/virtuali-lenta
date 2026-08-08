@@ -167,6 +167,44 @@ let remoteCache = {
   drawing: '', notes: '', boardTasks: '', boardPractices: '', window: ''
 };
 
+// P2-SPLIT-P1.1: Firebase gali grąžinti mūsų pačių ankstesnę būseną tuo metu,
+// kai vartotojas jau įvedė kitą raidę / formulės simbolį. Jei tokią senesnę
+// savo būseną aklai pritaikytume, renderBoardObjects() sunaikintų aktyvų DOM
+// lauką, dingtų focus / žymeklis, o formulėje kitas simbolis galėtų pakeisti
+// ankstesnį. Laikome neseniai išsiųstų pilnų dalių fingerprintus ir jų echo
+// priimame tik kaip Firebase patvirtinimą, bet neperpiešiame lokalaus vaizdo.
+const pendingLocalEchoes = {
+  drawing: [], notes: [], boardTasks: [], boardPractices: [], window: []
+};
+
+function rememberLocalEcho(part, value) {
+  const bucket = pendingLocalEchoes[part];
+  if (!bucket) return '';
+  const fp = stable(value);
+  if (!bucket.includes(fp)) bucket.push(fp);
+  if (bucket.length > 24) bucket.splice(0, bucket.length - 24);
+  return fp;
+}
+
+function consumeLocalEcho(part, fp) {
+  const bucket = pendingLocalEchoes[part];
+  if (!bucket?.length) return false;
+  const index = bucket.indexOf(fp);
+  if (index < 0) return false;
+  // Firebase gali sujungti kelis greitus update ir neatsiųsti kiekvienos
+  // tarpinės būsenos atskiru callback'u. Jei gavome vėlesnį savo echo,
+  // ankstesni laukimai taip pat nebeaktualūs.
+  bucket.splice(0, index + 1);
+  return true;
+}
+
+function forgetLocalEcho(part, fp) {
+  if (!fp) return;
+  const bucket = pendingLocalEchoes[part];
+  const index = bucket?.indexOf(fp) ?? -1;
+  if (index >= 0) bucket.splice(index, 1);
+}
+
 function localParts() {
   const snap = bridge.getSharedSnapshot();
   return {
@@ -201,19 +239,34 @@ async function publishLocalChanges() {
     boardPractices: JSON.parse(remoteCache.boardPractices || '{}')
   };
 
+  const changed = {
+    drawing: stable(parts.drawing) !== remoteCache.drawing,
+    notes: stable(parts.notes) !== remoteCache.notes,
+    boardTasks: stable(parts.boardTasks) !== remoteCache.boardTasks,
+    boardPractices: stable(parts.boardPractices) !== remoteCache.boardPractices,
+    window: stable(parts.window) !== remoteCache.window
+  };
+
   diffMap('workspace/drawing', parts.drawing, currentRemote.drawing, updates);
   diffMap('workspace/notes', parts.notes, currentRemote.notes, updates);
   diffMap('workspace/boardTasks', parts.boardTasks, currentRemote.boardTasks, updates);
   diffMap('workspace/boardPractices', parts.boardPractices, currentRemote.boardPractices, updates);
-  if (stable(parts.window) !== remoteCache.window) updates['workspace/window'] = parts.window;
+  if (changed.window) updates['workspace/window'] = parts.window;
 
   if (!Object.keys(updates).length) return;
+
+  const echoes = {};
+  for (const part of ['drawing', 'notes', 'boardTasks', 'boardPractices', 'window']) {
+    if (changed[part]) echoes[part] = rememberLocalEcho(part, parts[part]);
+  }
+
   updates['workspace/meta/updatedAt'] = serverTimestamp();
   updates['workspace/meta/updatedBy'] = me;
   try {
     await update(roomRef, updates);
   } catch (error) {
-    console.error('ONLINE-P1.1.3 publish klaida', error);
+    for (const [part, fp] of Object.entries(echoes)) forgetLocalEcho(part, fp);
+    console.error('P2-SPLIT-P1.1 publish klaida', error);
     setUi('error', 'Sinchronizavimo klaida');
   }
 }
@@ -234,8 +287,14 @@ function settleCommittedLiveStrokes(normalizedDrawing) {
 function applyMapPart(part, raw) {
   const normalized = raw && typeof raw === 'object' ? raw : {};
   const fp = stable(normalized);
+  const ownEcho = consumeLocalEcho(part, fp);
   remoteCache[part] = fp;
   if (part === 'drawing') settleCommittedLiveStrokes(normalized);
+
+  // Mūsų pačių senesnis Firebase echo nėra nauja nuotolinė informacija.
+  // Ypač svarbu notes: jo pritaikymas perrenderintų contenteditable / MathLive
+  // ir nutrauktų tekstą po pirmos raidės ar formulę po pirmo simbolio.
+  if (ownEcho) return;
   if (stable(toMap(bridge.getSharedSnapshot()[part])) === fp) return;
   bridge.applySharedPart(part, mapToArray(normalized));
 }
@@ -267,7 +326,9 @@ function subscribeWorkspaceParts() {
   onValue(windowRef, snapshot => {
     const value = snapshot.val() || {};
     const fp = stable(value);
+    const ownEcho = consumeLocalEcho('window', fp);
     remoteCache.window = fp;
+    if (ownEcho) return;
     if (stable(bridge.getSharedSnapshot().window) !== fp) bridge.applySharedPart('window', value);
   });
 }
