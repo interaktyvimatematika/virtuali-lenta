@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.3';
+  const BUILD = 'P2-SPLIT-P2.4.4';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -21,33 +21,6 @@
   if (!workspace || !splitter || !sidePane || !studentPanel || !teacherPanel) return;
 
   body.classList.add('p2-shell');
-
-  // P2.4.3: Matematikos juosta yra fixed overlay. Jos top pozicija sekama pagal
-  // realų viršutinės juostos aukštį, tačiau pati Matematikos juosta niekada
-  // nedalyvauja .app grid geometrijoje ir todėl negali stumti darbo srities.
-  const p2Topbar = document.querySelector('.topbar');
-  const p2MathToolbar = document.getElementById('universalMathToolbar');
-  let p2MathOverlayRaf = 0;
-
-  function syncP2MathOverlayPosition() {
-    if (!p2Topbar || !p2MathToolbar) return;
-    if (p2MathOverlayRaf) cancelAnimationFrame(p2MathOverlayRaf);
-    p2MathOverlayRaf = requestAnimationFrame(() => {
-      p2MathOverlayRaf = 0;
-      const rect = p2Topbar.getBoundingClientRect();
-      const gap = 8;
-      const top = Math.max(0, Math.round(rect.bottom + gap));
-      body.style.setProperty('--p2-math-toolbar-top', `${top}px`);
-    });
-  }
-
-  syncP2MathOverlayPosition();
-  window.addEventListener('resize', syncP2MathOverlayPosition, { passive: true });
-  window.visualViewport?.addEventListener?.('resize', syncP2MathOverlayPosition, { passive: true });
-  if ('ResizeObserver' in window && p2Topbar) {
-    const p2TopbarResizeObserver = new ResizeObserver(syncP2MathOverlayPosition);
-    p2TopbarResizeObserver.observe(p2Topbar);
-  }
   if (brandSubtitle) {
     brandSubtitle.textContent = 'Interaktyvios pratybos';
     brandSubtitle.title = BUILD;
