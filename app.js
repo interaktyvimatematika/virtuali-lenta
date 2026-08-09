@@ -1381,10 +1381,12 @@
     return unwrapVbeVectorPrompts(String(field.dataset.latex || field.dataset.source || field.textContent || ''));
   }
 
-  // P2.4.7.7.5 – MathLive 0.110.0 su \mathord{\overrightarrow{...}}
-  // paprastą „+“ po vektoriaus vizualiai traktuoja per siaurai. Naudojame
-  // semantinį \mathbin{+}, bet tik tada, kai „+“ eina iškart po mūsų vektoriaus.
-  // Taip neliečiame unaraus „+“ ir kitų formulių.
+  // P2.4.7.7.7 – operatorių po vektoriaus nebetaisome po vieną.
+  // Problema kyla tada, kai žymeklis vizualiai jau atrodo išėjęs iš
+  // \overrightarrow{...}, bet dar lieka išoriniame \mathord{...} lygyje.
+  // Todėl prieš bet kurį įprastą binarinį / santykio operatorių pirmiausia
+  // išvedame žymeklį už visos vektoriaus struktūros ir paliekame MathLive
+  // pačiam įterpti operatorių bei pritaikyti jo natūralius tarpus.
   function mathFieldLatexBeforeCaret(field) {
     if (!field || typeof field.getValue !== 'function') return '';
     try {
@@ -1404,6 +1406,20 @@
     const prefix = mathFieldLatexBeforeCaret(field).trimEnd();
     if (!prefix) return false;
     return /\\mathord\{\\overrightarrow\{[\s\S]*\}\}\s*$/.test(prefix);
+  }
+
+  const VBE_VECTOR_KEYBOARD_EXIT_OPERATORS = new Set(['+', '-', '=', '<', '>', ':', '*', '/']);
+  const VBE_VECTOR_TOOLBAR_EXIT_INSERTS = new Set([
+    '+', '-', '\\cdot ', ':', '=', '\\ne ', '<', '>', '\\le ', '\\ge ',
+    '\\approx ', '\\equiv ', '\\pm ', '\\mp ', '\\propto '
+  ]);
+
+  function isVbeVectorKeyboardExitOperator(key) {
+    return VBE_VECTOR_KEYBOARD_EXIT_OPERATORS.has(String(key || ''));
+  }
+
+  function isVbeVectorToolbarExitOperator(insert) {
+    return VBE_VECTOR_TOOLBAR_EXIT_INSERTS.has(String(insert || ''));
   }
 
   function insertVbeBinaryPlus(field) {
@@ -1642,18 +1658,15 @@
     });
     field.addEventListener('beforeinput', event => {
       reaffirm({ ensureVisible: false });
-      // Android / ekraninė klaviatūra ne visada duoda patikimą keydown, todėl
-      // tą patį vektoriaus „+“ pataisymą atliekame ir per beforeinput.
-      if (!event.isComposing && event.inputType === 'insertText' && event.data === '+') {
-        if (field.__vbeVectorPromptActive === true) {
-          event.preventDefault();
-          event.stopPropagation();
-          insertPlusAfterActiveVbeVectorPrompt(field);
-        } else if (caretFollowsVbeVector(field)) {
-          event.preventDefault();
-          event.stopPropagation();
-          insertVbeBinaryPlus(field);
-        }
+      // Android / ekraninė klaviatūra ne visada duoda patikimą keydown.
+      // Jei operatorius rašomas dar esant mūsų vektoriaus įvedimo kontekste,
+      // prieš natūralų MathLive įterpimą išeiname už visos vektoriaus struktūros.
+      // Event'o nestabdome: operatorių įterpia pats MathLive, todėl išlieka
+      // jo natūrali matematinė klasė ir tarpai.
+      if (!event.isComposing && event.inputType === 'insertText'
+        && isVbeVectorKeyboardExitOperator(event.data)
+        && field.__vbeVectorPromptActive === true) {
+        exitActiveVbeVectorPrompt(field);
       }
     });
     field.addEventListener('compositionstart', () => reaffirm({ ensureVisible: false }));
@@ -1674,21 +1687,13 @@
     });
     field.addEventListener('keydown', event => {
       reaffirm({ ensureVisible: false });
-      // Fizinėje klaviatūroje po mūsų vektoriaus „+“ įterpiame kaip tikrą
-      // dvejetainį operatorių. Shift neatmetame, nes „+“ dažnai rašomas su Shift.
-      if (event.key === '+' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        if (field.__vbeVectorPromptActive === true) {
-          event.preventDefault();
-          event.stopPropagation();
-          insertPlusAfterActiveVbeVectorPrompt(field);
-          return;
-        }
-        if (caretFollowsVbeVector(field)) {
-          event.preventDefault();
-          event.stopPropagation();
-          insertVbeBinaryPlus(field);
-          return;
-        }
+      // Fizinėje klaviatūroje prieš bet kurį įprastą operatorių išeiname
+      // iš visos aktyvaus vektoriaus struktūros. Paties klavišo nestabdome:
+      // MathLive operatorių įterpia natūraliai jau pagrindiniame formulės lygyje.
+      if (isVbeVectorKeyboardExitOperator(event.key)
+        && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
+        && field.__vbeVectorPromptActive === true) {
+        exitActiveVbeVectorPrompt(field);
       }
       if (event.key === 'Tab') {
         field.__vbeVectorPromptActive = false;
@@ -1963,12 +1968,13 @@
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
     let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
-    // Matematikos juostos „+“ elgiasi taip pat kaip klaviatūros „+“:
-    // jei žymeklis tebėra ką tik sukurto vektoriaus #? viduje, pirmiausia
-    // išeiname po vektoriaus ir tik tada įterpiame dvejetainį operatorių.
-    if (!key.structure && key.insert === '+' && !hasSelection) {
-      if (target.__vbeVectorPromptActive === true) exitActiveVbeVectorPrompt(target);
-      if (caretFollowsVbeVector(target)) insert = '\\mathbin{+}';
+    // Matematikos juostos operatoriai elgiasi taip pat kaip klaviatūros:
+    // jei dar esame ką tik sukurto vektoriaus vidinėje struktūroje, pirmiausia
+    // išeiname už viso vektoriaus, o tada įterpiame originalų operatorių.
+    // Taip nereikia atskirų \mathbin / \mathrel lopų kiekvienam ženklui.
+    if (!key.structure && !hasSelection && isVbeVectorToolbarExitOperator(key.insert)
+      && target.__vbeVectorPromptActive === true) {
+      exitActiveVbeVectorPrompt(target);
     }
     // P2.4.7.7.5: naudoti lygiai tokį patį #? placeholderį kaip šaknyse ir trupmenose.
     // Jokio atskiro vektoriaus prompto / didesnės dėžutės nekuriame.
@@ -2023,12 +2029,10 @@
       target.__vbeVectorPromptActive = true;
     }
 
-    // Jei vartotojas pirmiausia parašė, pvz., 5a+2b ir tik tada pažymėjo „a“
-    // bei paspaudė vektoriaus mygtuką, „+“ jau egzistuoja. Po apgaubimo
-    // pakeičiame tik iškart po naujo vektoriaus esantį paprastą „+“ į \mathbin{+}.
+    // Jei vektorius uždedamas jau pažymėtam turiniui, esami operatoriai
+    // lieka pagrindiniame MathLive lygyje ir jų perrašyti nereikia.
     if (key.structure === 'vector' && hasSelection && usedNativeInsert) {
       target.__vbeVectorPromptActive = false;
-      replaceFollowingPlusAfterWrappedVector(target);
     }
 
     // MathLive dispatches its own input event. We update the model directly as well,
