@@ -1309,6 +1309,295 @@
     return null;
   }
 
+  function rawDirectMathLatex(field) {
+    if (!field) return '';
+    try {
+      if (typeof field.getValue === 'function') return String(field.getValue('latex') || field.getValue() || '');
+      if (typeof field.value === 'string') return String(field.value || '');
+    } catch (_) {}
+    return String(field.dataset?.latex || field.dataset?.source || field.textContent || '');
+  }
+
+  // P2.4.7.7.9 – vieninga vektoriaus redagavimo sutartis.
+  // Vektoriaus struktūrą atpažįstame pagal tikrą MathLive LaTeX, o ne pagal
+  // vizualią žymeklio padėtį. Tai leidžia vienodai sutvarkyti Backspace/Delete
+  // atvejus, kai ištrinamas vektoriaus turinys, bet lieka tuščias overrightarrow.
+  function scanVbeVectors(latex) {
+    const source = String(latex || '');
+    const marker = '\\mathord{\\overrightarrow{';
+    const result = [];
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = source.indexOf(marker, cursor);
+      if (start < 0) break;
+      const vectorOpen = start + '\\mathord{\\overrightarrow'.length;
+      const vectorGroup = readLatexGroup(source, vectorOpen);
+      if (!vectorGroup) break;
+      const mathordClose = vectorGroup.close + 1 < source.length && source[vectorGroup.close + 1] === '}'
+        ? vectorGroup.close + 1
+        : vectorGroup.close;
+      const placeholderBody = unwrapVectorPlaceholderBody(vectorGroup.body);
+      const body = placeholderBody === null ? vectorGroup.body : placeholderBody;
+      result.push({
+        start,
+        end: mathordClose + 1,
+        bodyStart: vectorOpen + 1,
+        bodyEnd: vectorGroup.close,
+        body,
+        rawBody: vectorGroup.body,
+        empty: String(body || '').trim() === ''
+      });
+      cursor = mathordClose + 1;
+    }
+    return result;
+  }
+
+  function findInsertedVbeVectorIndex(beforeLatex, afterLatex) {
+    const before = scanVbeVectors(beforeLatex);
+    const after = scanVbeVectors(afterLatex);
+    if (after.length <= before.length) return -1;
+    let i = 0;
+    while (i < before.length && i < after.length) {
+      const left = String(before[i].body || '').replace(/\s+/g, '');
+      const right = String(after[i].body || '').replace(/\s+/g, '');
+      if (left !== right) break;
+      i += 1;
+    }
+    return Math.min(i, after.length - 1);
+  }
+
+  function clearVbeVectorPromptState(field) {
+    if (!field) return;
+    field.__vbeVectorPromptActive = false;
+    field.__vbeVectorPromptIndex = -1;
+  }
+
+  function vbeVectorDeleteSnapshot(field) {
+    const raw = rawDirectMathLatex(field);
+    return {
+      raw,
+      vectors: scanVbeVectors(raw).map(item => ({ empty: item.empty, body: item.body })),
+      position: Number(field?.position),
+      active: field?.__vbeVectorPromptActive === true,
+      activeIndex: Number.isInteger(field?.__vbeVectorPromptIndex) ? field.__vbeVectorPromptIndex : -1
+    };
+  }
+
+  function latexWithEmptyVbeVectorPlaceholder(latex, index) {
+    const raw = String(latex || '');
+    const vectors = scanVbeVectors(raw);
+    const vector = vectors[index];
+    if (!vector) return raw;
+    return `${raw.slice(0, vector.bodyStart)}\\placeholder{}${raw.slice(vector.bodyEnd)}`;
+  }
+
+  function activateEmptyVbeVectorPlaceholder(field, index, preferredPosition, baseLatex = '') {
+    if (!field || index < 0) return false;
+    let raw = rawDirectMathLatex(field);
+    let vectors = scanVbeVectors(raw);
+    let vector = vectors[index];
+
+    // Jei MathLive po paskutinio simbolio trynimo paliko tuščią vektoriaus kūną,
+    // pirmiausia bandome įdėti standartinį #? placeholderį tiesiai dabartinėje
+    // žymeklio vietoje. Taip išsaugome natūralią MathLive redagavimo būseną.
+    if (vector?.empty && !String(vector.rawBody || '').startsWith('\\placeholder')) {
+      try {
+        const options = {
+          insertionMode: 'replaceSelection',
+          selectionMode: 'placeholder',
+          focus: true,
+          scrollIntoView: false,
+          format: 'latex'
+        };
+        if (typeof field.insert === 'function') field.insert('#?', options);
+        else if (typeof field.executeCommand === 'function') field.executeCommand(['insert', '#?', options]);
+      } catch (_) {}
+      raw = rawDirectMathLatex(field);
+      vectors = scanVbeVectors(raw);
+      vector = vectors[index];
+    }
+
+    if (vector?.empty && String(vector.rawBody || '').startsWith('\\placeholder')) {
+      field.__vbeVectorPromptActive = true;
+      field.__vbeVectorPromptIndex = index;
+      field.__syncDirectMathField?.();
+      return true;
+    }
+
+    // Atsarginis kelias: atstatome tiksliai tą patį vektorių su normaliu MathLive
+    // placeholderiu. Tai naudojama, jei native delete jau spėjo pašalinti visą atomą
+    // arba žymeklis po trynimo atsidūrė ne jo body šakoje.
+    const source = String(baseLatex || raw || '');
+    const expected = latexWithEmptyVbeVectorPlaceholder(source, index);
+    if (!expected || expected === source && !scanVbeVectors(expected)[index]?.empty) return false;
+    try {
+      if (typeof field.setValue === 'function') field.setValue(expected, { suppressChangeNotifications: true });
+      else if ('value' in field) field.value = expected;
+      else return false;
+      const last = Number(field.lastOffset);
+      const oldPos = Number(preferredPosition);
+      if (Number.isFinite(last) && Number.isFinite(oldPos)) {
+        field.position = Math.max(0, Math.min(last, oldPos));
+      }
+      // Iš dabartinės vietos pasirenkame artimiausią ankstesnį placeholderį;
+      // jei MathLive jo neperkelia, pats placeholderis vis tiek lieka gyvas ir
+      // pasiekiamas įprastomis rodyklėmis / ⇤ ⇥.
+      try { field.executeCommand?.('moveToPreviousPlaceholder'); } catch (_) {}
+      field.__vbeVectorPromptActive = true;
+      field.__vbeVectorPromptIndex = index;
+      field.dataset.latex = unwrapVbeVectorPrompts(expected);
+      field.__syncDirectMathField?.();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function removeVbeVectorExactly(field, index, preferredPosition) {
+    if (!field) return false;
+    const raw = rawDirectMathLatex(field);
+    const vectors = scanVbeVectors(raw);
+    const vector = vectors[index];
+    if (!vector || !vector.empty) return false;
+    const next = `${raw.slice(0, vector.start)}${raw.slice(vector.end)}`;
+    try {
+      if (typeof field.setValue === 'function') {
+        field.setValue(next, { suppressChangeNotifications: true });
+      } else if ('value' in field) {
+        field.value = next;
+      } else {
+        return false;
+      }
+      const last = Number(field.lastOffset);
+      const oldPos = Number(preferredPosition);
+      if (Number.isFinite(last) && Number.isFinite(oldPos)) {
+        // Pašalinome vieną struktūrinį atomą. Vienu offsetu į kairę dažniausiai
+        // yra būtent buvusi vektoriaus vieta; visada apribojame teisėta sritimi.
+        field.position = Math.max(0, Math.min(last, oldPos - 1));
+      }
+      field.dataset.latex = unwrapVbeVectorPrompts(next);
+      clearVbeVectorPromptState(field);
+      field.__syncDirectMathField?.();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function removeActiveEmptyVbeVector(field, index, preferredPosition) {
+    if (!field) return false;
+    const rawBefore = rawDirectMathLatex(field);
+    const vectorsBefore = scanVbeVectors(rawBefore);
+    const vectorBefore = vectorsBefore[index];
+    if (!vectorBefore || !vectorBefore.empty) return false;
+    const expected = `${rawBefore.slice(0, vectorBefore.start)}${rawBefore.slice(vectorBefore.end)}`;
+
+    // Pirmiausia bandome natyvų MathLive kelią, kad išliktų jo Undo istorija:
+    // tuščio vektoriaus viduje išeiname per abu mūsų tėvinius lygius
+    // (overrightarrow -> mathord) ir triname visą atomą į kairę.
+    let nativeDeleted = false;
+    try {
+      if (typeof field.executeCommand === 'function') {
+        for (let i = 0; i < 2; i += 1) field.executeCommand('moveAfterParent');
+        nativeDeleted = field.executeCommand('deleteBackward') === true;
+      }
+    } catch (_) {
+      nativeDeleted = false;
+    }
+
+    const afterNative = rawDirectMathLatex(field);
+    const sameAsExpected = afterNative.replace(/\s+/g, '') === expected.replace(/\s+/g, '');
+    clearVbeVectorPromptState(field);
+    if (nativeDeleted && sameAsExpected) {
+      field.__syncDirectMathField?.();
+      return true;
+    }
+
+    // Jei MathLive pasirinko kitą hierarchinį trynimo kelią, neatspėjame:
+    // atkuriame tiksliai laukiamą formulę, kad niekada neliktų „negyvos“ rodyklės
+    // ir nebūtų netyčia pašalinta išorinė trupmena / šaknis / kita struktūra.
+    try {
+      if (typeof field.setValue === 'function') field.setValue(expected, { suppressChangeNotifications: true });
+      else if ('value' in field) field.value = expected;
+      const last = Number(field.lastOffset);
+      const oldPos = Number(preferredPosition);
+      if (Number.isFinite(last) && Number.isFinite(oldPos)) {
+        field.position = Math.max(0, Math.min(last, oldPos - 1));
+      }
+      field.dataset.latex = unwrapVbeVectorPrompts(expected);
+      field.__syncDirectMathField?.();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function beginVbeVectorDeletion(field) {
+    if (!field) return { handled: false, snapshot: null };
+    const snapshot = vbeVectorDeleteSnapshot(field);
+    const vectors = scanVbeVectors(snapshot.raw);
+    const index = snapshot.activeIndex;
+
+    // Jei aktyvus vektoriaus laukelis jau tuščias, kitas Backspace/Delete turi
+    // pašalinti visą vektorių – ne palikti tuščią rodyklę, kurioje trynimas stringa.
+    if (snapshot.active && index >= 0 && vectors[index]?.empty) {
+      return {
+        handled: removeActiveEmptyVbeVector(field, index, snapshot.position),
+        snapshot: null
+      };
+    }
+
+    field.__vbeVectorDeletePending = snapshot;
+    return { handled: false, snapshot };
+  }
+
+  function finishVbeVectorDeletion(field) {
+    const snapshot = field?.__vbeVectorDeletePending;
+    if (!field || !snapshot) return false;
+    field.__vbeVectorDeletePending = null;
+
+    const afterRaw = rawDirectMathLatex(field);
+    const after = scanVbeVectors(afterRaw);
+    const before = snapshot.vectors || [];
+
+    // Aktyvaus vektoriaus VIDUJE paskutinio simbolio trynimas neturi kartais
+    // panaikinti visos rodyklės, o kartais palikti „negyvą“ tuščią struktūrą.
+    // Vienodiname taisyklę: pirmas trynimas palieka standartinį mažą MathLive
+    // placeholderį; kitas Backspace/Delete iš tuščio placeholderio pašalina vektorių.
+    if (snapshot.active && snapshot.activeIndex >= 0 && after.length < before.length) {
+      const was = before[snapshot.activeIndex];
+      if (was && !was.empty) {
+        return activateEmptyVbeVectorPlaceholder(
+          field,
+          snapshot.activeIndex,
+          snapshot.position,
+          snapshot.raw
+        );
+      }
+      clearVbeVectorPromptState(field);
+      return false;
+    }
+
+    let newlyEmpty = -1;
+    for (let i = 0; i < Math.min(before.length, after.length); i += 1) {
+      if (!before[i].empty && after[i].empty) {
+        newlyEmpty = i;
+        break;
+      }
+    }
+    if (newlyEmpty < 0) {
+      if (after.length < before.length && snapshot.active) clearVbeVectorPromptState(field);
+      return false;
+    }
+
+    return activateEmptyVbeVectorPlaceholder(
+      field,
+      newlyEmpty,
+      Number(field.position),
+      afterRaw
+    );
+  }
+
   function unwrapVectorPlaceholderBody(body) {
     const source = String(body || '');
     if (!source.startsWith('\\placeholder')) return null;
@@ -1479,7 +1768,7 @@
   }
 
 
-  // P2.4.7.7.8.3 – pilnai išeiname iš mūsų vektoriaus redagavimo hierarchijos.
+  // P2.4.7.7.9 – pilnai išeiname iš mūsų vektoriaus redagavimo hierarchijos.
   // Ankstesnė versija bandė spręsti pagal prieš žymeklį serializuotą LaTeX.
   // MathLive gali serializuoti uždarą \mathord{\overrightarrow{...}} net tada,
   // kai žymeklis hierarchiškai dar yra išoriniame \mathord lygyje. Dėl to po
@@ -1508,7 +1797,7 @@
 
     // Po bandymo laikome vektoriaus promptą užbaigtu. Jei jau buvome aukščiausiame
     // lygyje, pirmas moveAfterParent tiesiog grąžina false ir nieko nepajudina.
-    field.__vbeVectorPromptActive = false;
+    clearVbeVectorPromptState(field);
     return moved;
   }
 
@@ -1516,7 +1805,7 @@
     if (!field || field.__vbeVectorPromptActive !== true) return false;
     const exited = exitActiveVbeVectorPrompt(field);
     if (!exited) return false;
-    field.__vbeVectorPromptActive = false;
+    clearVbeVectorPromptState(field);
     return insertVbeBinaryPlus(field);
   }
 
@@ -1683,10 +1972,16 @@
     });
     field.addEventListener('pointerdown', () => {
       field.__suppressMathReaffirmUntil = 0;
+      field.__vbeVectorPointerReposition = true;
       reaffirm({ ensureVisible: false, explicit: true });
     });
     field.addEventListener('pointerup', () => {
       reaffirm({ ensureVisible: false });
+      // Jei vartotojas pats pele / lietimu pasirinko žymeklio vietą, pasitikime
+      // MathLive pozicija ir nebetaikome automatinio „išėjimo iš ką tik sukurto
+      // vektoriaus“ operatoriams. Tai apsaugo nuo peršokimo per išorines struktūras.
+      if (field.__vbeVectorPointerReposition) clearVbeVectorPromptState(field);
+      field.__vbeVectorPointerReposition = false;
       captureMathFieldSelection(field);
       ensureMathFieldVisible(field);
     });
@@ -1720,13 +2015,35 @@
       reaffirm({ ensureVisible: false });
       captureMathFieldSelection(field);
     });
-    field.addEventListener('input', sync);
+    field.addEventListener('input', () => {
+      sync();
+      if (field.__vbeVectorDeletePending) {
+        queueMicrotask(() => {
+          if (!field.isConnected) return;
+          finishVbeVectorDeletion(field);
+        });
+      }
+    });
     field.addEventListener('change', () => {
       finalizeVbeVectorPrompts(field);
       sync();
     });
     field.addEventListener('keydown', event => {
       reaffirm({ ensureVisible: false });
+      if (!event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
+        && (event.key === 'Backspace' || event.key === 'Delete')) {
+        const deletion = beginVbeVectorDeletion(field);
+        if (deletion.handled) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // Kai natyvus MathLive trynimas nesukelia input (pvz. jau tuščioje
+        // sudėtinėje struktūroje), vis tiek užbaigiame patikrą po keydown ciklo.
+        window.setTimeout(() => {
+          if (field.isConnected && field.__vbeVectorDeletePending) finishVbeVectorDeletion(field);
+        }, 0);
+      }
       // Fizinėje klaviatūroje prieš bet kurį įprastą operatorių išeiname
       // iš visos aktyvaus vektoriaus struktūros. Paties klavišo nestabdome:
       // MathLive operatorių įterpia natūraliai jau pagrindiniame formulės lygyje.
@@ -1738,13 +2055,13 @@
         exitActiveVbeVectorPrompt(field);
       }
       if (event.key === 'Tab') {
-        field.__vbeVectorPromptActive = false;
+        clearVbeVectorPromptState(field);
         event.preventDefault();
         moveMathPlaceholderOrField(field, event.shiftKey ? -1 : 1);
         return;
       }
       if (event.key === 'Escape') {
-        field.__vbeVectorPromptActive = false;
+        clearVbeVectorPromptState(field);
         event.preventDefault();
         finalizeVbeVectorPrompts(field);
         sync();
@@ -1753,7 +2070,7 @@
         return;
       }
       if (event.key === 'Enter' && !event.isComposing) {
-        field.__vbeVectorPromptActive = false;
+        clearVbeVectorPromptState(field);
         event.preventDefault();
         event.stopPropagation();
         finalizeVbeVectorPrompts(field);
@@ -2009,6 +2326,7 @@
     restoreMathFieldSelection(target, savedSelection);
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
+    const vectorLatexBeforeInsert = key.structure === 'vector' && !hasSelection ? rawDirectMathLatex(target) : '';
     let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
     // Matematikos juostos operatoriai elgiasi taip pat kaip klaviatūros:
     // jei dar esame ką tik sukurto vektoriaus vidinėje struktūroje, pirmiausia
@@ -2026,7 +2344,22 @@
     let usedNativeInsert = false;
     try {
       if (key.command && typeof target.executeCommand === 'function') {
+        const isDeleteCommand = key.command === 'deleteBackward' || key.command === 'deleteForward';
+        if (isDeleteCommand) {
+          const deletion = beginVbeVectorDeletion(target);
+          if (deletion.handled) {
+            queueMicrotask(() => {
+              if (target.isConnected) captureMathFieldSelection(target);
+            });
+            return;
+          }
+        }
         const result = target.executeCommand(key.command);
+        if (isDeleteCommand && target.__vbeVectorDeletePending) {
+          queueMicrotask(() => {
+            if (target.isConnected && target.__vbeVectorDeletePending) finishVbeVectorDeletion(target);
+          });
+        }
         if (key.command === 'moveToNextPlaceholder' && result !== true) moveMathPlaceholderOrField(target, 1);
         if (key.command === 'moveToPreviousPlaceholder' && result !== true) moveMathPlaceholderOrField(target, -1);
         if (key.requiresArray && result !== true) {
@@ -2069,12 +2402,17 @@
     // iš vektoriaus struktūros, o ne įterpti operatorių jos viduje.
     if (key.structure === 'vector' && !hasSelection && usedNativeInsert) {
       target.__vbeVectorPromptActive = true;
+      target.__vbeVectorPromptIndex = findInsertedVbeVectorIndex(vectorLatexBeforeInsert, rawDirectMathLatex(target));
+      if (target.__vbeVectorPromptIndex < 0) {
+        const vectors = scanVbeVectors(rawDirectMathLatex(target));
+        target.__vbeVectorPromptIndex = Math.max(0, vectors.length - 1);
+      }
     }
 
     // Jei vektorius uždedamas jau pažymėtam turiniui, esami operatoriai
     // lieka pagrindiniame MathLive lygyje ir jų perrašyti nereikia.
     if (key.structure === 'vector' && hasSelection && usedNativeInsert) {
-      target.__vbeVectorPromptActive = false;
+      clearVbeVectorPromptState(target);
     }
 
     // MathLive dispatches its own input event. We update the model directly as well,
