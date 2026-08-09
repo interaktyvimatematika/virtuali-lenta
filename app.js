@@ -1711,36 +1711,6 @@
     return VBE_VECTOR_TOOLBAR_EXIT_INSERTS.has(String(insert || ''));
   }
 
-  // P2.4.7.7.8.2 – fizinės / ekraninės klaviatūros „*“ suvienodiname su
-  // Matematikos juostos daugybos mygtuku. Palikus natūralų „*“, MathLive
-  // gali sukurti kitokios klasės atomą negu tiesiogiai įterptas \cdot, todėl
-  // po vektoriaus gaunamas kitoks tarpas. Visur įterpiame tą patį \cdot.
-  function insertCanonicalKeyboardMultiplication(field) {
-    if (!field) return false;
-    const options = {
-      insertionMode: 'replaceSelection',
-      selectionMode: 'after',
-      focus: true,
-      scrollIntoView: false,
-      format: 'latex'
-    };
-    try {
-      let result = false;
-      if (typeof field.insert === 'function') result = field.insert('\\cdot ', options);
-      else if (typeof field.executeCommand === 'function') result = field.executeCommand(['insert', '\\cdot ', options]);
-      if (result === false) return false;
-      field.__syncDirectMathField?.();
-      queueMicrotask(() => {
-        if (!field.isConnected) return;
-        captureMathFieldSelection(field);
-        ensureMathFieldVisible(field);
-      });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   function insertVbeBinaryPlus(field) {
     if (!field) return false;
     const options = {
@@ -1992,19 +1962,10 @@
       // prieš natūralų MathLive įterpimą išeiname už visos vektoriaus struktūros.
       // Event'o nestabdome: operatorių įterpia pats MathLive, todėl išlieka
       // jo natūrali matematinė klasė ir tarpai.
-      // P2.4.7.7.9.1 – ekraninės / Android klaviatūros „*“ siunčiame per
-      // lygiai tą patį Matematikos juostos įterpimo kelią kaip mygtuką „·“.
-      // Jei fizinės klaviatūros keydown jau apdorojo šį paspaudimą, čia tik
-      // nuslopiname galimą antrą beforeinput, kad neatsirastų du taškai.
-      if (!event.isComposing && event.inputType === 'insertText' && event.data === '*') {
-        event.preventDefault();
-        if (field.__vbeKeyboardStarHandled === true) {
-          field.__vbeKeyboardStarHandled = false;
-          return;
-        }
-        insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
-        return;
-      }
+      // P2.4.7.7.9.2 – „*“ nebeperimame ir nebekonvertuojame patys.
+      // Leidžiame MathLive apdoroti fizinės / ekraninės klaviatūros įvestį vieną kartą.
+      // Jei operatorius rašomas aktyvaus vektoriaus kontekste, žemiau tik
+      // išeiname už vektoriaus prieš natūralų MathLive įterpimą.
       if (!event.isComposing && event.inputType === 'insertText'
         && isVbeVectorKeyboardExitOperator(event.data)
         && field.__vbeVectorPromptActive === true) {
@@ -2051,21 +2012,8 @@
           if (field.isConnected && field.__vbeVectorDeletePending) finishVbeVectorDeletion(field);
         }, 0);
       }
-      // P2.4.7.7.9.1 – fizinės klaviatūros „*“ nebeleidžiame atskiru
-      // MathLive / beforeinput keliu. Jis eina per tą pačią insertIntoDirectMathField()
-      // šaką kaip Matematikos juostos „·“, todėl abiem atvejais gaunama identiška
-      // \cdot struktūra, žymeklio išėjimas iš vektoriaus ir operatoriaus geometrija.
-      if (event.key === '*' && !event.isComposing
-        && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        field.__vbeKeyboardStarHandled = true;
-        insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
-        window.setTimeout(() => {
-          if (field) field.__vbeKeyboardStarHandled = false;
-        }, 0);
-        return;
-      }
+      // P2.4.7.7.9.2 – „*“ paliekamas natūraliam MathLive įvedimui;
+      // čia nebeįterpiame jokio papildomo daugybos taško.
 
       // Kiti fizinės klaviatūros operatoriai paliekami natūraliam MathLive įterpimui,
       // tačiau prieš juos, jei reikia, pilnai išeiname iš aktyvaus vektoriaus.
