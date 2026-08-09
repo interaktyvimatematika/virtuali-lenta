@@ -1292,48 +1292,63 @@
     return normalizeMathLiveAscii(field.dataset.source || field.textContent || '');
   }
 
-  let vbeVectorPromptSerial = 0;
+  // P2.4.7.7.4 – vektorius naudoja tokį patį natyvų MathLive #? placeholderį
+  // kaip trupmenos, šaknys ir kitos Matematikos juostos struktūros.
+  // Užbaigiant formulę pašaliname placeholderio apvalkalą tik tada, kai jis
+  // yra tiesioginis mūsų \mathord{\overrightarrow{...}} turinys.
+  function readLatexGroup(source, openIndex) {
+    if (source[openIndex] !== '{') return null;
+    let depth = 0;
+    for (let i = openIndex; i < source.length; i += 1) {
+      if (source[i] === '{' && source[i - 1] !== '\\') depth += 1;
+      else if (source[i] === '}' && source[i - 1] !== '\\') {
+        depth -= 1;
+        if (depth === 0) return { body: source.slice(openIndex + 1, i), close: i };
+      }
+    }
+    return null;
+  }
 
-  // P2.4.7.7.3 – vektoriaus įvedimo promptas reikalingas tik redagavimo metu.
-  // Kai jo turinys išsaugomas / užbaigiamas, pašaliname tik mūsų pačių
-  // vbevec* prompto apvalkalą, palikdami švarią MathLive formulę.
+  function unwrapVectorPlaceholderBody(body) {
+    const source = String(body || '');
+    if (!source.startsWith('\\placeholder')) return null;
+    let cursor = '\\placeholder'.length;
+    if (source[cursor] === '[') {
+      const idEnd = source.indexOf(']', cursor + 1);
+      if (idEnd < 0) return null;
+      cursor = idEnd + 1;
+    }
+    while (cursor < source.length && /\s/.test(source[cursor])) cursor += 1;
+    if (source[cursor] !== '{') return null;
+    const group = readLatexGroup(source, cursor);
+    if (!group) return null;
+    if (source.slice(group.close + 1).trim()) return null;
+    return group.body;
+  }
+
   function unwrapVbeVectorPrompts(latex) {
     let source = String(latex || '');
-    const marker = '\\placeholder[';
+    const marker = '\\mathord{\\overrightarrow{';
     let cursor = 0;
     while (cursor < source.length) {
       const start = source.indexOf(marker, cursor);
       if (start < 0) break;
-      const idStart = start + marker.length;
-      const idEnd = source.indexOf(']', idStart);
-      if (idEnd < 0) break;
-      const id = source.slice(idStart, idEnd);
-      if (!id.startsWith('vbevec')) {
-        cursor = idEnd + 1;
+      const vectorOpen = start + '\\mathord{\\overrightarrow'.length;
+      const vectorGroup = readLatexGroup(source, vectorOpen);
+      if (!vectorGroup) break;
+      const cleanBody = unwrapVectorPlaceholderBody(vectorGroup.body);
+      if (cleanBody === null) {
+        cursor = vectorGroup.close + 1;
         continue;
       }
-      let open = idEnd + 1;
-      while (open < source.length && /\s/.test(source[open])) open += 1;
-      if (source[open] !== '{') {
-        cursor = idEnd + 1;
-        continue;
-      }
-      let depth = 0;
-      let close = -1;
-      for (let i = open; i < source.length; i += 1) {
-        if (source[i] === '{' && source[i - 1] !== '\\') depth += 1;
-        else if (source[i] === '}' && source[i - 1] !== '\\') {
-          depth -= 1;
-          if (depth === 0) {
-            close = i;
-            break;
-          }
-        }
-      }
-      if (close < 0) break;
-      const body = source.slice(open + 1, close);
-      source = `${source.slice(0, start)}${body}${source.slice(close + 1)}`;
-      cursor = start + body.length;
+      const replacement = `\\mathord{\\overrightarrow{${cleanBody}}}`;
+      // marker already starts at the outer mathord; consume both closing braces:
+      // one closes overrightarrow, the next closes mathord.
+      const mathordClose = vectorGroup.close + 1 < source.length && source[vectorGroup.close + 1] === '}'
+        ? vectorGroup.close + 1
+        : vectorGroup.close;
+      source = `${source.slice(0, start)}${replacement}${source.slice(mathordClose + 1)}`;
+      cursor = start + replacement.length;
     }
     return source;
   }
@@ -1430,7 +1445,7 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.7.3: tik senų testinių įrašų suderinamumui.
+    // P2.4.7.7.4: tik senų testinių įrašų suderinamumui.
     // Vektorius laikomas mathord, kad MathLive aplink operatorius išlaikytų taisyklingus tarpus.
     vctinput: Object.freeze({
       args: 1,
@@ -1440,7 +1455,7 @@
   });
 
   function installVbeMathFieldStyles(field) {
-    // P2.4.7.7.3: jokių piešiamų vektoriaus rodyklių.
+    // P2.4.7.7.4: jokių piešiamų vektoriaus rodyklių.
     // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
     return field;
   }
@@ -1808,13 +1823,10 @@
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
     let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
-    // P2.4.7.7.3: tuščias vektorius vėl turi normalų MathLive įvedimo promptą,
-    // kad būtų galima pirmiausia paspausti vektoriaus mygtuką ir tik tada rašyti.
-    // Promptui suteikiame savo ID, kad išsaugant galėtume pašalinti tik jo
-    // redagavimo apvalkalą ir gauti švarią \mathord{\overrightarrow{...}} struktūrą.
+    // P2.4.7.7.4: naudoti lygiai tokį patį #? placeholderį kaip šaknyse ir trupmenose.
+    // Jokio atskiro vektoriaus prompto / didesnės dėžutės nekuriame.
     if (key.structure === 'vector' && !hasSelection) {
-      const promptId = `vbevec${++vbeVectorPromptSerial}`;
-      insert = `\\mathord{\\overrightarrow{\\placeholder[${promptId}]{}}}`;
+      insert = '\\mathord{\\overrightarrow{#?}}';
     }
     let usedNativeInsert = false;
     try {
