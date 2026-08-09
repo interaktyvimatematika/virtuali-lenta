@@ -1666,12 +1666,12 @@
       ? '\\int_{#?}^{#?}#0\\,d#?'
       : '\\int_{#?}^{#?}#?\\,d#?';
     if (type === 'sum') return hasSelection
-      ? '\\displaystyle\sum_{#?}^{#?}#0'
-      : '\\displaystyle\sum_{#?}^{#?}#?';
+      ? '\\displaystyle\\sum_{#?}^{#?}#0'
+      : '\\displaystyle\\sum_{#?}^{#?}#?';
     if (type === 'product') return hasSelection
-      ? '\\displaystyle\prod_{#?}^{#?}#0'
-      : '\\displaystyle\prod_{#?}^{#?}#?';
-    if (type === 'vector') return `\\vec{${selected}}`;
+      ? '\\displaystyle\\prod_{#?}^{#?}#0'
+      : '\\displaystyle\\prod_{#?}^{#?}#?';
+    if (type === 'vector') return hasSelection ? '\\vec{#0}' : '\\vec{#?}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
     if (type === 'dot-product') return '\\vec{#?}\\cdot\\vec{#?}';
