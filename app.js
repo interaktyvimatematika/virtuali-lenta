@@ -1671,7 +1671,7 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\vec{#0}' : '\\vec{}';
+    if (type === 'vector') return hasSelection ? '\\overrightarrow{#0}' : '\\overrightarrow{\\square}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
     if (type === 'dot-product') return '\\vec{#?}\\cdot\\vec{#?}';
@@ -1708,14 +1708,14 @@
         }
         if (key.mutates && result === true) target.__syncDirectMathField?.();
       } else {
-        const vectorNeedsEmptyBodyFocus = key.structure === 'vector' && !hasSelection;
+        const vectorNeedsSentinelSelection = key.structure === 'vector' && !hasSelection;
         const options = {
           insertionMode: 'replaceSelection',
-          // MathLive 0.110.0 turi žinomą regresiją: \vec{} viduje esantis explicit
-          // placeholderis negali būti patikimai užpildomas. Todėl vieno vektoriaus
-          // atveju įterpiame tuščią accent argumentą ir po įterpimo įvedame žymeklį
-          // į jo vidų. Kitoms struktūroms paliekame natūralų placeholder pasirinkimą.
-          selectionMode: vectorNeedsEmptyBodyFocus ? 'after' : (key.structure ? 'placeholder' : 'after'),
+          // MathLive 0.110.0 negali patikimai pildyti placeholderio akcento viduje.
+          // Todėl tuščiam vektoriui įterpiame paprastą \square atomą po ištempiama
+          // \overrightarrow rodykle ir iškart jį pažymime. Pirmas klavišo ar
+          // Matematikos juostos paspaudimas pakeičia tą kvadratą į vartotojo turinį.
+          selectionMode: vectorNeedsSentinelSelection ? 'after' : (key.structure ? 'placeholder' : 'after'),
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1739,20 +1739,23 @@
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
         }
 
-        if (vectorNeedsEmptyBodyFocus && usedNativeInsert) {
-          const focusEmptyVectorBody = () => {
+        if (vectorNeedsSentinelSelection && usedNativeInsert) {
+          const selectVectorSentinel = () => {
             if (!target.isConnected) return false;
             try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
             try {
-              // Iš pozicijos iškart po \vec{} vienas žingsnis atgal patenka į
-              // tuščią accent argumentą. Tai apeina MathLive 0.110.0 #2515
-              // placeholderio regresiją, bet palieka natūralų rašymą kaip šaknyje.
-              return target.executeCommand?.('moveBackward') === true;
+              // Oficialūs MathLive navigacijos komandų vardai yra moveToPreviousChar
+              // ir extendToPreviousChar. Po įterpimo žymeklis yra po visos struktūros:
+              // pirmas žingsnis patenka į rodyklės argumentą už \square, antras
+              // pažymi patį kvadratą, kad kitas įvedimas jį tiesiog pakeistų.
+              const moved = target.executeCommand?.('moveToPreviousChar') === true;
+              const selected = moved && target.executeCommand?.('extendToPreviousChar') === true;
+              return !!selected;
             } catch (_) {
               return false;
             }
           };
-          if (!focusEmptyVectorBody()) queueMicrotask(focusEmptyVectorBody);
+          if (!selectVectorSentinel()) queueMicrotask(selectVectorSentinel);
         }
       }
     } catch (_) {}
