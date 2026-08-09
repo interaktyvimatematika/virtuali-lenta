@@ -1292,12 +1292,78 @@
     return normalizeMathLiveAscii(field.dataset.source || field.textContent || '');
   }
 
+  let vbeVectorPromptSerial = 0;
+
+  // P2.4.7.7.3 – vektoriaus įvedimo promptas reikalingas tik redagavimo metu.
+  // Kai jo turinys išsaugomas / užbaigiamas, pašaliname tik mūsų pačių
+  // vbevec* prompto apvalkalą, palikdami švarią MathLive formulę.
+  function unwrapVbeVectorPrompts(latex) {
+    let source = String(latex || '');
+    const marker = '\\placeholder[';
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = source.indexOf(marker, cursor);
+      if (start < 0) break;
+      const idStart = start + marker.length;
+      const idEnd = source.indexOf(']', idStart);
+      if (idEnd < 0) break;
+      const id = source.slice(idStart, idEnd);
+      if (!id.startsWith('vbevec')) {
+        cursor = idEnd + 1;
+        continue;
+      }
+      let open = idEnd + 1;
+      while (open < source.length && /\s/.test(source[open])) open += 1;
+      if (source[open] !== '{') {
+        cursor = idEnd + 1;
+        continue;
+      }
+      let depth = 0;
+      let close = -1;
+      for (let i = open; i < source.length; i += 1) {
+        if (source[i] === '{' && source[i - 1] !== '\\') depth += 1;
+        else if (source[i] === '}' && source[i - 1] !== '\\') {
+          depth -= 1;
+          if (depth === 0) {
+            close = i;
+            break;
+          }
+        }
+      }
+      if (close < 0) break;
+      const body = source.slice(open + 1, close);
+      source = `${source.slice(0, start)}${body}${source.slice(close + 1)}`;
+      cursor = start + body.length;
+    }
+    return source;
+  }
+
+  function finalizeVbeVectorPrompts(field) {
+    if (!field) return false;
+    try {
+      const raw = typeof field.getValue === 'function'
+        ? String(field.getValue('latex') || field.getValue() || '')
+        : String(field.value || '');
+      const clean = unwrapVbeVectorPrompts(raw);
+      if (clean === raw) return false;
+      if (typeof field.setValue === 'function') {
+        field.setValue(clean, { suppressChangeNotifications: true });
+      } else if ('value' in field) {
+        field.value = clean;
+      }
+      field.dataset.latex = clean;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function readDirectMathLatex(field) {
     try {
-      if (typeof field.getValue === 'function') return String(field.getValue('latex') || field.getValue() || '');
-      if (typeof field.value === 'string') return String(field.value || '');
+      if (typeof field.getValue === 'function') return unwrapVbeVectorPrompts(String(field.getValue('latex') || field.getValue() || ''));
+      if (typeof field.value === 'string') return unwrapVbeVectorPrompts(String(field.value || ''));
     } catch (_) {}
-    return String(field.dataset.latex || field.dataset.source || field.textContent || '');
+    return unwrapVbeVectorPrompts(String(field.dataset.latex || field.dataset.source || field.textContent || ''));
   }
 
   function setDirectMathFieldValue(field, source, kind = 'expression', latexSource = '') {
@@ -1364,7 +1430,7 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.7.2: tik senų testinių įrašų suderinamumui.
+    // P2.4.7.7.3: tik senų testinių įrašų suderinamumui.
     // Vektorius laikomas mathord, kad MathLive aplink operatorius išlaikytų taisyklingus tarpus.
     vctinput: Object.freeze({
       args: 1,
@@ -1374,7 +1440,7 @@
   });
 
   function installVbeMathFieldStyles(field) {
-    // P2.4.7.7.2: jokių piešiamų vektoriaus rodyklių.
+    // P2.4.7.7.3: jokių piešiamų vektoriaus rodyklių.
     // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
     return field;
   }
@@ -1466,7 +1532,10 @@
       captureMathFieldSelection(field);
     });
     field.addEventListener('input', sync);
-    field.addEventListener('change', sync);
+    field.addEventListener('change', () => {
+      finalizeVbeVectorPrompts(field);
+      sync();
+    });
     field.addEventListener('keydown', event => {
       reaffirm({ ensureVisible: false });
       if (event.key === 'Tab') {
@@ -1476,6 +1545,7 @@
       }
       if (event.key === 'Escape') {
         event.preventDefault();
+        finalizeVbeVectorPrompts(field);
         sync();
         field.blur();
         clearMathEditSession();
@@ -1484,6 +1554,7 @@
       if (event.key === 'Enter' && !event.isComposing) {
         event.preventDefault();
         event.stopPropagation();
+        finalizeVbeVectorPrompts(field);
         sync();
         onEnter?.();
       }
@@ -1495,6 +1566,7 @@
       const direction = event.detail?.direction;
       if (!['forward', 'backward'].includes(direction)) return;
       event.preventDefault();
+      finalizeVbeVectorPrompts(field);
       sync();
       clearMathEditSession();
       if (direction === 'forward') placeTextCaretAfter(wrapper, editor);
@@ -1710,7 +1782,7 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\mathord{\\overrightarrow{#0}}' : '\\mathord{\\overrightarrow{}}';
+    if (type === 'vector') return hasSelection ? '\\mathord{\\overrightarrow{#0}}' : '\\mathord{\\overrightarrow{#?}}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
     if (type === 'dot-product') return '\\mathord{\\overrightarrow{#?}}\\cdot\\mathord{\\overrightarrow{#?}}';
@@ -1735,11 +1807,15 @@
     restoreMathFieldSelection(target, savedSelection);
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
-    const insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
-    // P2.4.7.7.2: paprastas vektorius kuriamas be MathLive placeholderio.
-    // Taip galutinė struktūra lieka tokia pati kaip tiesiogiai įvestas
-    // \mathord{\overrightarrow{a}}, o ne placeholderio promptas su papildoma geometrija.
-    const cleanVectorEntry = key.structure === 'vector' && !hasSelection;
+    let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
+    // P2.4.7.7.3: tuščias vektorius vėl turi normalų MathLive įvedimo promptą,
+    // kad būtų galima pirmiausia paspausti vektoriaus mygtuką ir tik tada rašyti.
+    // Promptui suteikiame savo ID, kad išsaugant galėtume pašalinti tik jo
+    // redagavimo apvalkalą ir gauti švarią \mathord{\overrightarrow{...}} struktūrą.
+    if (key.structure === 'vector' && !hasSelection) {
+      const promptId = `vbevec${++vbeVectorPromptSerial}`;
+      insert = `\\mathord{\\overrightarrow{\\placeholder[${promptId}]{}}}`;
+    }
     let usedNativeInsert = false;
     try {
       if (key.command && typeof target.executeCommand === 'function') {
@@ -1753,9 +1829,7 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          // P2.4.7.7.2: vektoriui placeholderio sąmoningai nenaudojame.
-          // Kitos struktūros išlaiko ankstesnę placeholderių navigaciją.
-          selectionMode: cleanVectorEntry ? 'after' : (key.structure ? 'placeholder' : 'after'),
+          selectionMode: key.structure ? 'placeholder' : 'after',
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1779,12 +1853,6 @@
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
         }
 
-        if (cleanVectorEntry && usedNativeInsert && typeof target.executeCommand === 'function') {
-          // Įterpėme švarią tuščią rodyklės struktūrą su žymekliu po jos.
-          // Vienas žingsnis kairėn įveda žymeklį į tuščią rodyklės argumentą,
-          // todėl vartotojo tekstas tampa tiesioginiu \overrightarrow{...} turiniu.
-          target.executeCommand('moveToPreviousChar');
-        }
 
       }
     } catch (_) {}
