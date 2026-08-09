@@ -1364,7 +1364,7 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.7.1: tik senų testinių įrašų suderinamumui.
+    // P2.4.7.7.2: tik senų testinių įrašų suderinamumui.
     // Vektorius laikomas mathord, kad MathLive aplink operatorius išlaikytų taisyklingus tarpus.
     vctinput: Object.freeze({
       args: 1,
@@ -1374,7 +1374,7 @@
   });
 
   function installVbeMathFieldStyles(field) {
-    // P2.4.7.7.1: jokių piešiamų vektoriaus rodyklių.
+    // P2.4.7.7.2: jokių piešiamų vektoriaus rodyklių.
     // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
     return field;
   }
@@ -1710,7 +1710,7 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\mathord{\\overrightarrow{#0}}' : '\\mathord{\\overrightarrow{#?}}';
+    if (type === 'vector') return hasSelection ? '\\mathord{\\overrightarrow{#0}}' : '\\mathord{\\overrightarrow{}}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
     if (type === 'dot-product') return '\\mathord{\\overrightarrow{#?}}\\cdot\\mathord{\\overrightarrow{#?}}';
@@ -1736,6 +1736,10 @@
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
     const insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
+    // P2.4.7.7.2: paprastas vektorius kuriamas be MathLive placeholderio.
+    // Taip galutinė struktūra lieka tokia pati kaip tiesiogiai įvestas
+    // \mathord{\overrightarrow{a}}, o ne placeholderio promptas su papildoma geometrija.
+    const cleanVectorEntry = key.structure === 'vector' && !hasSelection;
     let usedNativeInsert = false;
     try {
       if (key.command && typeof target.executeCommand === 'function') {
@@ -1749,9 +1753,9 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          // P2.4.7.7.1 visos struktūros, įskaitant natyvų \mathord{\overrightarrow{#?}},
-          // naudoja MathLive placeholder ir selectionMode='placeholder'.
-          selectionMode: key.structure ? 'placeholder' : 'after',
+          // P2.4.7.7.2: vektoriui placeholderio sąmoningai nenaudojame.
+          // Kitos struktūros išlaiko ankstesnę placeholderių navigaciją.
+          selectionMode: cleanVectorEntry ? 'after' : (key.structure ? 'placeholder' : 'after'),
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1773,6 +1777,13 @@
             .replace(/\\sqrt\{#\?\}/g, 'sqrt()')
             .replace(/#0|#\?/g, '');
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
+        }
+
+        if (cleanVectorEntry && usedNativeInsert && typeof target.executeCommand === 'function') {
+          // Įterpėme švarią tuščią rodyklės struktūrą su žymekliu po jos.
+          // Vienas žingsnis kairėn įveda žymeklį į tuščią rodyklės argumentą,
+          // todėl vartotojo tekstas tampa tiesioginiu \overrightarrow{...} turiniu.
+          target.executeCommand('moveToPreviousChar');
         }
 
       }
