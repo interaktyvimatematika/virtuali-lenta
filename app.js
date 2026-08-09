@@ -1364,65 +1364,19 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.6: tik suderinamumui su ankstesnėmis versijomis. Nauji vektoriai
-    // nebenaudoja akcento placeholderio ar nestandartinės tempimo makro logikos.
-    // \class palieka argumentą kaip įprastą redaguojamą MathLive šaką,
-    // o rodyklę virš turinio nupiešia CSS pagal realų argumento plotį.
+    // P2.4.7.7: tik senų testinių įrašų suderinamumui.
+    // Nauji vektoriai kuriami tik natyvia MathLive/LaTeX \overrightarrow struktūra.
     vctinput: Object.freeze({
       args: 1,
-      def: '\\class{vbevector}{#1}',
+      def: '\\overrightarrow{#1}',
       captureSelection: false
     })
   });
 
-  const VBE_VECTOR_MATHFIELD_STYLE = `
-    .vbevector,
-    #vbevector,
-    [class~="vbevector"],
-    [id="vbevector"] {
-      position: relative;
-      display: inline-block;
-      min-width: .72em;
-      padding-top: .24em;
-    }
-    .vbevector::before,
-    #vbevector::before,
-    [class~="vbevector"]::before,
-    [id="vbevector"]::before {
-      content: "";
-      position: absolute;
-      pointer-events: none;
-      left: .03em;
-      right: .13em;
-      top: .07em;
-      border-top: .065em solid currentColor;
-    }
-    .vbevector::after,
-    #vbevector::after,
-    [class~="vbevector"]::after,
-    [id="vbevector"]::after {
-      content: "";
-      position: absolute;
-      pointer-events: none;
-      right: .02em;
-      top: .005em;
-      width: .20em;
-      height: .20em;
-      border-top: .065em solid currentColor;
-      border-right: .065em solid currentColor;
-      transform: rotate(45deg);
-      transform-origin: center;
-    }
-  `;
-
   function installVbeMathFieldStyles(field) {
-    if (!field || field.querySelector?.('style[data-vbe-mathfield-style]')) return;
-    const style = document.createElement('style');
-    style.dataset.vbeMathfieldStyle = '1';
-    style.textContent = VBE_VECTOR_MATHFIELD_STYLE;
-    // MathLive \\class{} stilius skaito iš <style> elemento pačiame <math-field>.
-    // Išorinis styles.css į MathLive vidinį renderį nepatenka.
-    field.prepend(style);
+    // P2.4.7.7: jokių piešiamų vektoriaus rodyklių.
+    // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
+    return field;
   }
 
   function installVbeMathMacros(field) {
@@ -1756,13 +1710,13 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\class{vbevector}{#0}' : '\\class{vbevector}{#?}';
+    if (type === 'vector') return hasSelection ? '\\overrightarrow{#0}' : '\\overrightarrow{#?}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
-    if (type === 'dot-product') return '\\class{vbevector}{#?}\\cdot\\class{vbevector}{#?}';
+    if (type === 'dot-product') return '\\overrightarrow{#?}\\cdot\\overrightarrow{#?}';
     if (type === 'vector-norm') return hasSelection
-      ? '\\left\\|\\class{vbevector}{#0}\\right\\|'
-      : '\\left\\|\\class{vbevector}{#?}\\right\\|';
+      ? '\\left\\|\\overrightarrow{#0}\\right\\|'
+      : '\\left\\|\\overrightarrow{#?}\\right\\|';
     if (type === 'matrix-2') return '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}';
     if (type === 'matrix-3') return '\\begin{pmatrix}#?&#?&#?\\\\#?&#?&#?\\\\#?&#?&#?\\end{pmatrix}';
     if (type === 'determinant-2') return '\\begin{vmatrix}#?&#?\\\\#?&#?\\end{vmatrix}';
@@ -1795,8 +1749,8 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          // P2.4.7.6 vektorius naudoja įprastą \class argumento šaką, todėl #?
-          // placeholderis elgiasi taip pat kaip šaknyje, trupmenoje ar logaritme.
+          // P2.4.7.7 visos struktūros, įskaitant natyvų \overrightarrow{#?},
+          // naudoja MathLive placeholder ir selectionMode='placeholder'.
           selectionMode: key.structure ? 'placeholder' : 'after',
           focus: true,
           scrollIntoView: false,
