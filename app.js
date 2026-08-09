@@ -1422,7 +1422,7 @@
     return VBE_VECTOR_TOOLBAR_EXIT_INSERTS.has(String(insert || ''));
   }
 
-  // P2.4.7.7.8 – fizinės / ekraninės klaviatūros „*“ suvienodiname su
+  // P2.4.7.7.8.2 – fizinės / ekraninės klaviatūros „*“ suvienodiname su
   // Matematikos juostos daugybos mygtuku. Palikus natūralų „*“, MathLive
   // gali sukurti kitokios klasės atomą negu tiesiogiai įterptas \cdot, todėl
   // po vektoriaus gaunamas kitoks tarpas. Visur įterpiame tą patį \cdot.
@@ -1726,13 +1726,8 @@
       // Fizinėje klaviatūroje prieš bet kurį įprastą operatorių išeiname
       // iš visos aktyvaus vektoriaus struktūros. Paties klavišo nestabdome:
       // MathLive operatorių įterpia natūraliai jau pagrindiniame formulės lygyje.
-      if (event.key === '*'
-        && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        event.preventDefault();
-        if (field.__vbeVectorPromptActive === true) exitActiveVbeVectorPrompt(field);
-        insertCanonicalKeyboardMultiplication(field);
-        return;
-      }
+      // „*“ čia tik išveda iš vektoriaus, o patį \cdot įterpia vienintelis
+      // beforeinput kelias. Taip vienas klavišo paspaudimas nebesukuria dviejų taškų.
       if (isVbeVectorKeyboardExitOperator(event.key)
         && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
         && field.__vbeVectorPromptActive === true) {
