@@ -1375,6 +1375,56 @@
     })
   });
 
+  const VBE_VECTOR_MATHFIELD_STYLE = `
+    .vbevector,
+    #vbevector,
+    [class~="vbevector"],
+    [id="vbevector"] {
+      position: relative;
+      display: inline-block;
+      min-width: .72em;
+      padding-top: .24em;
+    }
+    .vbevector::before,
+    #vbevector::before,
+    [class~="vbevector"]::before,
+    [id="vbevector"]::before {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+      left: .03em;
+      right: .13em;
+      top: .07em;
+      border-top: .065em solid currentColor;
+    }
+    .vbevector::after,
+    #vbevector::after,
+    [class~="vbevector"]::after,
+    [id="vbevector"]::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+      right: .02em;
+      top: .005em;
+      width: .20em;
+      height: .20em;
+      border-top: .065em solid currentColor;
+      border-right: .065em solid currentColor;
+      transform: rotate(45deg);
+      transform-origin: center;
+    }
+  `;
+
+  function installVbeMathFieldStyles(field) {
+    if (!field || field.querySelector?.('style[data-vbe-mathfield-style]')) return;
+    const style = document.createElement('style');
+    style.dataset.vbeMathfieldStyle = '1';
+    style.textContent = VBE_VECTOR_MATHFIELD_STYLE;
+    // MathLive \\class{} stilius skaito iš <style> elemento pačiame <math-field>.
+    // Išorinis styles.css į MathLive vidinį renderį nepatenka.
+    field.prepend(style);
+  }
+
   function installVbeMathMacros(field) {
     if (!field) return false;
     const apply = () => {
@@ -1407,6 +1457,7 @@
     if (testid) field.dataset.testid = testid;
     field.dataset.mathContext = contextLabel;
     field.dataset.mathFieldKey = String(fieldKey || testid || `math-field-${++generatedMathFieldKey}`);
+    installVbeMathFieldStyles(field);
     installVbeMathMacros(field);
     setDirectMathFieldValue(field, source, kind, latexSource);
     registerMathField(field);
