@@ -5184,3 +5184,78 @@ body.p2-shell .p2-teacher-solution-step:hover {
   }
   body.p2-shell .p2-solution-paper-head > div > small { display: none; }
 }
+
+
+/* =========================================================
+   P2-SPLIT-P2.4.3 — Matematikos juosta kaip nepriklausomas overlay sluoksnis.
+   Juostos atsiradimas / dingimas nekeičia P2 darbo srities geometrijos.
+   ========================================================= */
+body.p2-shell {
+  --p2-math-toolbar-top: 126px;
+  --p2-math-toolbar-gap: 8px;
+}
+
+/* P2 turi tik dvi maketo eilutes: viršutinę juostą ir nekintančią darbo sritį.
+   Matematikos juosta yra fixed, todėl grid'e neužima jokio aukščio. */
+body.p2-shell .app {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+body.p2-shell .universal-math-toolbar {
+  position: fixed;
+  top: var(--p2-math-toolbar-top);
+  left: 50%;
+  right: auto;
+  width: min(1180px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  min-height: 0;
+  transform: translateX(-50%);
+  z-index: 88;
+  padding: 8px 12px;
+  border: 1px solid rgba(210, 218, 231, .96);
+  border-radius: 16px;
+  background: rgba(252, 253, 255, .985);
+  box-shadow: 0 16px 42px rgba(30, 42, 68, .18), 0 2px 10px rgba(30, 42, 68, .06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  isolation: isolate;
+}
+
+/* Išnykusi juosta lieka visiškai išimta iš sąveikos, bet jos būsena
+   niekada nekeičia .app ar .p2-workspace matmenų. */
+body.p2-shell .universal-math-toolbar.is-inactive:not(.is-restoring):not(.is-handoff) {
+  display: none;
+}
+body.p2-shell .universal-math-toolbar.is-handoff.is-inactive {
+  pointer-events: none;
+}
+
+/* Overlay viduje slenka tik pati simbolių / kategorijų zona. */
+body.p2-shell .universal-math-panel,
+body.p2-shell .math-category-tabs,
+body.p2-shell .universal-math-keyboard {
+  min-width: 0;
+  max-width: 100%;
+}
+body.p2-shell .math-category-tabs,
+body.p2-shell .universal-math-keyboard {
+  overscroll-behavior-x: contain;
+}
+
+@media (max-width: 1050px) {
+  body.p2-shell .universal-math-toolbar {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    padding: 7px 9px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 620px) {
+  body.p2-shell .universal-math-toolbar {
+    width: calc(100vw - 12px);
+    max-width: calc(100vw - 12px);
+    padding: 6px 7px;
+    border-radius: 12px;
+  }
+}
