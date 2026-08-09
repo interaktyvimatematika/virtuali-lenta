@@ -1660,11 +1660,11 @@
       ? '\\frac{d^2}{d#?^2}\\left(#0\\right)'
       : '\\frac{d^2}{d#?^2}\\left(#?\\right)';
     if (type === 'integral') return hasSelection
-      ? '\\int #0\\,d#?'
-      : '\\int #?\\,d#?';
+      ? '\\displaystyle\\int #0\\,d#?'
+      : '\\displaystyle\\int #?\\,d#?';
     if (type === 'definite-integral') return hasSelection
-      ? '\\int_{#?}^{#?}#0\\,d#?'
-      : '\\int_{#?}^{#?}#?\\,d#?';
+      ? '\\displaystyle\\int_{#?}^{#?}#0\\,d#?'
+      : '\\displaystyle\\int_{#?}^{#?}#?\\,d#?';
     if (type === 'sum') return hasSelection
       ? '\\displaystyle\\sum_{#?}^{#?}#0'
       : '\\displaystyle\\sum_{#?}^{#?}#?';
@@ -1708,9 +1708,13 @@
         }
         if (key.mutates && result === true) target.__syncDirectMathField?.();
       } else {
+        const vectorNeedsPlaceholderFocus = key.structure === 'vector' && !hasSelection;
         const options = {
           insertionMode: 'replaceSelection',
-          selectionMode: key.structure ? 'placeholder' : 'after',
+          // Vektoriui su vienu tuščiu argumentu patikimiau pirmiausia baigti įterpimą
+          // ir tada aiškiai grįžti į vienintelį placeholderį. Kitoms struktūroms
+          // paliekame MathLive natūralų pirmojo placeholderio pasirinkimą.
+          selectionMode: vectorNeedsPlaceholderFocus ? 'after' : (key.structure ? 'placeholder' : 'after'),
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1732,6 +1736,21 @@
             .replace(/\\sqrt\{#\?\}/g, 'sqrt()')
             .replace(/#0|#\?/g, '');
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
+        }
+
+        if (vectorNeedsPlaceholderFocus && usedNativeInsert) {
+          const focusVectorPlaceholder = () => {
+            if (!target.isConnected) return false;
+            try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
+            try {
+              return target.executeCommand?.('moveToPreviousPlaceholder') === true;
+            } catch (_) {
+              return false;
+            }
+          };
+          // Daugumoje MathLive versijų komanda suveikia iškart; mikro-užduotis yra
+          // apsauga atvejui, kai naujai įterptas accent/placeholder dar tik baigia renderintis.
+          if (!focusVectorPlaceholder()) queueMicrotask(focusVectorPlaceholder);
         }
       }
     } catch (_) {}
