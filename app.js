@@ -1364,17 +1364,17 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.7: tik senų testinių įrašų suderinamumui.
-    // Nauji vektoriai kuriami tik natyvia MathLive/LaTeX \overrightarrow struktūra.
+    // P2.4.7.7.1: tik senų testinių įrašų suderinamumui.
+    // Vektorius laikomas mathord, kad MathLive aplink operatorius išlaikytų taisyklingus tarpus.
     vctinput: Object.freeze({
       args: 1,
-      def: '\\overrightarrow{#1}',
+      def: '\\mathord{\\overrightarrow{#1}}',
       captureSelection: false
     })
   });
 
   function installVbeMathFieldStyles(field) {
-    // P2.4.7.7: jokių piešiamų vektoriaus rodyklių.
+    // P2.4.7.7.1: jokių piešiamų vektoriaus rodyklių.
     // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
     return field;
   }
@@ -1710,13 +1710,13 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\overrightarrow{#0}' : '\\overrightarrow{#?}';
+    if (type === 'vector') return hasSelection ? '\\mathord{\\overrightarrow{#0}}' : '\\mathord{\\overrightarrow{#?}}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
-    if (type === 'dot-product') return '\\overrightarrow{#?}\\cdot\\overrightarrow{#?}';
+    if (type === 'dot-product') return '\\mathord{\\overrightarrow{#?}}\\cdot\\mathord{\\overrightarrow{#?}}';
     if (type === 'vector-norm') return hasSelection
-      ? '\\left\\|\\overrightarrow{#0}\\right\\|'
-      : '\\left\\|\\overrightarrow{#?}\\right\\|';
+      ? '\\left\\|\\mathord{\\overrightarrow{#0}}\\right\\|'
+      : '\\left\\|\\mathord{\\overrightarrow{#?}}\\right\\|';
     if (type === 'matrix-2') return '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}';
     if (type === 'matrix-3') return '\\begin{pmatrix}#?&#?&#?\\\\#?&#?&#?\\\\#?&#?&#?\\end{pmatrix}';
     if (type === 'determinant-2') return '\\begin{vmatrix}#?&#?\\\\#?&#?\\end{vmatrix}';
@@ -1749,7 +1749,7 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          // P2.4.7.7 visos struktūros, įskaitant natyvų \overrightarrow{#?},
+          // P2.4.7.7.1 visos struktūros, įskaitant natyvų \mathord{\overrightarrow{#?}},
           // naudoja MathLive placeholder ir selectionMode='placeholder'.
           selectionMode: key.structure ? 'placeholder' : 'after',
           focus: true,
