@@ -1851,6 +1851,63 @@
   }
 
   let mathKeyboardPageLayoutRaf = 0;
+  let mathKeyboardPagerInstalled = false;
+
+  function updateUniversalMathKeyboardPager() {
+    const keyboard = refs.universalMathKeyboard;
+    const panel = keyboard?.closest?.('.universal-math-panel');
+    if (!keyboard || !panel) return;
+    const prev = panel.querySelector('.math-keyboard-nav-prev');
+    const next = panel.querySelector('.math-keyboard-nav-next');
+    if (!prev || !next) return;
+    const overflow = keyboard.scrollWidth > keyboard.clientWidth + 3;
+    panel.classList.toggle('has-keyboard-overflow', overflow);
+    prev.hidden = !overflow;
+    next.hidden = !overflow;
+    if (!overflow) return;
+    prev.disabled = keyboard.scrollLeft <= 3;
+    next.disabled = keyboard.scrollLeft + keyboard.clientWidth >= keyboard.scrollWidth - 3;
+  }
+
+  function scrollUniversalMathKeyboardPage(direction) {
+    const keyboard = refs.universalMathKeyboard;
+    if (!keyboard) return;
+    const style = getComputedStyle(keyboard);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const pageWidth = Math.max(120, Math.floor(keyboard.clientWidth - paddingLeft - paddingRight));
+    const currentPage = Math.round(keyboard.scrollLeft / pageWidth);
+    const target = Math.max(0, (currentPage + direction) * pageWidth);
+    keyboard.scrollTo({ left: target, behavior: 'smooth' });
+    window.setTimeout(updateUniversalMathKeyboardPager, 260);
+  }
+
+  function installUniversalMathKeyboardPager() {
+    if (mathKeyboardPagerInstalled) return;
+    const keyboard = refs.universalMathKeyboard;
+    const panel = keyboard?.closest?.('.universal-math-panel');
+    if (!keyboard || !panel) return;
+    mathKeyboardPagerInstalled = true;
+    const make = (direction, cls, label, glyph) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `math-keyboard-nav ${cls}`;
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.textContent = glyph;
+      button.hidden = true;
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        scrollUniversalMathKeyboardPage(direction);
+      });
+      return button;
+    };
+    panel.append(
+      make(-1, 'math-keyboard-nav-prev', 'Ankstesni matematikos simboliai', '‹'),
+      make(1, 'math-keyboard-nav-next', 'Daugiau matematikos simbolių', '›')
+    );
+    keyboard.addEventListener('scroll', updateUniversalMathKeyboardPager, { passive: true });
+  }
 
   function layoutUniversalMathKeyboardPages() {
     const keyboard = refs.universalMathKeyboard;
@@ -1889,6 +1946,8 @@
         firstOnPage = false;
       }
     });
+
+    requestAnimationFrame(updateUniversalMathKeyboardPager);
   }
 
   function scheduleUniversalMathKeyboardPageLayout() {
@@ -1941,6 +2000,7 @@
   window.addEventListener('resize', scheduleUniversalMathKeyboardPageLayout, { passive: true });
 
   function initializeUniversalMathKeyboard() {
+    installUniversalMathKeyboardPager();
     const categories = refs.universalMathCategories;
     if (categories) {
       categories.replaceChildren();
