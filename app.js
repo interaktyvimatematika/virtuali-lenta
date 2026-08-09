@@ -1364,16 +1364,13 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.5: MathLive 0.110.0 negali užpildyti placeholderio tiesiai
-    // akcento (pvz. \\vec / \\overrightarrow) viduje. Todėl redagavimo metu
-    // vektorių vaizduojame ne akcento atomu, o redaguojamu vieno argumento
-    // makrokomandos mazgu. Placeholderis lieka įprastoje \\overset bazėje,
-    // o virš jo esanti \\xrightarrow rodyklė plotį gauna iš to paties argumento
-    // nematomos \\hphantom kopijos. Taip langelis lieka pildomas kaip šaknyje,
-    // o rodyklė ilgėja kartu su AB, ABC ir ilgesniu turiniu.
+    // P2.4.7.6: tik suderinamumui su ankstesnėmis versijomis. Nauji vektoriai
+    // nebenaudoja akcento placeholderio ar nestandartinės tempimo makro logikos.
+    // \class palieka argumentą kaip įprastą redaguojamą MathLive šaką,
+    // o rodyklę virš turinio nupiešia CSS pagal realų argumento plotį.
     vctinput: Object.freeze({
       args: 1,
-      def: '\\overset{\\xrightarrow{\\hphantom{#1}}}{#1}',
+      def: '\\class{vbevector}{#1}',
       captureSelection: false
     })
   });
@@ -1708,13 +1705,13 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\vctinput{#0}' : '\\vctinput{#?}';
+    if (type === 'vector') return hasSelection ? '\\class{vbevector}{#0}' : '\\class{vbevector}{#?}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
-    if (type === 'dot-product') return '\\vctinput{#?}\\cdot\\vctinput{#?}';
+    if (type === 'dot-product') return '\\class{vbevector}{#?}\\cdot\\class{vbevector}{#?}';
     if (type === 'vector-norm') return hasSelection
-      ? '\\left\\|\\vctinput{#0}\\right\\|'
-      : '\\left\\|\\vctinput{#?}\\right\\|';
+      ? '\\left\\|\\class{vbevector}{#0}\\right\\|'
+      : '\\left\\|\\class{vbevector}{#?}\\right\\|';
     if (type === 'matrix-2') return '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}';
     if (type === 'matrix-3') return '\\begin{pmatrix}#?&#?&#?\\\\#?&#?&#?\\\\#?&#?&#?\\end{pmatrix}';
     if (type === 'determinant-2') return '\\begin{vmatrix}#?&#?\\\\#?&#?\\end{vmatrix}';
@@ -1747,9 +1744,8 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          // Vektorius P2.4.7.5 jau naudoja redaguojamą \vctinput makrokomandą,
-          // todėl jam galioja tas pats įprastas placeholder pasirinkimas kaip šakniai,
-          // trupmenai, logaritmui ir kitoms struktūroms.
+          // P2.4.7.6 vektorius naudoja įprastą \class argumento šaką, todėl #?
+          // placeholderis elgiasi taip pat kaip šaknyje, trupmenoje ar logaritme.
           selectionMode: key.structure ? 'placeholder' : 'after',
           focus: true,
           scrollIntoView: false,

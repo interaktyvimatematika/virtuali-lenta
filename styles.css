@@ -6250,3 +6250,4 @@ body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-large-op > sup 
 @media (max-width: 860px) {
   .mi-integral > b { font-size: 30px; }
 }
+\n\n/* P2.4.7.6 — redaguojamas vektoriaus adapteris.\n   MathLive \\class{vbevector}{...} argumentas lieka paprasta pildoma šaka,\n   o rodyklė piešiama CSS ir automatiškai prisitaiko prie turinio pločio. */\n.vbevector {\n  position: relative;\n  display: inline-block;\n  min-width: .72em;\n  padding-top: .24em;\n}\n.vbevector::before {\n  content: "";\n  position: absolute;\n  pointer-events: none;\n  left: .03em;\n  right: .13em;\n  top: .07em;\n  border-top: .065em solid currentColor;\n}\n.vbevector::after {\n  content: "";\n  position: absolute;\n  pointer-events: none;\n  right: .02em;\n  top: .005em;\n  width: .20em;\n  height: .20em;\n  border-top: .065em solid currentColor;\n  border-right: .065em solid currentColor;\n  transform: rotate(45deg);\n  transform-origin: center;\n}\n
