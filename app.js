@@ -1671,7 +1671,7 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\vec{#0}' : '\\vec{#?}';
+    if (type === 'vector') return hasSelection ? '\\vec{#0}' : '\\vec{}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
     if (type === 'dot-product') return '\\vec{#?}\\cdot\\vec{#?}';
@@ -1708,13 +1708,14 @@
         }
         if (key.mutates && result === true) target.__syncDirectMathField?.();
       } else {
-        const vectorNeedsPlaceholderFocus = key.structure === 'vector' && !hasSelection;
+        const vectorNeedsEmptyBodyFocus = key.structure === 'vector' && !hasSelection;
         const options = {
           insertionMode: 'replaceSelection',
-          // Vektoriui su vienu tuščiu argumentu patikimiau pirmiausia baigti įterpimą
-          // ir tada aiškiai grįžti į vienintelį placeholderį. Kitoms struktūroms
-          // paliekame MathLive natūralų pirmojo placeholderio pasirinkimą.
-          selectionMode: vectorNeedsPlaceholderFocus ? 'after' : (key.structure ? 'placeholder' : 'after'),
+          // MathLive 0.110.0 turi žinomą regresiją: \vec{} viduje esantis explicit
+          // placeholderis negali būti patikimai užpildomas. Todėl vieno vektoriaus
+          // atveju įterpiame tuščią accent argumentą ir po įterpimo įvedame žymeklį
+          // į jo vidų. Kitoms struktūroms paliekame natūralų placeholder pasirinkimą.
+          selectionMode: vectorNeedsEmptyBodyFocus ? 'after' : (key.structure ? 'placeholder' : 'after'),
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1738,19 +1739,20 @@
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
         }
 
-        if (vectorNeedsPlaceholderFocus && usedNativeInsert) {
-          const focusVectorPlaceholder = () => {
+        if (vectorNeedsEmptyBodyFocus && usedNativeInsert) {
+          const focusEmptyVectorBody = () => {
             if (!target.isConnected) return false;
             try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
             try {
-              return target.executeCommand?.('moveToPreviousPlaceholder') === true;
+              // Iš pozicijos iškart po \vec{} vienas žingsnis atgal patenka į
+              // tuščią accent argumentą. Tai apeina MathLive 0.110.0 #2515
+              // placeholderio regresiją, bet palieka natūralų rašymą kaip šaknyje.
+              return target.executeCommand?.('moveBackward') === true;
             } catch (_) {
               return false;
             }
           };
-          // Daugumoje MathLive versijų komanda suveikia iškart; mikro-užduotis yra
-          // apsauga atvejui, kai naujai įterptas accent/placeholder dar tik baigia renderintis.
-          if (!focusVectorPlaceholder()) queueMicrotask(focusVectorPlaceholder);
+          if (!focusEmptyVectorBody()) queueMicrotask(focusEmptyVectorBody);
         }
       }
     } catch (_) {}
