@@ -848,11 +848,22 @@
   };
   let mathToolbarHandoffTimer = 0;
 
+  function syncP2MathRibbonShellState() {
+    const toolbar = refs.universalMathToolbar;
+    const visible = Boolean(toolbar && (
+      toolbar.classList.contains('is-active')
+      || toolbar.classList.contains('is-handoff')
+      || toolbar.classList.contains('is-restoring')
+    ));
+    document.body?.classList.toggle('p2-math-ribbon-active', visible);
+  }
+
   function holdMathToolbarDuringHandoff(duration = 360) {
     const toolbar = refs.universalMathToolbar;
     if (!toolbar) return;
     const ms = Math.max(120, Math.min(900, Number(duration) || 360));
     toolbar.classList.add('is-handoff');
+    syncP2MathRibbonShellState();
     if (mathToolbarHandoffTimer) window.clearTimeout(mathToolbarHandoffTimer);
     mathToolbarHandoffTimer = window.setTimeout(() => {
       mathToolbarHandoffTimer = 0;
@@ -969,6 +980,7 @@
     refs.universalMathToolbar?.classList.toggle('is-inactive', !enabled);
     refs.universalMathToolbar?.classList.toggle('is-active', enabled);
     refs.universalMathToolbar?.classList.toggle('is-restoring', !field && !mixedEditor && Boolean(mathEditSession.restorePending && mathEditSession.key));
+    syncP2MathRibbonShellState();
     if (refs.universalMathStatus) {
       refs.universalMathStatus.textContent = field
         ? (activeMathContext || 'Matematinis laukas')
