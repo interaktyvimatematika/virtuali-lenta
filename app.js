@@ -1432,6 +1432,44 @@
     }
   }
 
+
+  // P2.4.7.7.6 – kai vektorius sukurtas per Matematikos juostos #? placeholderį,
+  // žymeklis lieka vektoriaus viduje. Prieš įterpdami „+“ pirmiausia išeiname
+  // iš vektoriaus struktūros į pagrindinį formulės lygį. Taip MathLive gauna
+  // tą pačią seką kaip atveju „5a+2b“ -> pažymėti a/b -> uždėti vektorius.
+  function exitActiveVbeVectorPrompt(field) {
+    if (!field || field.__vbeVectorPromptActive !== true) return false;
+    try {
+      if (field.selectionIsCollapsed === false) return false;
+    } catch (_) {}
+
+    // Jei vartotojas dar yra #? viduje, moveAfterParent iškelia žymeklį po
+    // įterpto vektoriaus. Kartojame tik tiek, kiek reikia iki prefikso pabaigoje
+    // matome visą vektoriaus objektą; apsauga neleidžia išeiti už daugiau tėvų.
+    let moved = false;
+    for (let i = 0; i < 3 && !caretFollowsVbeVector(field); i += 1) {
+      if (typeof field.executeCommand !== 'function') break;
+      const before = Number(field.position);
+      const result = field.executeCommand('moveAfterParent');
+      const after = Number(field.position);
+      if (after !== before) moved = true;
+      if (caretFollowsVbeVector(field)) break;
+      if (result !== true && after === before) break;
+    }
+
+    const outsideVector = caretFollowsVbeVector(field);
+    if (outsideVector) field.__vbeVectorPromptActive = false;
+    return outsideVector || moved;
+  }
+
+  function insertPlusAfterActiveVbeVectorPrompt(field) {
+    if (!field || field.__vbeVectorPromptActive !== true) return false;
+    const exited = exitActiveVbeVectorPrompt(field);
+    if (!exited) return false;
+    field.__vbeVectorPromptActive = false;
+    return insertVbeBinaryPlus(field);
+  }
+
   function replaceFollowingPlusAfterWrappedVector(field) {
     if (!field || typeof field.getValue !== 'function') return false;
     try {
@@ -1606,10 +1644,16 @@
       reaffirm({ ensureVisible: false });
       // Android / ekraninė klaviatūra ne visada duoda patikimą keydown, todėl
       // tą patį vektoriaus „+“ pataisymą atliekame ir per beforeinput.
-      if (!event.isComposing && event.inputType === 'insertText' && event.data === '+' && caretFollowsVbeVector(field)) {
-        event.preventDefault();
-        event.stopPropagation();
-        insertVbeBinaryPlus(field);
+      if (!event.isComposing && event.inputType === 'insertText' && event.data === '+') {
+        if (field.__vbeVectorPromptActive === true) {
+          event.preventDefault();
+          event.stopPropagation();
+          insertPlusAfterActiveVbeVectorPrompt(field);
+        } else if (caretFollowsVbeVector(field)) {
+          event.preventDefault();
+          event.stopPropagation();
+          insertVbeBinaryPlus(field);
+        }
       }
     });
     field.addEventListener('compositionstart', () => reaffirm({ ensureVisible: false }));
@@ -1632,18 +1676,28 @@
       reaffirm({ ensureVisible: false });
       // Fizinėje klaviatūroje po mūsų vektoriaus „+“ įterpiame kaip tikrą
       // dvejetainį operatorių. Shift neatmetame, nes „+“ dažnai rašomas su Shift.
-      if (event.key === '+' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey && caretFollowsVbeVector(field)) {
-        event.preventDefault();
-        event.stopPropagation();
-        insertVbeBinaryPlus(field);
-        return;
+      if (event.key === '+' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        if (field.__vbeVectorPromptActive === true) {
+          event.preventDefault();
+          event.stopPropagation();
+          insertPlusAfterActiveVbeVectorPrompt(field);
+          return;
+        }
+        if (caretFollowsVbeVector(field)) {
+          event.preventDefault();
+          event.stopPropagation();
+          insertVbeBinaryPlus(field);
+          return;
+        }
       }
       if (event.key === 'Tab') {
+        field.__vbeVectorPromptActive = false;
         event.preventDefault();
         moveMathPlaceholderOrField(field, event.shiftKey ? -1 : 1);
         return;
       }
       if (event.key === 'Escape') {
+        field.__vbeVectorPromptActive = false;
         event.preventDefault();
         finalizeVbeVectorPrompts(field);
         sync();
@@ -1652,6 +1706,7 @@
         return;
       }
       if (event.key === 'Enter' && !event.isComposing) {
+        field.__vbeVectorPromptActive = false;
         event.preventDefault();
         event.stopPropagation();
         finalizeVbeVectorPrompts(field);
@@ -1908,10 +1963,12 @@
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
     let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
-    // Matematikos juostos „+“ turi tokį patį taisyklingą tarpą kaip klaviatūros „+“.
-    // \mathbin{+} naudojame tik kai žymeklis stovi iškart po mūsų vektoriaus.
-    if (!key.structure && key.insert === '+' && !hasSelection && caretFollowsVbeVector(target)) {
-      insert = '\\mathbin{+}';
+    // Matematikos juostos „+“ elgiasi taip pat kaip klaviatūros „+“:
+    // jei žymeklis tebėra ką tik sukurto vektoriaus #? viduje, pirmiausia
+    // išeiname po vektoriaus ir tik tada įterpiame dvejetainį operatorių.
+    if (!key.structure && key.insert === '+' && !hasSelection) {
+      if (target.__vbeVectorPromptActive === true) exitActiveVbeVectorPrompt(target);
+      if (caretFollowsVbeVector(target)) insert = '\\mathbin{+}';
     }
     // P2.4.7.7.5: naudoti lygiai tokį patį #? placeholderį kaip šaknyse ir trupmenose.
     // Jokio atskiro vektoriaus prompto / didesnės dėžutės nekuriame.
@@ -1959,10 +2016,18 @@
       }
     } catch (_) {}
 
+    // Įsimename tik ką Matematikos juosta sukurtą vektoriaus #? įvedimo vietą.
+    // Ši būsena reikalinga tam, kad paspaudus „+“ galėtume iš pradžių išeiti
+    // iš vektoriaus struktūros, o ne įterpti operatorių jos viduje.
+    if (key.structure === 'vector' && !hasSelection && usedNativeInsert) {
+      target.__vbeVectorPromptActive = true;
+    }
+
     // Jei vartotojas pirmiausia parašė, pvz., 5a+2b ir tik tada pažymėjo „a“
     // bei paspaudė vektoriaus mygtuką, „+“ jau egzistuoja. Po apgaubimo
     // pakeičiame tik iškart po naujo vektoriaus esantį paprastą „+“ į \mathbin{+}.
     if (key.structure === 'vector' && hasSelection && usedNativeInsert) {
+      target.__vbeVectorPromptActive = false;
       replaceFollowingPlusAfterWrappedVector(target);
     }
 
