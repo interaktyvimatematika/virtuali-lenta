@@ -6082,3 +6082,171 @@ body.p2-shell .math-keyboard-nav-next { right: 1px; }
   body.p2-shell .math-keyboard-nav { width: 15px; min-width: 15px; height: 14px; font-size: 11px; }
   body.p2-shell .math-keyboard-nav-prev { right: 17px; }
 }
+
+/* =========================================================
+   P2-SPLIT-P2.4.7 — matematikos juostos turinys ir tikslesnės ikonėlės
+   - Pagrindiniuose pirmiausia rodomi aritmetiniai veiksmai ir bazinės struktūros.
+   - Sumos / sandaugos ribos miniatiūrose centruojamos virš ir po ženklu.
+   - Integralų miniatiūra kiek didesnė.
+   - Vektorių rodyklės piešiamos atskirai virš kiekvieno vektoriaus simbolio.
+   ========================================================= */
+.mi-basic-root {
+  min-width: 31px;
+  gap: 0;
+  align-items: center;
+  padding-top: 1px;
+}
+.mi-basic-root > b {
+  font-size: 25px;
+  font-weight: 400;
+  line-height: .95;
+}
+.mi-basic-root > i {
+  min-width: 13px;
+  margin: 1px 0 0 -3px;
+  padding-top: 1px;
+  border-top: 1.35px solid currentColor;
+  font: italic 13px/1 Georgia, "Times New Roman", serif;
+  text-align: center;
+}
+.mi-basic-power {
+  min-width: 28px;
+  min-height: 27px;
+  align-items: center;
+  font-family: Georgia, "Times New Roman", serif;
+}
+.mi-basic-power > i {
+  font: italic 17px/1 Georgia, "Times New Roman", serif;
+}
+.mi-basic-power > sup {
+  align-self: flex-start;
+  margin: 1px 0 0 1px;
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* Didieji operatoriai: indeksai ne šone, o aiškiai virš / po operatoriumi. */
+.mi-large-op {
+  min-width: 39px;
+  min-height: 31px;
+  display: inline-grid;
+  grid-template-rows: 7px 17px 7px;
+  place-items: center;
+  align-content: center;
+  line-height: 1;
+  overflow: visible;
+}
+.mi-large-op > b {
+  grid-row: 2;
+  font-size: 23px;
+  font-weight: 400;
+  line-height: .8;
+}
+.mi-large-op > sup,
+.mi-large-op > sub {
+  position: static;
+  margin: 0;
+  padding: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 7px;
+  line-height: 1;
+  transform: none;
+}
+.mi-large-op > sup { grid-row: 1; align-self: end; }
+.mi-large-op > sub { grid-row: 3; align-self: start; }
+
+/* Integralas išlieka telpantis kortelėje, bet pats ženklas vizualiai ryškesnis. */
+.mi-definite-integral {
+  min-width: 38px;
+  min-height: 31px;
+  overflow: visible;
+}
+.mi-definite-integral > b {
+  font-size: 31px;
+  font-weight: 400;
+  line-height: .9;
+}
+.mi-definite-integral > sup { left: 20px; top: 0; font-size: 8px; }
+.mi-definite-integral > sub { left: 19px; bottom: 1px; font-size: 8px; }
+.mi-definite-integral > i { margin: 4px 0 0 8px; font-size: 12px; }
+
+/* Tikslus vektoriaus žymėjimas: kiekviena rodyklė priklauso tik savo raidei. */
+.mi-vector-symbol {
+  position: relative;
+  display: inline-grid;
+  grid-template-rows: 8px 16px;
+  min-width: 18px;
+  min-height: 26px;
+  place-items: center;
+  line-height: 1;
+  overflow: visible;
+}
+.mi-vector-symbol > .mi-vector-arrow {
+  grid-row: 1;
+  display: block;
+  min-width: 16px;
+  margin-bottom: -2px;
+  font: 600 13px/.7 system-ui, sans-serif;
+  font-style: normal;
+  text-align: center;
+  letter-spacing: -1px;
+  transform: scaleX(.82);
+  transform-origin: center;
+}
+.mi-vector-symbol > i {
+  grid-row: 2;
+  font: italic 16px/1 Georgia, "Times New Roman", serif;
+}
+.mi-dot-product {
+  min-width: 49px;
+  gap: 4px;
+  align-items: center;
+  overflow: visible;
+}
+.mi-dot-product > b {
+  margin-top: 7px;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+}
+.mi-vector-norm {
+  min-width: 43px;
+  gap: 1px;
+  align-items: center;
+  overflow: visible;
+}
+.mi-vector-norm > b {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+/* Senas CSS rodyklės piešinys paliekamas kitoms senoms miniatiūroms, tačiau
+   naujoms vektorių ikonoms jis netaikomas. */
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-large-op > sub,
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-large-op > sup {
+  position: static;
+  right: auto;
+  top: auto;
+  bottom: auto;
+}
+
+@media (max-width: 860px) {
+  .mi-large-op { min-width: 36px; transform: scale(.96); }
+  .mi-dot-product { min-width: 46px; gap: 3px; }
+  .mi-vector-symbol { min-width: 16px; }
+  .mi-definite-integral > b { font-size: 29px; }
+}
+.mi-integral {
+  min-width: 30px;
+  min-height: 31px;
+  overflow: visible;
+}
+.mi-integral > b {
+  font-size: 32px;
+  font-weight: 400;
+  line-height: .9;
+}
+@media (max-width: 860px) {
+  .mi-integral > b { font-size: 30px; }
+}

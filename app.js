@@ -1469,9 +1469,10 @@
     'Veiksmai ir palyginimai',
     'Skliaustai',
     'Struktūros',
+    'Raidės',
+    'Funkcijos',
     'Sistemos',
     'Intervalai',
-    'Funkcijos',
     'Analizė',
     'Vektoriai'
   ]);
@@ -1481,21 +1482,17 @@
   ]);
 
   const DIRECT_MATH_KEYS = Object.freeze([
-    // Pagrindiniai
-    { category: 'Pagrindiniai', label: 'x', insert: 'x' },
-    { category: 'Pagrindiniai', label: 'y', insert: 'y' },
-    { category: 'Pagrindiniai', label: 'z', insert: 'z' },
-    { category: 'Pagrindiniai', label: 'a', insert: 'a' },
-    { category: 'Pagrindiniai', label: 'b', insert: 'b' },
-    { category: 'Pagrindiniai', label: 'n', insert: 'n' },
-    { category: 'Pagrindiniai', label: 'π', insert: '\\pi' },
-    { category: 'Pagrindiniai', label: 'e', insert: 'e' },
-    { category: 'Pagrindiniai', label: 'α', insert: '\\alpha' },
-    { category: 'Pagrindiniai', label: 'β', insert: '\\beta' },
-    { category: 'Pagrindiniai', label: 'γ', insert: '\\gamma' },
-    { category: 'Pagrindiniai', label: 'θ', insert: '\\theta' },
-    { category: 'Pagrindiniai', label: 'λ', insert: '\\lambda' },
-    { category: 'Pagrindiniai', label: 'μ', insert: '\\mu' },
+    // Pagrindiniai — dažniausi veiksmai pirmiausia, kad juosta būtų suprantama ir jaunesniems mokiniams.
+    { category: 'Pagrindiniai', label: '+', insert: '+', aria: 'Sudėtis' },
+    { category: 'Pagrindiniai', label: '−', insert: '-', aria: 'Atimtis' },
+    { category: 'Pagrindiniai', label: '·', insert: '\\cdot ', aria: 'Daugyba' },
+    { category: 'Pagrindiniai', label: ':', insert: ':', aria: 'Dalyba' },
+    { category: 'Pagrindiniai', label: '=', insert: '=', aria: 'Lygybė' },
+    { category: 'Pagrindiniai', label: 'x²', insert: '^2', aria: 'Kvadratas' },
+    { category: 'Pagrindiniai', label: 'xⁿ', visual: 'power', structure: 'power', aria: 'Laipsnis' },
+    { category: 'Pagrindiniai', label: '√', visual: 'root', structure: 'root', aria: 'Kvadratinė šaknis' },
+    { category: 'Pagrindiniai', label: 'a⁄b', visual: 'fraction', structure: 'fraction', aria: 'Trupmena' },
+    { category: 'Pagrindiniai', label: '( )', structure: 'parentheses', aria: 'Apvalieji skliaustai' },
 
     // Veiksmai ir palyginimai
     { category: 'Veiksmai ir palyginimai', label: '+', insert: '+' },
@@ -1526,10 +1523,10 @@
 
     // Struktūros
     { category: 'Struktūros', label: 'a⁄b', visual: 'fraction', structure: 'fraction', aria: 'Trupmena' },
-    { category: 'Struktūros', label: '√', structure: 'root', aria: 'Kvadratinė šaknis' },
+    { category: 'Struktūros', label: '√', visual: 'root', structure: 'root', aria: 'Kvadratinė šaknis' },
     { category: 'Struktūros', label: 'ⁿ√', visual: 'nth-root', structure: 'nth-root', aria: 'N-tojo laipsnio šaknis' },
     { category: 'Struktūros', label: 'x²', insert: '^2', aria: 'Kvadratas' },
-    { category: 'Struktūros', label: 'xⁿ', structure: 'power', aria: 'Laipsnis' },
+    { category: 'Struktūros', label: 'xⁿ', visual: 'power', structure: 'power', aria: 'Laipsnis' },
     { category: 'Struktūros', label: 'xₙ', structure: 'subscript', aria: 'Apatinis indeksas' },
     { category: 'Struktūros', label: '(n k)', visual: 'binomial', structure: 'binomial', aria: 'Binominis koeficientas' },
     { category: 'Struktūros', label: 'x̅', structure: 'overline', aria: 'Brūkšnys virš reiškinio' },
@@ -1555,6 +1552,22 @@
     { category: 'Intervalai', label: '⊆', insert: '\\subseteq ' },
     { category: 'Intervalai', label: '∅', insert: '\\varnothing' },
 
+    // Raidės ir konstantos — atskirai nuo pradinių aritmetinių veiksmų.
+    { category: 'Raidės', label: 'x', insert: 'x' },
+    { category: 'Raidės', label: 'y', insert: 'y' },
+    { category: 'Raidės', label: 'z', insert: 'z' },
+    { category: 'Raidės', label: 'a', insert: 'a' },
+    { category: 'Raidės', label: 'b', insert: 'b' },
+    { category: 'Raidės', label: 'n', insert: 'n' },
+    { category: 'Raidės', label: 'π', insert: '\\pi' },
+    { category: 'Raidės', label: 'e', insert: 'e' },
+    { category: 'Raidės', label: 'α', insert: '\\alpha' },
+    { category: 'Raidės', label: 'β', insert: '\\beta' },
+    { category: 'Raidės', label: 'γ', insert: '\\gamma' },
+    { category: 'Raidės', label: 'θ', insert: '\\theta' },
+    { category: 'Raidės', label: 'λ', insert: '\\lambda' },
+    { category: 'Raidės', label: 'μ', insert: '\\mu' },
+
     // Funkcijos
     { category: 'Funkcijos', label: 'f(x)', structure: 'function-f' },
     { category: 'Funkcijos', label: 'sin', structure: 'sin' },
@@ -1569,7 +1582,7 @@
     { category: 'Analizė', label: 'lim', visual: 'limit', structure: 'limit', aria: 'Riba' },
     { category: 'Analizė', label: "f′", structure: 'derivative', aria: 'Pirmoji išvestinė' },
     { category: 'Analizė', label: "f″", structure: 'second-derivative', aria: 'Antroji išvestinė' },
-    { category: 'Analizė', label: '∫', structure: 'integral', aria: 'Neapibrėžtinis integralas' },
+    { category: 'Analizė', label: '∫', visual: 'integral', structure: 'integral', aria: 'Neapibrėžtinis integralas' },
     { category: 'Analizė', label: '∫ᵃᵇ', visual: 'definite-integral', structure: 'definite-integral', aria: 'Apibrėžtinis integralas' },
     { category: 'Analizė', label: 'Σ', visual: 'sum', structure: 'sum', aria: 'Suma' },
     { category: 'Analizė', label: 'Π', visual: 'product', structure: 'product', aria: 'Sandauga' },
@@ -1653,11 +1666,11 @@
       ? '\\int_{#?}^{#?}#0\\,d#?'
       : '\\int_{#?}^{#?}#?\\,d#?';
     if (type === 'sum') return hasSelection
-      ? '\\sum_{#?}^{#?}#0'
-      : '\\sum_{#?}^{#?}#?';
+      ? '\\displaystyle\sum_{#?}^{#?}#0'
+      : '\\displaystyle\sum_{#?}^{#?}#?';
     if (type === 'product') return hasSelection
-      ? '\\prod_{#?}^{#?}#0'
-      : '\\prod_{#?}^{#?}#?';
+      ? '\\displaystyle\prod_{#?}^{#?}#0'
+      : '\\displaystyle\prod_{#?}^{#?}#?';
     if (type === 'vector') return `\\vec{${selected}}`;
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
@@ -1806,14 +1819,17 @@
       'system-add-row': '<span class="mi mi-action-icon" aria-hidden="true"><span class="mi-system mi-system-small"><b>{</b><span class="mi-system-lines"><i></i><i></i></span></span><em>+</em><small>lygt.</small></span>',
       'system-remove-row': '<span class="mi mi-action-icon" aria-hidden="true"><span class="mi-system mi-system-small"><b>{</b><span class="mi-system-lines"><i></i><i></i></span></span><em>−</em><small>lygt.</small></span>',
       'limit': '<span class="mi mi-limit" aria-hidden="true"><b>lim</b><small>x→a</small></span>',
+      'root': '<span class="mi mi-basic-root" aria-hidden="true"><b>√</b><i>x</i></span>',
+      'power': '<span class="mi mi-basic-power" aria-hidden="true"><i>x</i><sup>n</sup></span>',
+      'integral': '<span class="mi mi-integral" aria-hidden="true"><b>∫</b></span>',
       'definite-integral': '<span class="mi mi-definite-integral" aria-hidden="true"><b>∫</b><sup>b</sup><sub>a</sub><i>f</i></span>',
-      'sum': '<span class="mi mi-large-op" aria-hidden="true"><b>Σ</b><sup>n</sup><sub>i=1</sub></span>',
-      'product': '<span class="mi mi-large-op" aria-hidden="true"><b>Π</b><sup>n</sup><sub>i=1</sub></span>',
-      'vector': '<span class="mi mi-overarrow" aria-hidden="true"><span>a</span></span>',
+      'sum': '<span class="mi mi-large-op" aria-hidden="true"><sup>n</sup><b>Σ</b><sub>i=1</sub></span>',
+      'product': '<span class="mi mi-large-op" aria-hidden="true"><sup>n</sup><b>Π</b><sub>i=1</sub></span>',
+      'vector': '<span class="mi mi-vector-symbol" aria-hidden="true"><span class="mi-vector-arrow">→</span><i>a</i></span>',
       'vector-2': '<span class="mi mi-column-vector" aria-hidden="true"><b>(</b><span><i>x</i><i>y</i></span><b>)</b></span>',
       'vector-3': '<span class="mi mi-column-vector mi-column-vector-3" aria-hidden="true"><b>(</b><span><i>x</i><i>y</i><i>z</i></span><b>)</b></span>',
-      'dot-product': '<span class="mi mi-dot-product" aria-hidden="true"><span class="mi-overarrow"><span>a</span></span><b>·</b><span class="mi-overarrow"><span>b</span></span></span>',
-      'vector-norm': '<span class="mi mi-vector-norm" aria-hidden="true"><b>‖</b><span class="mi-overarrow"><span>a</span></span><b>‖</b></span>',
+      'dot-product': '<span class="mi mi-dot-product" aria-hidden="true"><span class="mi-vector-symbol"><span class="mi-vector-arrow">→</span><i>a</i></span><b>·</b><span class="mi-vector-symbol"><span class="mi-vector-arrow">→</span><i>b</i></span></span>',
+      'vector-norm': '<span class="mi mi-vector-norm" aria-hidden="true"><b>‖</b><span class="mi-vector-symbol"><span class="mi-vector-arrow">→</span><i>a</i></span><b>‖</b></span>',
       'matrix-2': `<span class="mi mi-matrix mi-matrix-2" aria-hidden="true"><span>${cells(4)}</span></span>`,
       'matrix-3': `<span class="mi mi-matrix mi-matrix-3" aria-hidden="true"><span>${cells(9)}</span></span>`,
       'determinant-2': `<span class="mi mi-matrix mi-determinant mi-matrix-2" aria-hidden="true"><span>${cells(4)}</span></span>`,
@@ -6721,7 +6737,7 @@ KOKYBĖS REIKALAVIMAI:
   function resolveMixedMathTarget(editor, options = {}) {
     const range = rangeInsideMixedEditor(editor);
     if (!range?.collapsed) return insertFormulaIntoMixedEditor(editor, { range });
-    const adjacent = adjacentMixedFormula(editor, range, -1);
+    const adjacent = options.preferNewFormula ? null : adjacentMixedFormula(editor, range, -1);
     if (adjacent) return activateAdjacentMixedFormula(adjacent, 'end');
     const prefix = extractSmartMathPrefix(editor, range);
     if (prefix) {
@@ -6811,20 +6827,34 @@ KOKYBĖS REIKALAVIMAI:
     return field;
   }
 
+  function toolbarTextRangeForMixedEditor(editor) {
+    if (!editor?.isConnected) return null;
+    const live = currentMixedTextRange(editor);
+    if (live) return live;
+    if (activeDirectMathField?.isConnected && directMathFieldHasDomFocus(activeDirectMathField)) return null;
+    if (!savedMixedTextRange || !editor.contains(savedMixedTextRange.commonAncestorContainer)
+      || mixedFormulaWrapperFromNode(savedMixedTextRange.commonAncestorContainer)) return null;
+    try { return savedMixedTextRange.cloneRange(); } catch (_) { return null; }
+  }
+
   function handleUniversalMathKey(key) {
     const editor = activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null;
     if (key.action === 'math-mode') {
       activateExplicitMathMode(editor);
       return;
     }
-    const textRange = editor ? currentMixedTextRange(editor) : null;
+    const textRange = editor ? toolbarTextRangeForMixedEditor(editor) : null;
     let field = null;
     if (editor && textRange && (key.insert || key.structure)) {
+      // P2.4.7: tikras teksto žymeklis yra svarbesnis už anksčiau aktyvią formulę.
+      // Paspaudus juostos simbolį teksto vietoje kuriama / tęsiama formulė būtent ten,
+      // o ne atsitiktinai ankstesniame MathLive laukelyje. Gretimos formulės automatinis
+      // tęsimas paliekamas klaviatūros išmaniajam operatorių įvedimui.
       deactivateMathForMixedTextRange(editor, textRange);
-      field = resolveMixedMathTarget(editor, { allowEmpty: true });
+      field = resolveMixedMathTarget(editor, { allowEmpty: true, preferNewFormula: true });
     } else {
       field = resolveActiveMathField();
-      if (!field && editor && (key.insert || key.structure)) field = resolveMixedMathTarget(editor, { allowEmpty: true });
+      if (!field && editor && (key.insert || key.structure)) field = resolveMixedMathTarget(editor, { allowEmpty: true, preferNewFormula: true });
     }
     if (!field) {
       showToast(editor ? 'Pasirink matematinį simbolį ar struktūrą' : 'Pirmiausia aktyvuok teksto arba matematinį lauką');
@@ -6848,7 +6878,16 @@ KOKYBĖS REIKALAVIMAI:
       if (editor) {
         setActiveMixedTextEditor(editor, { save: false });
         const touchesFormula = path.some(node => mixedFormulaWrapperFromNode(node));
-        if (!touchesFormula && activeDirectMathField) clearMathEditSession();
+        if (!touchesFormula) {
+          if (activeDirectMathField) clearMathEditSession();
+          // Native naršyklės caret pozicija nustatoma po pointerdown, todėl po gesto
+          // dar kartą išsaugome būtent teksto žymeklio vietą matematikos juostai.
+          window.setTimeout(() => {
+            if (!editor.isConnected) return;
+            const range = currentMixedTextRange(editor);
+            if (range) deactivateMathForMixedTextRange(editor, range);
+          }, 0);
+        }
         return;
       }
       if (eventTouchesMathToolbar(event)) return;
