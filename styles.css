@@ -5337,3 +5337,156 @@ body.p2-shell .universal-math-keyboard {
     font-weight: 750;
   }
 }
+
+
+/* =========================================================
+   P2-SPLIT-P2.4.5 — kompaktiškas viršus ir lokalūs lentos įrankiai
+   - Matematikos juosta lieka globali ir rezervuota, bet pakeliama aukščiau.
+   - Žymėti / Pieštukas / Trintukas / Tekstas perkeliami į „Bendra lenta“ antraštę.
+   - Darbo sričiai atiduodama daugiau vertikalaus aukščio.
+   ========================================================= */
+body.p2-shell {
+  --p2-topbar-height: 58px;
+  --p2-math-ribbon-height: 68px;
+}
+
+/* Viršutinė globali eilė dabar skirta tik programai / sesijai / vaizdo režimams. */
+body.p2-shell .topbar {
+  min-height: var(--p2-topbar-height);
+  height: var(--p2-topbar-height);
+  grid-template-columns: minmax(185px,auto) minmax(0,1fr);
+  grid-template-areas: "brand actions";
+  gap: 10px;
+  padding: 6px 14px;
+}
+body.p2-shell .topbar > .brand { grid-area: brand; }
+body.p2-shell .topbar > .topbar-actions { grid-area: actions; }
+
+/* Matematikos juosta yra iškart po globalia eilute ir virš lokalios lentos antraštės. */
+body.p2-shell .universal-math-toolbar,
+body.p2-shell .universal-math-toolbar.is-inactive:not(.is-restoring):not(.is-handoff),
+body.p2-shell .universal-math-toolbar.is-handoff.is-inactive {
+  height: var(--p2-math-ribbon-height);
+  min-height: var(--p2-math-ribbon-height);
+  max-height: var(--p2-math-ribbon-height);
+  grid-template-columns: minmax(138px,166px) minmax(0,1fr);
+  gap: 8px;
+  padding: 4px 12px;
+}
+body.p2-shell .universal-math-toolbar .universal-math-panel {
+  max-height: calc(var(--p2-math-ribbon-height) - 8px);
+  gap: 2px;
+}
+body.p2-shell .universal-math-context {
+  min-width: 0;
+  gap: 7px;
+  padding-right: 8px;
+}
+body.p2-shell .universal-math-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 18px;
+}
+body.p2-shell .universal-math-context strong { font-size: 11px; }
+body.p2-shell .universal-math-context span:last-child { max-width: 126px; font-size: 9px; }
+body.p2-shell .math-category-tabs { padding-block: 0 1px; }
+body.p2-shell .math-category-tab { min-height: 23px; padding: 3px 8px; font-size: 9px; }
+body.p2-shell .universal-math-keyboard { gap: 5px; padding: 1px 1px 2px; }
+body.p2-shell .universal-math-keyboard .math-key { height: 34px; min-width: 36px; }
+body.p2-shell .universal-math-keyboard .math-key.has-rich-icon { height: 34px; }
+
+/* „Bendra lenta“ antraštė tampa lokalios lentos įrankių juosta. */
+body.p2-shell .p2-board-pane-header {
+  min-height: 50px;
+  padding: 6px 10px 6px 13px;
+  gap: 10px;
+}
+body.p2-shell .p2-board-header-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+body.p2-shell .p2-board-tools {
+  width: auto;
+  max-width: min(100%, 520px);
+  min-width: 0;
+  justify-self: auto;
+  flex: 0 1 auto;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 11px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+body.p2-shell .p2-board-tools::-webkit-scrollbar { display: none; }
+body.p2-shell .p2-board-tools .tool {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 8px;
+  gap: 5px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 750;
+}
+body.p2-shell .p2-board-tools .tool span:first-child { font-size: 16px; }
+body.p2-shell .p2-board-live { flex: 0 0 auto; }
+
+/* Pačios lentos vidinis tarpas truputį mažesnis — daugiau realios darbo vietos. */
+body.p2-shell .p2-workspace .board-shell { padding: 8px; }
+
+/* Senos taisyklės, kurios .tools laikė globalios topbar dalimi, šiame variante netaikomos. */
+body[data-online-role="teacher"].p2-shell .p2-board-tools {
+  width: auto;
+  justify-self: auto;
+}
+body[data-p2-view="practice"].p2-shell .p2-board-tools { display: none; }
+
+@media (max-width: 1450px) {
+  body.p2-shell .topbar,
+  body[data-online-role="teacher"].p2-shell .topbar {
+    grid-template-columns: minmax(165px,auto) minmax(0,1fr);
+    grid-template-areas: "brand actions";
+    padding-inline: 10px;
+  }
+  body.p2-shell .p2-board-tools .tool { padding-inline: 7px; }
+}
+
+@media (max-width: 1120px) {
+  body.p2-shell { --p2-topbar-height: 56px; --p2-math-ribbon-height: 66px; }
+  body.p2-shell .brand span { display: none; }
+  body.p2-shell .p2-board-subtitle { display: none; }
+  body.p2-shell .p2-board-tools .tool > span:last-child { display: none; }
+  body.p2-shell .p2-board-tools .tool { width: 32px; padding: 0; justify-content: center; }
+  body.p2-shell .p2-board-pane-header { padding-inline: 8px; }
+}
+
+@media (max-width: 760px) {
+  body.p2-shell { --p2-topbar-height: 54px; --p2-math-ribbon-height: 64px; }
+  body.p2-shell .topbar,
+  body[data-online-role="teacher"].p2-shell .topbar {
+    grid-template-columns: auto minmax(0,1fr);
+    grid-template-areas: "brand actions";
+    grid-template-rows: minmax(0,1fr);
+    gap: 6px;
+    padding: 5px 7px;
+  }
+  body.p2-shell .brand strong { display: none; }
+  body.p2-shell .brand-mark { width: 36px; height: 36px; }
+  body.p2-shell .universal-math-toolbar,
+  body.p2-shell .universal-math-toolbar.is-inactive:not(.is-restoring):not(.is-handoff),
+  body.p2-shell .universal-math-toolbar.is-handoff.is-inactive {
+    grid-template-columns: minmax(0,1fr);
+    padding: 3px 6px;
+  }
+  body.p2-shell .universal-math-context { display: none; }
+  body.p2-shell .p2-board-pane-header { min-height: 46px; }
+  body.p2-shell .p2-board-heading .p2-pane-icon { display: none; }
+  body.p2-shell .p2-board-live { padding-inline: 6px; }
+}

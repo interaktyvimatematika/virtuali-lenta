@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.4.4</title>
-  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.4.4" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.4.5</title>
+  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.4.5" />
 </head>
 <body>
   <div class="app" id="app">
@@ -14,24 +14,9 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.4.4</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.4.5</span>
         </div>
       </div>
-
-      <nav class="tools" aria-label="Lentos įrankiai">
-        <button class="tool is-active" data-tool="select" title="Žymėjimas ir langų perkėlimas">
-          <span aria-hidden="true">↖</span><span>Žymėti</span>
-        </button>
-        <button class="tool" data-tool="pen" title="Rašyti lentoje">
-          <span aria-hidden="true">✎</span><span>Pieštukas</span>
-        </button>
-        <button class="tool" data-tool="eraser" title="Trinti lentos rašymą">
-          <span aria-hidden="true">⌫</span><span>Trintukas</span>
-        </button>
-        <button class="tool" id="addNoteButton" title="Įterpti vieningą teksto ir formulių lauką">
-          <span aria-hidden="true">T</span><span>Tekstas</span>
-        </button>
-      </nav>
 
       <div class="topbar-actions">
         <div class="p2-session-actions" aria-label="Pamokos sesijos valdymas">
@@ -82,7 +67,23 @@
       <section class="p2-board-pane" id="p2BoardPane" aria-label="Bendra lenta">
         <header class="p2-pane-header p2-board-pane-header">
           <div class="p2-board-heading"><span class="p2-pane-icon" aria-hidden="true">◎</span><div><strong>Bendra lenta</strong><span class="p2-board-subtitle">Bendra realaus laiko erdvė</span></div></div>
-          <span class="p2-board-live"><i aria-hidden="true"></i><span id="p2BoardPresenceText">Prisijungta</span></span>
+          <div class="p2-board-header-actions">
+            <nav class="tools p2-board-tools" aria-label="Lentos įrankiai">
+              <button class="tool is-active" data-tool="select" title="Žymėjimas ir langų perkėlimas">
+                <span aria-hidden="true">↖</span><span>Žymėti</span>
+              </button>
+              <button class="tool" data-tool="pen" title="Rašyti lentoje">
+                <span aria-hidden="true">✎</span><span>Pieštukas</span>
+              </button>
+              <button class="tool" data-tool="eraser" title="Trinti lentos rašymą">
+                <span aria-hidden="true">⌫</span><span>Trintukas</span>
+              </button>
+              <button class="tool" id="addNoteButton" title="Įterpti vieningą teksto ir formulių lauką">
+                <span aria-hidden="true">T</span><span>Tekstas</span>
+              </button>
+            </nav>
+            <span class="p2-board-live"><i aria-hidden="true"></i><span id="p2BoardPresenceText">Prisijungta</span></span>
+          </div>
         </header>
         <div class="board-shell">
       <section class="board" id="board" aria-label="Virtualios lentos darbo plotas">
@@ -634,9 +635,9 @@
       MathfieldElement.soundsDirectory = null;
     }
   </script>
-  <script src="tasks.js?v=P2-SPLIT-P2.4.4"></script>
-  <script src="app.js?v=P2-SPLIT-P2.4.4"></script>
-  <script src="p2-ui.js?v=P2-SPLIT-P2.4.4"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.4.4"></script>
+  <script src="tasks.js?v=P2-SPLIT-P2.4.5"></script>
+  <script src="app.js?v=P2-SPLIT-P2.4.5"></script>
+  <script src="p2-ui.js?v=P2-SPLIT-P2.4.5"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.4.5"></script>
 </body>
 </html>
