@@ -1318,6 +1318,7 @@
       const initialLatex = latex;
       customElements.whenDefined('math-field').then(() => {
         if (!field.isConnected) return;
+        installVbeMathMacros(field);
         // Neperrašome vartotojo įvesties, jeigu laukas buvo pakeistas dar prieš whenDefined mikro-užduotį.
         if (String(field.dataset.latex || '') === initialLatex) apply();
         renderMathFieldPreview(field);
@@ -1362,6 +1363,41 @@
     focusAdjacentMathField(field, direction);
   }
 
+  const VBE_MATH_MACROS = Object.freeze({
+    // P2.4.7.5: MathLive 0.110.0 negali užpildyti placeholderio tiesiai
+    // akcento (pvz. \\vec / \\overrightarrow) viduje. Todėl redagavimo metu
+    // vektorių vaizduojame ne akcento atomu, o redaguojamu vieno argumento
+    // makrokomandos mazgu. Placeholderis lieka įprastoje \\overset bazėje,
+    // o virš jo esanti \\xrightarrow rodyklė plotį gauna iš to paties argumento
+    // nematomos \\hphantom kopijos. Taip langelis lieka pildomas kaip šaknyje,
+    // o rodyklė ilgėja kartu su AB, ABC ir ilgesniu turiniu.
+    vctinput: Object.freeze({
+      args: 1,
+      def: '\\overset{\\xrightarrow{\\hphantom{#1}}}{#1}',
+      captureSelection: false
+    })
+  });
+
+  function installVbeMathMacros(field) {
+    if (!field) return false;
+    const apply = () => {
+      try {
+        if (!('macros' in field)) return false;
+        field.macros = { ...(field.macros || {}), ...VBE_MATH_MACROS };
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+    if (apply()) return true;
+    if (window.customElements?.whenDefined) {
+      customElements.whenDefined('math-field').then(() => {
+        if (field.isConnected || field.ownerDocument) apply();
+      }).catch(() => {});
+    }
+    return false;
+  }
+
   function createDirectMathField({ source = '', latexSource = '', kind = 'expression', fieldKey = '', testid = '', placeholder = '', contextLabel = 'Matematinis laukas', onCommit, onEnter }) {
     const field = document.createElement('math-field');
     field.className = 'direct-math-field';
@@ -1374,6 +1410,7 @@
     if (testid) field.dataset.testid = testid;
     field.dataset.mathContext = contextLabel;
     field.dataset.mathFieldKey = String(fieldKey || testid || `math-field-${++generatedMathFieldKey}`);
+    installVbeMathMacros(field);
     setDirectMathFieldValue(field, source, kind, latexSource);
     registerMathField(field);
 
@@ -1671,13 +1708,13 @@
     if (type === 'product') return hasSelection
       ? '\\displaystyle\\prod_{#?}^{#?}#0'
       : '\\displaystyle\\prod_{#?}^{#?}#?';
-    if (type === 'vector') return hasSelection ? '\\overrightarrow{#0}' : '\\overrightarrow{\\square}';
+    if (type === 'vector') return hasSelection ? '\\vctinput{#0}' : '\\vctinput{#?}';
     if (type === 'vector-2') return '\\begin{pmatrix}#?\\\\#?\\end{pmatrix}';
     if (type === 'vector-3') return '\\begin{pmatrix}#?\\\\#?\\\\#?\\end{pmatrix}';
-    if (type === 'dot-product') return '\\vec{#?}\\cdot\\vec{#?}';
+    if (type === 'dot-product') return '\\vctinput{#?}\\cdot\\vctinput{#?}';
     if (type === 'vector-norm') return hasSelection
-      ? '\\left\\|\\vec{#0}\\right\\|'
-      : '\\left\\|\\vec{#?}\\right\\|';
+      ? '\\left\\|\\vctinput{#0}\\right\\|'
+      : '\\left\\|\\vctinput{#?}\\right\\|';
     if (type === 'matrix-2') return '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}';
     if (type === 'matrix-3') return '\\begin{pmatrix}#?&#?&#?\\\\#?&#?&#?\\\\#?&#?&#?\\end{pmatrix}';
     if (type === 'determinant-2') return '\\begin{vmatrix}#?&#?\\\\#?&#?\\end{vmatrix}';
@@ -1708,14 +1745,12 @@
         }
         if (key.mutates && result === true) target.__syncDirectMathField?.();
       } else {
-        const vectorNeedsSentinelSelection = key.structure === 'vector' && !hasSelection;
         const options = {
           insertionMode: 'replaceSelection',
-          // MathLive 0.110.0 negali patikimai pildyti placeholderio akcento viduje.
-          // Todėl tuščiam vektoriui įterpiame paprastą \square atomą po ištempiama
-          // \overrightarrow rodykle ir iškart jį pažymime. Pirmas klavišo ar
-          // Matematikos juostos paspaudimas pakeičia tą kvadratą į vartotojo turinį.
-          selectionMode: vectorNeedsSentinelSelection ? 'after' : (key.structure ? 'placeholder' : 'after'),
+          // Vektorius P2.4.7.5 jau naudoja redaguojamą \vctinput makrokomandą,
+          // todėl jam galioja tas pats įprastas placeholder pasirinkimas kaip šakniai,
+          // trupmenai, logaritmui ir kitoms struktūroms.
+          selectionMode: key.structure ? 'placeholder' : 'after',
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1739,24 +1774,6 @@
           target.textContent = `${target.textContent || ''}${plainFallback || ''}`;
         }
 
-        if (vectorNeedsSentinelSelection && usedNativeInsert) {
-          const selectVectorSentinel = () => {
-            if (!target.isConnected) return false;
-            try { target.focus({ preventScroll: true }); } catch (_) { try { target.focus(); } catch (_) {} }
-            try {
-              // Oficialūs MathLive navigacijos komandų vardai yra moveToPreviousChar
-              // ir extendToPreviousChar. Po įterpimo žymeklis yra po visos struktūros:
-              // pirmas žingsnis patenka į rodyklės argumentą už \square, antras
-              // pažymi patį kvadratą, kad kitas įvedimas jį tiesiog pakeistų.
-              const moved = target.executeCommand?.('moveToPreviousChar') === true;
-              const selected = moved && target.executeCommand?.('extendToPreviousChar') === true;
-              return !!selected;
-            } catch (_) {
-              return false;
-            }
-          };
-          if (!selectVectorSentinel()) queueMicrotask(selectVectorSentinel);
-        }
       }
     } catch (_) {}
 
