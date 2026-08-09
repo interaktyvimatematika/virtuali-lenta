@@ -5758,3 +5758,160 @@ body.p2-shell .p2-workspace { min-height: 0; }
   body.p2-shell.p2-math-ribbon-active .universal-math-keyboard { height: 38px; min-height: 38px; max-height: 38px; }
   body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon { height: 37px; min-height: 37px; max-height: 37px; }
 }
+
+/* =========================================================
+   P2-SPLIT-P2.4.6.2 — kompaktiška ir pilnai matoma kontekstinė Matematikos juosta
+   - Formulių kortelės laikomos topbar ribose ir nebeužlipa ant „Bendra lenta“ antraštės.
+   - Ilgos simbolių juostos suskaidomos į pilno pločio horizontalius puslapius:
+     ties dešiniu kraštu nebepaliekama pusė nukirsto mygtuko.
+   - Darbo srities geometrija nuo formulės aktyvavimo nesikeičia.
+   ========================================================= */
+body.p2-shell.p2-math-ribbon-active .topbar,
+body[data-online-role="teacher"].p2-shell.p2-math-ribbon-active .topbar {
+  isolation: isolate;
+  overflow: hidden !important;
+}
+
+body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar,
+body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-inactive,
+body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-handoff,
+body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-restoring {
+  height: 54px;
+  min-height: 54px;
+  max-height: 54px;
+  grid-template-rows: 54px;
+  align-self: center;
+  overflow: hidden !important;
+}
+
+body.p2-shell.p2-math-ribbon-active .universal-math-context {
+  height: 36px;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-icon {
+  height: 36px;
+}
+
+body.p2-shell.p2-math-ribbon-active .universal-math-panel {
+  height: 54px;
+  min-height: 54px;
+  max-height: 54px;
+  grid-template-rows: 15px 38px;
+  gap: 1px;
+  overflow: hidden !important;
+}
+
+body.p2-shell.p2-math-ribbon-active .math-category-tabs {
+  height: 15px;
+  min-height: 15px;
+  max-height: 15px;
+}
+body.p2-shell.p2-math-ribbon-active .math-category-tab {
+  height: 15px;
+  min-height: 15px;
+  padding: 1px 7px;
+  font-size: 7.8px;
+}
+
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard {
+  position: relative;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 3px 2px;
+  overflow-x: auto;
+  overflow-y: hidden !important;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 3px;
+  scrollbar-width: none;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard::-webkit-scrollbar { display: none; }
+
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key {
+  box-sizing: border-box;
+  min-width: 32px;
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding: 1px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  line-height: 1;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon {
+  min-width: 42px;
+  height: 35px;
+  min-height: 35px;
+  max-height: 35px;
+  padding: 1px 5px;
+  overflow: hidden;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon .mi {
+  max-width: 100%;
+  max-height: 28px;
+  transform: scale(.86);
+  transform-origin: center center;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:hover .mi,
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:focus-visible .mi {
+  transform: scale(.86);
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-action-icon > small { bottom: 1px; }
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-large-op > sub { right: 0; bottom: 1px; }
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-definite-integral > sub { bottom: 3px; }
+body.p2-shell.p2-math-ribbon-active .math-key-separator {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 22px;
+  margin-inline: 1px;
+}
+
+/* JS įterpiami nematomi tarpai sulygiuoja ilgą juostą į pilnus horizontalius puslapius. */
+body.p2-shell.p2-math-ribbon-active .math-key-page-gap {
+  flex: 0 0 var(--math-page-gap, 0px);
+  width: var(--math-page-gap, 0px);
+  height: 1px;
+  pointer-events: none;
+}
+body.p2-shell.p2-math-ribbon-active .math-key-page-start {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* 1280px ir siauresniuose languose matematikos režime brand lieka tik ikonėlė —
+   visas likęs plotis atiduodamas simboliams, kad rečiau prireiktų slinkti. */
+@media (max-width: 1280px) {
+  body.p2-shell.p2-math-ribbon-active .brand > div { display: none !important; }
+  body.p2-shell.p2-math-ribbon-active .topbar,
+  body[data-online-role="teacher"].p2-shell.p2-math-ribbon-active .topbar {
+    grid-template-columns: 40px minmax(0,1fr) auto;
+  }
+  body.p2-shell.p2-math-ribbon-active .brand-mark { width: 38px; height: 38px; }
+}
+
+@media (max-width: 860px) {
+  body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar,
+  body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-inactive,
+  body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-handoff,
+  body.p2-shell.p2-math-ribbon-active .topbar > .universal-math-toolbar.is-restoring,
+  body.p2-shell.p2-math-ribbon-active .universal-math-panel {
+    height: 52px;
+    min-height: 52px;
+    max-height: 52px;
+  }
+  body.p2-shell.p2-math-ribbon-active .universal-math-panel { grid-template-rows: 14px 37px; }
+  body.p2-shell.p2-math-ribbon-active .math-category-tabs,
+  body.p2-shell.p2-math-ribbon-active .math-category-tab {
+    height: 14px;
+    min-height: 14px;
+    max-height: 14px;
+  }
+  body.p2-shell.p2-math-ribbon-active .universal-math-keyboard {
+    height: 37px;
+    min-height: 37px;
+    max-height: 37px;
+  }
+}

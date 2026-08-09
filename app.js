@@ -856,6 +856,7 @@
       || toolbar.classList.contains('is-restoring')
     ));
     document.body?.classList.toggle('p2-math-ribbon-active', visible);
+    if (visible) scheduleUniversalMathKeyboardPageLayout();
   }
 
   function holdMathToolbarDuringHandoff(duration = 360) {
@@ -1849,10 +1850,60 @@
     return button;
   }
 
+  let mathKeyboardPageLayoutRaf = 0;
+
+  function layoutUniversalMathKeyboardPages() {
+    const keyboard = refs.universalMathKeyboard;
+    if (!keyboard) return;
+    keyboard.querySelectorAll('.math-key-page-gap').forEach(node => node.remove());
+    keyboard.querySelectorAll('.math-key-page-start').forEach(node => node.classList.remove('math-key-page-start'));
+
+    const style = getComputedStyle(keyboard);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    const paddingRight = parseFloat(style.paddingRight) || 0;
+    const gap = parseFloat(style.columnGap || style.gap) || 0;
+    const pageWidth = Math.floor(keyboard.clientWidth - paddingLeft - paddingRight);
+    if (pageWidth < 120) return;
+
+    const items = Array.from(keyboard.children);
+    let used = 0;
+    let firstOnPage = true;
+    items.forEach(item => {
+      const width = Math.ceil(item.getBoundingClientRect().width);
+      if (!width) return;
+      const needed = (used > 0 ? gap : 0) + width;
+      if (used > 0 && used + needed > pageWidth) {
+        const spacer = document.createElement('span');
+        spacer.className = 'math-key-page-gap';
+        spacer.setAttribute('aria-hidden', 'true');
+        const remaining = Math.max(0, pageWidth - used - (gap * 2));
+        spacer.style.setProperty('--math-page-gap', `${remaining}px`);
+        item.before(spacer);
+        used = width;
+        firstOnPage = true;
+      } else {
+        used += needed;
+      }
+      if (firstOnPage && item.matches('.math-key')) {
+        item.classList.add('math-key-page-start');
+        firstOnPage = false;
+      }
+    });
+  }
+
+  function scheduleUniversalMathKeyboardPageLayout() {
+    if (mathKeyboardPageLayoutRaf) cancelAnimationFrame(mathKeyboardPageLayoutRaf);
+    mathKeyboardPageLayoutRaf = requestAnimationFrame(() => {
+      mathKeyboardPageLayoutRaf = 0;
+      layoutUniversalMathKeyboardPages();
+    });
+  }
+
   function renderUniversalMathKeyboard() {
     const keyboard = refs.universalMathKeyboard;
     if (!keyboard) return;
     keyboard.replaceChildren();
+    keyboard.scrollLeft = 0;
     PINNED_MATH_KEYS.forEach(key => keyboard.appendChild(createUniversalMathButton(key, 'is-pinned-key')));
 
     const separatorA = document.createElement('span');
@@ -1869,6 +1920,7 @@
     separatorB.setAttribute('aria-hidden', 'true');
     keyboard.appendChild(separatorB);
     MATH_CONTROL_KEYS.forEach(key => keyboard.appendChild(createUniversalMathButton(key, 'is-control-key')));
+    scheduleUniversalMathKeyboardPageLayout();
   }
 
   function setMathToolbarCategory(category, { save = true } = {}) {
@@ -1885,6 +1937,8 @@
     activeTab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     if (save) scheduleSave();
   }
+
+  window.addEventListener('resize', scheduleUniversalMathKeyboardPageLayout, { passive: true });
 
   function initializeUniversalMathKeyboard() {
     const categories = refs.universalMathCategories;
