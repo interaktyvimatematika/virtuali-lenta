@@ -1292,7 +1292,7 @@
     return normalizeMathLiveAscii(field.dataset.source || field.textContent || '');
   }
 
-  // P2.4.7.7.4 – vektorius naudoja tokį patį natyvų MathLive #? placeholderį
+  // P2.4.7.7.5 – vektorius naudoja tokį patį natyvų MathLive #? placeholderį
   // kaip trupmenos, šaknys ir kitos Matematikos juostos struktūros.
   // Užbaigiant formulę pašaliname placeholderio apvalkalą tik tada, kai jis
   // yra tiesioginis mūsų \mathord{\overrightarrow{...}} turinys.
@@ -1381,6 +1381,74 @@
     return unwrapVbeVectorPrompts(String(field.dataset.latex || field.dataset.source || field.textContent || ''));
   }
 
+  // P2.4.7.7.5 – MathLive 0.110.0 su \mathord{\overrightarrow{...}}
+  // paprastą „+“ po vektoriaus vizualiai traktuoja per siaurai. Naudojame
+  // semantinį \mathbin{+}, bet tik tada, kai „+“ eina iškart po mūsų vektoriaus.
+  // Taip neliečiame unaraus „+“ ir kitų formulių.
+  function mathFieldLatexBeforeCaret(field) {
+    if (!field || typeof field.getValue !== 'function') return '';
+    try {
+      const position = Number(field.position);
+      if (!Number.isFinite(position) || position <= 0) return '';
+      return String(field.getValue(0, position, 'latex') || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function caretFollowsVbeVector(field) {
+    if (!field) return false;
+    try {
+      if (field.selectionIsCollapsed === false) return false;
+    } catch (_) {}
+    const prefix = mathFieldLatexBeforeCaret(field).trimEnd();
+    if (!prefix) return false;
+    return /\\mathord\{\\overrightarrow\{[\s\S]*\}\}\s*$/.test(prefix);
+  }
+
+  function insertVbeBinaryPlus(field) {
+    if (!field) return false;
+    const options = {
+      insertionMode: 'replaceSelection',
+      selectionMode: 'after',
+      focus: true,
+      scrollIntoView: false,
+      format: 'latex'
+    };
+    try {
+      let result = false;
+      if (typeof field.insert === 'function') result = field.insert('\\mathbin{+}', options);
+      else if (typeof field.executeCommand === 'function') result = field.executeCommand(['insert', '\\mathbin{+}', options]);
+      if (result === false) return false;
+      field.__syncDirectMathField?.();
+      queueMicrotask(() => {
+        if (!field.isConnected) return;
+        captureMathFieldSelection(field);
+        ensureMathFieldVisible(field);
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function replaceFollowingPlusAfterWrappedVector(field) {
+    if (!field || typeof field.getValue !== 'function') return false;
+    try {
+      const position = Number(field.position);
+      const lastOffset = Number(field.lastOffset);
+      if (!Number.isFinite(position) || !Number.isFinite(lastOffset) || position >= lastOffset) return false;
+      const suffix = String(field.getValue(position, lastOffset, 'latex') || '');
+      if (!/^\s*\+/.test(suffix) || /^\s*\\mathbin\s*\{\+\}/.test(suffix)) return false;
+      let deleted = false;
+      if (typeof field.executeCommand === 'function') deleted = field.executeCommand('deleteForward') === true;
+      if (!deleted) return false;
+      return insertVbeBinaryPlus(field);
+    } catch (_) {
+      return false;
+    }
+  }
+
   function setDirectMathFieldValue(field, source, kind = 'expression', latexSource = '') {
     const plain = String(source || '');
     const latex = String(latexSource || sourceToLatex(plain, kind));
@@ -1445,7 +1513,7 @@
   }
 
   const VBE_MATH_MACROS = Object.freeze({
-    // P2.4.7.7.4: tik senų testinių įrašų suderinamumui.
+    // P2.4.7.7.5: tik senų testinių įrašų suderinamumui.
     // Vektorius laikomas mathord, kad MathLive aplink operatorius išlaikytų taisyklingus tarpus.
     vctinput: Object.freeze({
       args: 1,
@@ -1455,7 +1523,7 @@
   });
 
   function installVbeMathFieldStyles(field) {
-    // P2.4.7.7.4: jokių piešiamų vektoriaus rodyklių.
+    // P2.4.7.7.5: jokių piešiamų vektoriaus rodyklių.
     // Funkcija palikta kaip no-op, kad nekeistume kitų MathLive inicijavimo kelių.
     return field;
   }
@@ -1534,7 +1602,16 @@
       captureMathFieldSelection(field);
       ensureMathFieldVisible(field);
     });
-    field.addEventListener('beforeinput', () => reaffirm({ ensureVisible: false }));
+    field.addEventListener('beforeinput', event => {
+      reaffirm({ ensureVisible: false });
+      // Android / ekraninė klaviatūra ne visada duoda patikimą keydown, todėl
+      // tą patį vektoriaus „+“ pataisymą atliekame ir per beforeinput.
+      if (!event.isComposing && event.inputType === 'insertText' && event.data === '+' && caretFollowsVbeVector(field)) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertVbeBinaryPlus(field);
+      }
+    });
     field.addEventListener('compositionstart', () => reaffirm({ ensureVisible: false }));
     field.addEventListener('compositionupdate', () => reaffirm({ ensureVisible: false }));
     field.addEventListener('compositionend', sync);
@@ -1553,6 +1630,14 @@
     });
     field.addEventListener('keydown', event => {
       reaffirm({ ensureVisible: false });
+      // Fizinėje klaviatūroje po mūsų vektoriaus „+“ įterpiame kaip tikrą
+      // dvejetainį operatorių. Shift neatmetame, nes „+“ dažnai rašomas su Shift.
+      if (event.key === '+' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey && caretFollowsVbeVector(field)) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertVbeBinaryPlus(field);
+        return;
+      }
       if (event.key === 'Tab') {
         event.preventDefault();
         moveMathPlaceholderOrField(field, event.shiftKey ? -1 : 1);
@@ -1823,7 +1908,12 @@
     setActiveDirectMathField(target, target.dataset.mathContext || activeMathContext, { ensureVisible: false });
     const hasSelection = mathSelectionHasContent(savedSelection || target.selection);
     let insert = key.structure ? mathStructureTemplate(key.structure, hasSelection) : key.insert;
-    // P2.4.7.7.4: naudoti lygiai tokį patį #? placeholderį kaip šaknyse ir trupmenose.
+    // Matematikos juostos „+“ turi tokį patį taisyklingą tarpą kaip klaviatūros „+“.
+    // \mathbin{+} naudojame tik kai žymeklis stovi iškart po mūsų vektoriaus.
+    if (!key.structure && key.insert === '+' && !hasSelection && caretFollowsVbeVector(target)) {
+      insert = '\\mathbin{+}';
+    }
+    // P2.4.7.7.5: naudoti lygiai tokį patį #? placeholderį kaip šaknyse ir trupmenose.
     // Jokio atskiro vektoriaus prompto / didesnės dėžutės nekuriame.
     if (key.structure === 'vector' && !hasSelection) {
       insert = '\\mathord{\\overrightarrow{#?}}';
@@ -1841,7 +1931,7 @@
       } else {
         const options = {
           insertionMode: 'replaceSelection',
-          selectionMode: key.structure ? 'placeholder' : 'after',
+          selectionMode: key.structure === 'vector' && hasSelection ? 'after' : (key.structure ? 'placeholder' : 'after'),
           focus: true,
           scrollIntoView: false,
           format: 'latex'
@@ -1868,6 +1958,13 @@
 
       }
     } catch (_) {}
+
+    // Jei vartotojas pirmiausia parašė, pvz., 5a+2b ir tik tada pažymėjo „a“
+    // bei paspaudė vektoriaus mygtuką, „+“ jau egzistuoja. Po apgaubimo
+    // pakeičiame tik iškart po naujo vektoriaus esantį paprastą „+“ į \mathbin{+}.
+    if (key.structure === 'vector' && hasSelection && usedNativeInsert) {
+      replaceFollowingPlusAfterWrappedVector(target);
+    }
 
     // MathLive dispatches its own input event. We update the model directly as well,
     // without emitting a second bubbling input event that the parent contenteditable could misread.
