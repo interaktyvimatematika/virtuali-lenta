@@ -1479,33 +1479,37 @@
   }
 
 
-  // P2.4.7.7.6 – kai vektorius sukurtas per Matematikos juostos #? placeholderį,
-  // žymeklis lieka vektoriaus viduje. Prieš įterpdami „+“ pirmiausia išeiname
-  // iš vektoriaus struktūros į pagrindinį formulės lygį. Taip MathLive gauna
-  // tą pačią seką kaip atveju „5a+2b“ -> pažymėti a/b -> uždėti vektorius.
+  // P2.4.7.7.8.3 – pilnai išeiname iš mūsų vektoriaus redagavimo hierarchijos.
+  // Ankstesnė versija bandė spręsti pagal prieš žymeklį serializuotą LaTeX.
+  // MathLive gali serializuoti uždarą \mathord{\overrightarrow{...}} net tada,
+  // kai žymeklis hierarchiškai dar yra išoriniame \mathord lygyje. Dėl to po
+  // rankinio ArrowRight operatorius (ypač „*“ -> \cdot) kartais likdavo mathord
+  // viduje ir prarasdavo tarpą iki kito skaičiaus.
+  //
+  // Mūsų konstrukcija turi daugiausia tris tėvinius redagavimo lygius
+  // (#? placeholder -> overrightarrow -> mathord), todėl moveAfterParent
+  // vykdome iki trijų kartų ir stabdome tik tada, kai pats MathLive praneša,
+  // kad daugiau kilti nebegalima. Nesiremiame field.position pokyčiu: pereinant
+  // per tėvinę ribą plokščias offsetas gali likti toks pats.
   function exitActiveVbeVectorPrompt(field) {
     if (!field || field.__vbeVectorPromptActive !== true) return false;
     try {
       if (field.selectionIsCollapsed === false) return false;
     } catch (_) {}
+    if (typeof field.executeCommand !== 'function') return false;
 
-    // Jei vartotojas dar yra #? viduje, moveAfterParent iškelia žymeklį po
-    // įterpto vektoriaus. Kartojame tik tiek, kiek reikia iki prefikso pabaigoje
-    // matome visą vektoriaus objektą; apsauga neleidžia išeiti už daugiau tėvų.
     let moved = false;
-    for (let i = 0; i < 3 && !caretFollowsVbeVector(field); i += 1) {
-      if (typeof field.executeCommand !== 'function') break;
-      const before = Number(field.position);
-      const result = field.executeCommand('moveAfterParent');
-      const after = Number(field.position);
-      if (after !== before) moved = true;
-      if (caretFollowsVbeVector(field)) break;
-      if (result !== true && after === before) break;
+    for (let i = 0; i < 3; i += 1) {
+      let result = false;
+      try { result = field.executeCommand('moveAfterParent'); } catch (_) { result = false; }
+      if (result !== true) break;
+      moved = true;
     }
 
-    const outsideVector = caretFollowsVbeVector(field);
-    if (outsideVector) field.__vbeVectorPromptActive = false;
-    return outsideVector || moved;
+    // Po bandymo laikome vektoriaus promptą užbaigtu. Jei jau buvome aukščiausiame
+    // lygyje, pirmas moveAfterParent tiesiog grąžina false ir nieko nepajudina.
+    field.__vbeVectorPromptActive = false;
+    return moved;
   }
 
   function insertPlusAfterActiveVbeVectorPrompt(field) {
