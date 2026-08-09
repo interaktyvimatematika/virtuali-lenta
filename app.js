@@ -1422,6 +1422,36 @@
     return VBE_VECTOR_TOOLBAR_EXIT_INSERTS.has(String(insert || ''));
   }
 
+  // P2.4.7.7.8 – fizinės / ekraninės klaviatūros „*“ suvienodiname su
+  // Matematikos juostos daugybos mygtuku. Palikus natūralų „*“, MathLive
+  // gali sukurti kitokios klasės atomą negu tiesiogiai įterptas \cdot, todėl
+  // po vektoriaus gaunamas kitoks tarpas. Visur įterpiame tą patį \cdot.
+  function insertCanonicalKeyboardMultiplication(field) {
+    if (!field) return false;
+    const options = {
+      insertionMode: 'replaceSelection',
+      selectionMode: 'after',
+      focus: true,
+      scrollIntoView: false,
+      format: 'latex'
+    };
+    try {
+      let result = false;
+      if (typeof field.insert === 'function') result = field.insert('\\cdot ', options);
+      else if (typeof field.executeCommand === 'function') result = field.executeCommand(['insert', '\\cdot ', options]);
+      if (result === false) return false;
+      field.__syncDirectMathField?.();
+      queueMicrotask(() => {
+        if (!field.isConnected) return;
+        captureMathFieldSelection(field);
+        ensureMathFieldVisible(field);
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function insertVbeBinaryPlus(field) {
     if (!field) return false;
     const options = {
@@ -1663,6 +1693,12 @@
       // prieš natūralų MathLive įterpimą išeiname už visos vektoriaus struktūros.
       // Event'o nestabdome: operatorių įterpia pats MathLive, todėl išlieka
       // jo natūrali matematinė klasė ir tarpai.
+      if (!event.isComposing && event.inputType === 'insertText' && event.data === '*') {
+        event.preventDefault();
+        if (field.__vbeVectorPromptActive === true) exitActiveVbeVectorPrompt(field);
+        insertCanonicalKeyboardMultiplication(field);
+        return;
+      }
       if (!event.isComposing && event.inputType === 'insertText'
         && isVbeVectorKeyboardExitOperator(event.data)
         && field.__vbeVectorPromptActive === true) {
@@ -1690,6 +1726,13 @@
       // Fizinėje klaviatūroje prieš bet kurį įprastą operatorių išeiname
       // iš visos aktyvaus vektoriaus struktūros. Paties klavišo nestabdome:
       // MathLive operatorių įterpia natūraliai jau pagrindiniame formulės lygyje.
+      if (event.key === '*'
+        && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        if (field.__vbeVectorPromptActive === true) exitActiveVbeVectorPrompt(field);
+        insertCanonicalKeyboardMultiplication(field);
+        return;
+      }
       if (isVbeVectorKeyboardExitOperator(event.key)
         && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
         && field.__vbeVectorPromptActive === true) {
