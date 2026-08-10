@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.12';
+  const BUILD = 'P2-SPLIT-P2.4.7.13';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,7 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.12: 1-oje tiesinėje lygtyje pridėtas lokalaus žingsnio pagrįstumo prototipas.
+    // P2-SPLIT-P2.4.7.13: žingsnio pagrįstumo tikrinimas tapo bendru visų tiesinių lygčių režimu.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
@@ -63,7 +63,7 @@
             expectedValue: 8,
             expectedDisplay: '8',
             minimumSteps: 2,
-            stepTransitionValidation: 'local-v1'
+            stepTransitionValidation: 'linear-v2'
           }
         }
       },
@@ -74,7 +74,7 @@
         label: '2 testas',
         title: 'Tiesinė lygtis · skliaustai',
         prompt: '5 - 2(x + 1) = 3x - 7',
-        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Patikrinkime, ar tikrintuvas priima skirtingą skliaustų išskleidimo tvarką.',
+        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Kiekvienoje eilutėje parodyk vieną aiškų lygiavertį pertvarkymą; skliaustus gali išskleisti ir narius perkelti pasirinkta tvarka.',
         answer: 'x = 2',
         hint: 'Gali pirmiausia išskleisti skliaustus arba atlikti lygiaverčius veiksmus kita tvarka.',
         response: {
@@ -88,7 +88,8 @@
             expectedVariable: 'x',
             expectedValue: 2,
             expectedDisplay: '2',
-            minimumSteps: 2
+            minimumSteps: 2,
+            stepTransitionValidation: 'linear-v2'
           }
         }
       },

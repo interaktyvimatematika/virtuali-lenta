@@ -3308,7 +3308,10 @@
     }
 
     const stepResults = [];
-    const localTransitionMode = task.response?.options?.stepTransitionValidation === 'local-v1';
+    const transitionValidationSetting = task.response?.options?.stepTransitionValidation;
+    // P2-SPLIT-P2.4.7.13: visos tiesinės lygtys pagal nutylėjimą tikrina ne tik sprendinių aibę,
+    // bet ir tiesioginio žingsnio pagrįstumą. Seną elgesį galima aiškiai išjungti su 'off'.
+    const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     let previousEquation;
     let previousDescriptor;
     let targetDescriptor;
@@ -3389,12 +3392,12 @@
         if (!transition.ok) {
           stepResults[index] = {
             status: 'incorrect',
-            message: `Sprendinių aibė ta pati. ${transition.message}`
+            message: 'Per didelis šuolis. Parodyk tarpinį žingsnį.'
           };
           return {
             status: 'incorrect',
             title: `Per didelis šuolis – ${index + 1} žingsnyje`,
-            message: `Matematiškai sprendinių aibė nepasikeitė, tačiau perėjimas iš ankstesnės eilutės neparodo vieno aiškaus lygiaverčio veiksmo. ${transition.message}`,
+            message: 'Sprendinių aibė nepasikeitė, tačiau perėjimas nėra vienas aiškus lygiavertis pertvarkymas. Parodyk tarpinį žingsnį.',
             stepResults
           };
         }
@@ -6288,13 +6291,15 @@ KOKYBĖS REIKALAVIMAI:
     return samePolynomialSolutionSet(first, second);
   }
 
-  // P2-SPLIT-P2.4.7.12: pirmasis lokalaus lygties žingsnio pagrįstumo prototipas.
+  // P2-SPLIT-P2.4.7.13: bendras tiesinių lygčių žingsnio pagrįstumo variklis.
   // Sprendinių aibės sutapimas lieka saugos sluoksniu, o ši klasifikacija tikrina,
-  // ar nauja eilutė gaunama vienu aiškiu lygiaverčiu pertvarkymu iš ankstesnės.
+  // ar nauja eilutė gaunama vienu aiškiu mokykliniu lygiaverčiu pertvarkymu.
+  // Sąmoningai leidžiame kelių narių perkėlimą vienu žingsniu, bet ne kelių skirtingų
+  // operacijų (pvz. perkėlimo ir dalybos) sujungimą į vieną nepaaiškintą šuolį.
   function expressionPolynomial(node) {
     const rational = astToRationalPolynomial(node);
     if (!isConstantPolynomial(rational.denominator)) {
-      throw new Error('Žingsnio pagrįstumo prototipas kol kas nepalaiko kintamojo vardiklyje');
+      throw new Error('Tiesinių lygčių žingsnio pagrįstumo tikrinimas kol kas nepalaiko kintamojo vardiklyje');
     }
     const denominator = Number(rational.denominator[0] || 0);
     if (Math.abs(denominator) < EPSILON) throw new Error('Dalyba iš nulio');
@@ -6360,11 +6365,11 @@ KOKYBĖS REIKALAVIMAI:
     const next = equationSidePolynomials(nextEquation);
 
     if (polynomialsApproximatelyEqual(previous.left, next.left) && polynomialsApproximatelyEqual(previous.right, next.right)) {
-      return { ok: true, kind: 'simplify', message: 'Lygiavertis supaprastinimas atpažintas.' };
+      return { ok: true, kind: 'simplify', message: 'Atpažintas lygiavertis pertvarkymas: išskleisti skliaustai, sutraukti nariai arba lygiavertiškai supaprastinta lygties pusė.' };
     }
 
     if (polynomialsApproximatelyEqual(previous.left, next.right) && polynomialsApproximatelyEqual(previous.right, next.left)) {
-      return { ok: true, kind: 'swap', message: 'Sukeistos lygties pusės.' };
+      return { ok: true, kind: 'swap', message: 'Atpažintas lygiavertis pertvarkymas: sukeistos lygties pusės.' };
     }
 
     const previousDifference = addPolynomials(previous.left, previous.right, -1);
@@ -6373,7 +6378,7 @@ KOKYBĖS REIKALAVIMAI:
       return {
         ok: true,
         kind: 'balanced-add',
-        message: 'Atpažintas lygiavertis pertvarkymas: abiem lygties pusėms atliktas tas pats pridėjimo / atėmimo veiksmas.'
+        message: 'Atpažintas lygiavertis pertvarkymas: abiem lygties pusėms pridėtas arba atimtas tas pats reiškinys (taip pat gali būti perkelti keli nariai vienu žingsniu).'
       };
     }
 
