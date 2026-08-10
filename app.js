@@ -190,6 +190,11 @@
       label: 'Kvadratinės lygties sprendimo eiga',
       renderer: 'math-step-list',
       promptKind: 'equation'
+    },
+    'semantic-equation-chain': {
+      label: 'Semantinė lygties sprendimo eiga',
+      renderer: 'math-step-list',
+      promptKind: 'equation'
     }
   };
 
@@ -470,7 +475,8 @@
   const validators = {
     'expression-equivalence': validateExpressionResponse,
     'linear-equation-chain': validateEquationChain,
-    'quadratic-equation-chain': validateQuadraticEquationChain
+    'quadratic-equation-chain': validateQuadraticEquationChain,
+    'semantic-equation-chain': validateSemanticEquationChain
   };
 
   // P2-SPLIT-P2.1: siauras tiltas P2 sluoksniui į tą patį P7.7.2 variklį.
@@ -4371,6 +4377,45 @@
     return sameRootValues(found, roots);
   }
 
+  // P2-SPLIT-P2.4.7.18: bendro semantinio sprendimo srauto pagalbinė funkcija.
+  // Tiesinėje lygtyje leidžiame natūralią izoliuoto kintamojo lygybių grandinę,
+  // pvz. x = 16/2 = 8. Pirmoji lygybė vis tiek turi būti tiesiogiai pagrįsta
+  // ankstesniu lygties žingsniu; likusi grandinė tik patvirtina tą pačią reikšmę.
+  function parseLinearIsolatedValueChain(source, expectedVariable = 'x') {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (_) { return null; }
+    if (!Array.isArray(parts) || parts.length < 3) return null;
+    const left = String(parts[0] || '').replace(/\s+/g, '').replace(/_/g, '').toLowerCase();
+    if (left !== String(expectedVariable || 'x').toLowerCase()) return null;
+    const rhs = parts.slice(1);
+    if (rhs.some(part => !String(part || '').trim())) return { error: 'Lygybės grandinėje po kiekvieno = turi būti reiškinys.' };
+
+    let value = null;
+    try {
+      for (const part of rhs) {
+        const ast = parseExpression(String(part || '').trim());
+        if (containsVariable(ast, 'x') || containsVariable(ast, 'y') || containsVariable(ast, 'z')) return null;
+        const current = evaluateAst(ast, {});
+        if (!Number.isFinite(current)) return { error: 'Lygybės grandinėje gauta nebaigtinė reikšmė.' };
+        if (value !== null && Math.abs(current - value) > EPSILON * Math.max(1, Math.abs(current), Math.abs(value))) {
+          return { error: 'Toje pačioje lygybės grandinėje užrašytos reikšmės nėra lygios.' };
+        }
+        value = current;
+      }
+    } catch (error) {
+      return { error: friendlyParseError(error) };
+    }
+
+    const firstEquation = parseEquation(`${parts[0]}=${rhs[0]}`);
+    return {
+      equation: firstEquation,
+      descriptor: describePolynomialEquation(firstEquation),
+      value,
+      messageSuffix: ' Lygybės grandinė tęsiama teisingai.'
+    };
+  }
+
   function validateEquationChain(task, response) {
     const steps = resolveStructuredStepContinuations(trimStructuredSteps(response.steps));
     if (!steps.length) {
@@ -4422,6 +4467,7 @@
       let descriptor;
       let equation = null;
       let alternativeEquations = null;
+      let chainMessageSuffix = '';
       try {
         if (step.type === 'alternatives') {
           const parsedAlternatives = parseAlternativeDescriptorWithCarry(step, true, previousAlternativeEquations);
@@ -4430,8 +4476,18 @@
         } else {
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Alternatyvoms pasirink atskirų laukelių žingsnį.');
-          equation = parseEquation(source);
-          descriptor = localTransitionMode ? describePolynomialEquation(equation) : describeLinearEquation(equation);
+          const equalityChain = localTransitionMode
+            ? parseLinearIsolatedValueChain(source, task.response.options.expectedVariable || 'x')
+            : null;
+          if (equalityChain?.error) throw new Error(equalityChain.error);
+          if (equalityChain?.equation) {
+            equation = equalityChain.equation;
+            descriptor = equalityChain.descriptor;
+            chainMessageSuffix = equalityChain.messageSuffix || '';
+          } else {
+            equation = parseEquation(source);
+            descriptor = localTransitionMode ? describePolynomialEquation(equation) : describeLinearEquation(equation);
+          }
         }
       } catch (error) {
         stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
@@ -4481,7 +4537,7 @@
         status: 'correct',
         message: step.type === 'alternatives'
           ? 'Alternatyvų bendra sprendinių aibė išsaugota.'
-          : (transition?.message || 'Sprendinių aibė išsaugota.')
+          : `${transition?.message || 'Sprendinių aibė išsaugota.'}${chainMessageSuffix}`
       };
       previousDescriptor = descriptor;
       previousEquation = equation || null;
@@ -4664,8 +4720,34 @@
         } else {
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Šiam žingsniui pasirink „Sprendimo šakos“.');
-          equation = parseEquation(source);
-          descriptor = describePolynomialEquation(equation);
+
+          // Dvigubo sprendinio atveju kvadratinės formulės nereikia dirbtinai skaidyti
+          // į dvi vienodas šakas. Leidžiame vieną natūralią formulės / skaičiavimo grandinę,
+          // pvz. x=(-b+sqrt(D))/(2a)=3.
+          if (semanticModeV2 && descriptorRoots(targetDescriptor).length === 1) {
+            const singleFormula = parseQuadraticFormulaRootAssignmentV2(source, semanticContext);
+            if (singleFormula.recognized) {
+              if (!singleFormula.ok) throw new Error(singleFormula.message);
+              const expectedRoot = descriptorRoots(targetDescriptor)[0];
+              if (!semanticNumberMatches(singleFormula.value, expectedRoot)) {
+                throw new Error(`Kvadratinės formulės rezultatas neteisingas. Teisingas sprendinys: ${formatSemanticNumber(expectedRoot)}.`);
+              }
+              equation = syntheticRootEquation(singleFormula.value);
+              descriptor = descriptorFromRootValues([singleFormula.value]);
+              semanticTransition = {
+                ok: true,
+                semanticType: 'formula-application',
+                kind: 'quadratic-formula-single',
+                message: 'Pritaikyta kvadratinės lygties formulė; gautas vienintelis realus sprendinys.'
+              };
+              usedSemanticStep = true;
+            }
+          }
+
+          if (!descriptor) {
+            equation = parseEquation(source);
+            descriptor = describePolynomialEquation(equation);
+          }
         }
       } catch (error) {
         stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
@@ -4732,7 +4814,7 @@
       previousAlternativeEquations = alternativeEquations;
       previousSemanticKind = semanticTransition?.kind || transition?.kind || null;
       if (equation && descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, 'x', descriptorRoots(targetDescriptor)[0])) completed = true;
-      if (semanticTransition?.kind === 'quadratic-formula') completed = true;
+      if (semanticTransition?.kind === 'quadratic-formula' || semanticTransition?.kind === 'quadratic-formula-single') completed = true;
       else if (step.type === 'alternatives' && alternativeEquationsAreIsolatedRoots(alternativeEquations, targetDescriptor)) completed = true;
     }
 
@@ -4771,6 +4853,48 @@
           ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais pertvarkymais. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
           : `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
       stepResults
+    };
+  }
+
+
+  // P2-SPLIT-P2.4.7.18: vienas įėjimo taškas visai „Lygčių diagnostikai“.
+  // Užduotis nebesirenka seno tiesinio ar kvadratinio srauto rankiniu būdu:
+  // pradinė lygtis išanalizuojama, o tada automatiškai prijungiamas naujausias
+  // semantinis sprendimo modelis. UI, šakos, lygybės tęsiniai ir mokytojo peržiūra
+  // išlieka bendri abiem šeimoms.
+  function validateSemanticEquationChain(task, response) {
+    let descriptor;
+    try {
+      const initial = task?.response?.options?.initial || task?.prompt?.value || task?.prompt;
+      descriptor = describePolynomialEquation(parseEquation(String(initial || '')));
+    } catch (error) {
+      return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults: [] };
+    }
+
+    const options = { ...(task?.response?.options || {}) };
+    const nextTask = {
+      ...task,
+      response: {
+        ...(task?.response || {}),
+        options
+      }
+    };
+
+    if (descriptor.degree === 2) {
+      nextTask.response.validator = 'quadratic-equation-chain';
+      nextTask.response.options.stepTransitionValidation = 'semantic-v2';
+      return validateQuadraticEquationChain(nextTask, response);
+    }
+    if (descriptor.degree <= 1) {
+      nextTask.response.validator = 'linear-equation-chain';
+      nextTask.response.options.stepTransitionValidation = 'linear-v2';
+      return validateEquationChain(nextTask, response);
+    }
+    return {
+      status: 'incorrect',
+      title: 'Šios lygties semantinis režimas dar nepalaikomas',
+      message: 'Naujausias diagnostikos srautas šiuo metu palaiko tiesines ir kvadratines lygtis.',
+      stepResults: []
     };
   }
 
@@ -5070,7 +5194,7 @@
       const analysis = analyzeMathContent(promptValue, 'equation');
       if (analysis.ok) {
         add('syntax', 'pass', 'Lygties sintaksė perskaityta.');
-        if (validator !== analysis.validator) {
+        if (validator !== analysis.validator && validator !== 'semantic-equation-chain') {
           add('validator-match', 'fail', `Šiai lygčiai turi būti parinktas modulis „${validatorDefinitions[analysis.validator]?.label || analysis.validator}“.`);
         } else {
           add('validator-match', 'pass', `Automatiškai parinktas tinkamas modulis „${validatorDefinitions[validator].label}“.`);
@@ -5251,7 +5375,7 @@
   }
 
   function updateValidatorPanels() {
-    const equationMode = refs.editorPromptKind.value === 'equation' || ['linear-equation-chain', 'quadratic-equation-chain'].includes(refs.editorValidator.value);
+    const equationMode = refs.editorPromptKind.value === 'equation' || ['linear-equation-chain', 'quadratic-equation-chain', 'semantic-equation-chain'].includes(refs.editorValidator.value);
     refs.expressionValidatorPanel.hidden = equationMode;
     refs.equationValidatorPanel.hidden = !equationMode;
     refs.minimumStepsField.hidden = !equationMode;
@@ -5285,7 +5409,7 @@
       hint: refs.editorHint.value.trim(),
       response: {
         renderer,
-        valueType: ['linear-equation-chain', 'quadratic-equation-chain'].includes(validator) ? 'equation' : 'expression',
+        valueType: ['linear-equation-chain', 'quadratic-equation-chain', 'semantic-equation-chain'].includes(validator) ? 'equation' : 'expression',
         label: refs.editorResponseLabel.value.trim() || (renderer === 'math-step-list' ? 'Sprendimo eiga' : 'Atsakymas'),
         placeholder: refs.editorPlaceholder.value.trim(),
         validator,

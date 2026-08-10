@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.17.3.1';
+  const BUILD = 'P2-SPLIT-P2.4.7.18';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,15 +30,16 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.17: sprendimo srauto prototipas su vertikaliomis šakomis
-    // P2-SPLIT-P2.4.7.17.3: semantic-v2 įjungtas visoms kvadratinių lygčių diagnostinėms užduotims
-    // ir lygybės tęsiniu naujoje eilutėje. Semantinis 7.16.1 tikrintuvas išlaikytas.
+    // P2-SPLIT-P2.4.7.18: visa Lygčių diagnostika perrašyta į vieną naujausią
+    // semantinį sprendimo srautą. Tiesinės ir kvadratinės užduotys naudoja tą patį
+    // Word tipo žingsnių modelį: Enter tęsiniai, vertikalios šakos, Atsakymas ir
+    // automatinis tinkamo matematinio tikrintuvo parinkimas pagal pradinę lygtį.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
     title: 'Lygčių tikrintuvo diagnostika',
     shortTitle: 'Lygčių diagnostika',
-    description: '6 skirtingos palaikomos tiesinės ir kvadratinės lygtys sprendimo žingsnių tikrintuvui bandyti po vieną.',
+    description: '6 tiesinių ir kvadratinių lygčių diagnostikos užduotys, visos naudojančios naujausią semantinį sprendimo srautą.',
     taskCount: 6,
     classCount: 6,
     selfCount: 0,
@@ -50,22 +51,22 @@
         label: '1 testas',
         title: 'Tiesinė lygtis · kintamasis abiejose pusėse',
         prompt: '4x - 7 = 2x + 9',
-        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Kiekvienoje eilutėje parodyk vieną aiškų lygiavertį pertvarkymą; narius perkelti galima ir kelis vienu žingsniu.',
+        instruction: 'Spręsk kaip sąsiuvinyje: rašyk pagrįstus lygiaverčius žingsnius, o lygybės skaičiavimą gali tęsti naujoje eilutėje pradėdamas =.',
         answer: 'x = 8',
-        hint: 'Sutelk narius su x vienoje pusėje, skaičius – kitoje.',
+        hint: 'Sutelk narius su x vienoje pusėje, skaičius – kitoje. Programa vertina matematinį perėjimą, ne vieną iš anksto numatytą užrašymo šabloną.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'linear-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: '4x - 7 = 2x + 9',
             expectedVariable: 'x',
             expectedValue: 8,
             expectedDisplay: '8',
             minimumSteps: 2,
-            stepTransitionValidation: 'linear-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       },
@@ -76,22 +77,22 @@
         label: '2 testas',
         title: 'Tiesinė lygtis · skliaustai',
         prompt: '5 - 2(x + 1) = 3x - 7',
-        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Kiekvienoje eilutėje parodyk vieną aiškų lygiavertį pertvarkymą; skliaustus gali išskleisti ir narius perkelti pasirinkta tvarka.',
+        instruction: 'Spręsk pasirinkta tvarka: gali išskleisti skliaustus, perkelti kelis narius vienu žingsniu ir tęsti lygybės skaičiavimą naujoje eilutėje.',
         answer: 'x = 2',
-        hint: 'Gali pirmiausia išskleisti skliaustus arba atlikti lygiaverčius veiksmus kita tvarka.',
+        hint: 'Nėra vieno privalomo kelio: svarbu, kad kiekvienas žingsnis būtų tiesiogiai matematiškai pagrįstas.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'linear-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: '5 - 2(x + 1) = 3x - 7',
             expectedVariable: 'x',
             expectedValue: 2,
             expectedDisplay: '2',
             minimumSteps: 2,
-            stepTransitionValidation: 'linear-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       },
@@ -102,15 +103,15 @@
         label: '3 testas',
         title: 'Kvadratinė lygtis · du sveikieji sprendiniai',
         prompt: 'x^2 - 7x + 12 = 0',
-        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu. Gali faktorizuoti, sudaryti pilną kvadratą arba naudoti diskriminantą. Kai sprendimas išsišakoja, naudok „Šakos“.',
+        instruction: 'Išspręsk bet kuriuo teisingu būdu. Gali faktorizuoti, sudaryti pilną kvadratą ar naudoti diskriminantą; formulę gali rašyti simboliais arba iš karto statyti skaičius. Išsišakojus naudok „Šakos“, o Enter tęsia pasirinktą šaką.',
         answer: 'x = 3; x = 4',
-        hint: 'Diskriminanto keliu gali rašyti, pvz., D = b^2 - 4ac = 1, o dvi kvadratinės formulės šaknis įvesti per „Šakos“.',
+        hint: 'Diskriminanto ir koeficientų raides gali pasirinkti pats. Tolesnis sprendimas patikslina jų vaidmenį, o lygybę gali tęsti naujoje eilutėje nuo =.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'quadratic-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: 'x^2 - 7x + 12 = 0',
             expectedVariable: 'x',
@@ -118,7 +119,7 @@
             expectedDisplay: 'x = 3; x = 4',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'semantic-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       },
@@ -129,15 +130,15 @@
         label: '4 testas',
         title: 'Kvadratinė lygtis · dvigubas sprendinys',
         prompt: 'x^2 - 6x + 9 = 0',
-        instruction: 'Išspręsk lygtį parodydamas eigą. Ši lygtis turi tik vieną skirtingą realų sprendinį.',
+        instruction: 'Išspręsk pasirinktu būdu. Dvigubo sprendinio atveju neprivalai kurti dviejų vienodų šakų; vieną formulės ar skaičiavimo grandinę gali tęsti naujomis = eilutėmis.',
         answer: 'x = 3',
-        hint: 'Atpažink pilną kvadratą arba spręsk kitu lygiaverčiu būdu.',
+        hint: 'Gali atpažinti pilną kvadratą arba naudoti diskriminantą. Jei D = 0, pakanka vienos teisingos sprendinio grandinės.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'quadratic-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: 'x^2 - 6x + 9 = 0',
             expectedVariable: 'x',
@@ -145,7 +146,7 @@
             expectedDisplay: 'x = 3',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'semantic-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       },
@@ -156,7 +157,7 @@
         label: '5 testas',
         title: 'Kvadratinė lygtis · realių sprendinių nėra',
         prompt: 'x^2 + 4x + 5 = 0',
-        instruction: 'Išspręsk lygtį realiųjų skaičių aibėje. Pabaigoje naudok „Atsakymas“ ir užrašyk sprendinių aibę.',
+        instruction: 'Išspręsk realiųjų skaičių aibėje pasirinktu būdu. Jei paaiškėja, kad realių sprendinių nėra, pabaigoje naudok „Atsakymas“ ir užrašyk ∅ arba „sprendinių nėra“.',
         answer: 'sprendinių nėra',
         hint: 'Diskriminantas yra neigiamas. Galutiniame sprendinių aibės žingsnyje gali rašyti „sprendinių nėra“ arba ∅.',
         response: {
@@ -164,7 +165,7 @@
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'quadratic-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: 'x^2 + 4x + 5 = 0',
             expectedVariable: 'x',
@@ -172,7 +173,7 @@
             expectedDisplay: 'sprendinių nėra',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'semantic-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       },
@@ -183,15 +184,15 @@
         label: '6 testas',
         title: 'Kvadratinė lygtis · trupmeninis sprendinys',
         prompt: '2x^2 - 5x - 3 = 0',
-        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu ir parodyk sprendimo eigą.',
+        instruction: 'Išspręsk bet kuriuo teisingu būdu. Jei naudoji kvadratinės lygties formulę, abi šakos gali būti nevienodo detalumo, o Enter leidžia tęsti kiekvieną šaką vertikaliai.',
         answer: 'x = -1/2; x = 3',
-        hint: 'Lygtis turi du racionalius sprendinius. Gali skaidyti dauginamaisiais arba naudoti kvadratinės lygties formulę.',
+        hint: 'Gali skaidyti dauginamaisiais arba naudoti diskriminantą ir formulę. Bendro simbolinio šablono kartoti kiekvienoje šakoje neprivaloma.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
           placeholder: 'Įrašyk kitą lygties žingsnį',
-          validator: 'quadratic-equation-chain',
+          validator: 'semantic-equation-chain',
           options: {
             initial: '2x^2 - 5x - 3 = 0',
             expectedVariable: 'x',
@@ -199,7 +200,7 @@
             expectedDisplay: 'x = -1/2; x = 3',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'semantic-v2'
+            stepTransitionValidation: 'semantic-v3'
           }
         }
       }
@@ -1709,6 +1710,16 @@
       const result = stepResults[index] || null;
       const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
       const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const groupId = step?.type === 'alternatives' ? String(step?.branchGroupId || '') : '';
+      const previous = response.steps[index - 1];
+      const next = response.steps[index + 1];
+      const previousSameGroup = Boolean(groupId && previous?.type === 'alternatives' && previous?.branchGroupId === groupId);
+      const nextSameGroup = Boolean(groupId && next?.type === 'alternatives' && next?.branchGroupId === groupId);
+      const groupClass = step?.type === 'alternatives' && groupId
+        ? ` is-branch-group-${previousSameGroup ? (nextSameGroup ? 'middle' : 'end') : (nextSameGroup ? 'start' : 'single')}`
+        : '';
+      const continuationClass = step?.values?.some(value => String(value || '').trim().startsWith('=')) ? ' is-continuation-line' : '';
+      const separatorLabel = previousSameGroup ? '' : 'arba';
       // Teacher preview must render the same LaTeX representation that the student MathLive field uses.
       // `values` is the plain/ASCII form used by validators (e.g. sqrt(D), /, *), and feeding it
       // back into <math-field> as LaTeX makes formulas look broken in the teacher view.
@@ -1719,7 +1730,7 @@
       if (step?.type === 'alternatives') {
         const branchCount = Math.max(plainValues.length, latexValues.length, 2);
         const branches = Array.from({ length: branchCount }, (_, branchIndex) => `<math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(displayValue(branchIndex))}</math-field>`);
-        valueMarkup = `<div class="p2-teacher-solution-branches">${branches.map((branch, branchIndex) => `${branchIndex ? '<span>arba</span>' : ''}${branch}`).join('')}</div>`;
+        valueMarkup = `<div class="p2-teacher-solution-branches">${branches.map((branch, branchIndex) => `${branchIndex ? `<span>${separatorLabel}</span>` : ''}${branch}`).join('')}</div>`;
       } else {
         const value = displayValue(0);
         valueMarkup = `<div class="p2-teacher-solution-single ${step?.type === 'solution-set' ? 'is-answer' : ''}">
@@ -1728,7 +1739,7 @@
         </div>`;
       }
       return `
-        <div class="p2-solution-step p2-paper-step p2-teacher-solution-step${resultClass}">
+        <div class="p2-solution-step p2-paper-step p2-teacher-solution-step${resultClass}${groupClass}${continuationClass}"${groupId ? ` data-branch-group="${escapeHtml(groupId)}"` : ''}>
           <div class="p2-solution-step-main">
             ${valueMarkup}
             <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
