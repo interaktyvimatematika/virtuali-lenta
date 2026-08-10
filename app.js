@@ -193,7 +193,7 @@
     }
   };
 
-  function createStructuredStep(type = 'equation', values = [''], latexValues = []) {
+  function createStructuredStep(type = 'equation', values = [''], latexValues = [], meta = {}) {
     const safeType = ['equation', 'alternatives', 'solution-set'].includes(type) ? type : 'equation';
     const sourceValues = Array.isArray(values) ? values.map(value => String(value ?? '')) : [String(values ?? '')];
     const sourceLatexValues = Array.isArray(latexValues)
@@ -202,11 +202,14 @@
     if (safeType === 'alternatives') {
       while (sourceValues.length < 2) sourceValues.push('');
       while (sourceLatexValues.length < sourceValues.length) sourceLatexValues.push('');
-      return {
+      const result = {
         type: safeType,
         values: sourceValues,
         latexValues: sourceLatexValues.slice(0, sourceValues.length)
       };
+      const branchGroupId = String(meta?.branchGroupId || '').trim();
+      if (branchGroupId) result.branchGroupId = branchGroupId;
+      return result;
     }
     return {
       type: safeType,
@@ -236,12 +239,33 @@
     const latexValues = Array.isArray(step.latexValues)
       ? step.latexValues
       : [step.latex ?? ''];
-    return createStructuredStep(step.type, values, latexValues);
+    return createStructuredStep(step.type, values, latexValues, { branchGroupId: step.branchGroupId });
   }
 
   function normalizeStructuredSteps(steps) {
     if (!Array.isArray(steps) || !steps.length) return [createStructuredStep()];
-    return steps.map(normalizeStructuredStep);
+    let legacyBranchGroupId = '';
+    let legacyBranchStart = -1;
+    return steps.map((rawStep, index) => {
+      const step = normalizeStructuredStep(rawStep);
+      if (step.type !== 'alternatives') {
+        legacyBranchGroupId = '';
+        legacyBranchStart = -1;
+        return step;
+      }
+      if (step.branchGroupId) {
+        legacyBranchGroupId = step.branchGroupId;
+        legacyBranchStart = index;
+        return step;
+      }
+      // Senesnėse versijose kiekviena šakų eilutė buvo atskiras top-level žingsnis.
+      // Gretimas senas alternatyvų eilutes migruojame į vieną deterministinę vertikalią šakų grupę.
+      if (!legacyBranchGroupId) {
+        legacyBranchStart = index;
+        legacyBranchGroupId = `legacy-branch-${legacyBranchStart}`;
+      }
+      return createStructuredStep('alternatives', step.values, step.latexValues, { branchGroupId: legacyBranchGroupId });
+    });
   }
 
   const defaultResponse = task => task.response.renderer === 'math-step-list'
@@ -457,8 +481,8 @@
     createMathField(options = {}) {
       return createDirectMathField(options);
     },
-    createStep(type = 'equation', values = [''], latexValues = []) {
-      return createStructuredStep(type, values, latexValues);
+    createStep(type = 'equation', values = [''], latexValues = [], meta = {}) {
+      return createStructuredStep(type, values, latexValues, meta);
     },
     normalizeSteps(steps) {
       return normalizeStructuredSteps(steps);
@@ -3258,6 +3282,71 @@
     return last < 0 ? [] : normalized.slice(0, last + 1);
   }
 
+  // P2-SPLIT-P2.4.7.17: lygybės tęsinys naujoje eilutėje.
+  // Mokinys gali rašyti, pvz. D=b^2-4ac, tada naujoje eilutėje =49-48 ir =1.
+  // Validatorius mato pilną lygybę D=49-48 / D=1, tačiau UI palieka natūralų "=" tęsinį.
+  function continuationAnchorFromSource(source) {
+    const text = String(source || '').trim();
+    if (!text || text.startsWith('=') || /;/.test(text)) return '';
+    let parts;
+    try { parts = splitTopLevelEqualities(text); } catch (_) { return ''; }
+    if (!Array.isArray(parts) || parts.length < 2) return '';
+    if (parts.length > 2 && /,/.test(text)) return ''; // keli priskyrimai vienoje eilutėje, ne tęstinė lygybė
+    const anchor = String(parts[0] || '').trim();
+    return anchor && !/;/.test(anchor) ? anchor : '';
+  }
+
+  function resolveStructuredStepContinuations(steps) {
+    const normalized = normalizeStructuredSteps(steps);
+    let equationAnchor = '';
+    let branchGroupId = '';
+    let branchAnchors = [];
+    let branchLastSources = [];
+
+    return normalized.map(step => {
+      const current = normalizeStructuredStep(step);
+      if (current.type === 'alternatives') {
+        const groupId = String(current.branchGroupId || '').trim();
+        const continuingGroup = Boolean(groupId && groupId === branchGroupId);
+        if (!continuingGroup) {
+          branchGroupId = groupId;
+          branchAnchors = [];
+          branchLastSources = [];
+        }
+        equationAnchor = '';
+        const values = current.values.map((rawValue, index) => {
+          const raw = String(rawValue || '').trim();
+          let resolved = raw;
+          if (raw.startsWith('=') && branchAnchors[index]) {
+            resolved = `${branchAnchors[index]}${raw}`;
+          }
+          if (resolved) {
+            branchLastSources[index] = resolved;
+            const nextAnchor = continuationAnchorFromSource(resolved);
+            if (nextAnchor) branchAnchors[index] = nextAnchor;
+          }
+          return resolved;
+        });
+        return createStructuredStep('alternatives', values, current.latexValues, { branchGroupId: groupId });
+      }
+
+      branchGroupId = '';
+      branchAnchors = [];
+      branchLastSources = [];
+      if (current.type !== 'equation') {
+        equationAnchor = '';
+        return current;
+      }
+
+      const raw = String(current.values[0] || '').trim();
+      const resolved = raw.startsWith('=') && equationAnchor ? `${equationAnchor}${raw}` : raw;
+      const nextAnchor = continuationAnchorFromSource(resolved);
+      if (nextAnchor) equationAnchor = nextAnchor;
+      else if (raw && !raw.startsWith('=')) equationAnchor = '';
+      return createStructuredStep('equation', [resolved], current.latexValues);
+    });
+  }
+
   function descriptorFromRootValues(values) {
     const unique = [];
     [...values].sort((a, b) => a - b).forEach(value => {
@@ -3278,6 +3367,21 @@
     if (normalized.type !== 'alternatives') throw new Error('Šis žingsnis nėra alternatyvų eilutė');
     if (normalized.values.some(value => !String(value || '').trim())) throw new Error('Užpildyk visas alternatyvias lygtis');
     const equations = normalized.values.map(value => parseEquation(value));
+    const descriptors = equations.map(equation => linearOnly ? describeLinearEquation(equation) : describePolynomialEquation(equation));
+    return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
+  }
+
+  // 7.17: vertikaliose šakose viena šaka gali turėti daugiau tarpinių eilučių už kitą.
+  // Tuščias tos pačios branchGroup eilutės stulpelis reiškia „ši šaka šiame žingsnyje nepakito“.
+  function parseAlternativeDescriptorWithCarry(step, linearOnly = false, previousEquations = null) {
+    const normalized = normalizeStructuredStep(step);
+    if (normalized.type !== 'alternatives') throw new Error('Šis žingsnis nėra alternatyvų eilutė');
+    const equations = normalized.values.map((value, index) => {
+      const source = String(value || '').trim();
+      if (source) return parseEquation(source);
+      if (Array.isArray(previousEquations) && previousEquations[index]) return previousEquations[index];
+      throw new Error('Užpildyk bent pirmą kiekvienos naujos sprendimo šakos eilutę');
+    });
     const descriptors = equations.map(equation => linearOnly ? describeLinearEquation(equation) : describePolynomialEquation(equation));
     return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
   }
@@ -4068,8 +4172,23 @@
     return sameRootValues(found, roots);
   }
 
+  function alternativeEquationsAreIsolatedRoots(equations, targetDescriptor) {
+    if (!Array.isArray(equations) || targetDescriptor.kind === 'none' || targetDescriptor.kind === 'all') return false;
+    const roots = descriptorRoots(targetDescriptor);
+    if (equations.length !== roots.length) return false;
+    const found = [];
+    for (const equation of equations) {
+      try {
+        const descriptor = describePolynomialEquation(equation);
+        if (descriptor.kind !== 'single' || !isVariableIsolated(equation, 'x', descriptor.value)) return false;
+        found.push(descriptor.value);
+      } catch (_) { return false; }
+    }
+    return sameRootValues(found, roots);
+  }
+
   function validateEquationChain(task, response) {
-    const steps = trimStructuredSteps(response.steps);
+    const steps = resolveStructuredStepContinuations(trimStructuredSteps(response.steps));
     if (!steps.length) {
       return { status: 'incorrect', title: 'Nėra sprendimo žingsnių', message: 'Įrašyk bent vieną naują lygtį.', stepResults: [] };
     }
@@ -4080,6 +4199,7 @@
     // bet ir tiesioginio žingsnio pagrįstumą. Seną elgesį galima aiškiai išjungti su 'off'.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     let previousEquation;
+    let previousAlternativeEquations = null;
     let previousDescriptor;
     let targetDescriptor;
     try {
@@ -4117,9 +4237,12 @@
 
       let descriptor;
       let equation = null;
+      let alternativeEquations = null;
       try {
         if (step.type === 'alternatives') {
-          descriptor = parseAlternativeDescriptor(step, true).descriptor;
+          const parsedAlternatives = parseAlternativeDescriptorWithCarry(step, true, previousAlternativeEquations);
+          descriptor = parsedAlternatives.descriptor;
+          alternativeEquations = parsedAlternatives.equations;
         } else {
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Alternatyvoms pasirink atskirų laukelių žingsnį.');
@@ -4178,8 +4301,9 @@
       };
       previousDescriptor = descriptor;
       previousEquation = equation || null;
+      previousAlternativeEquations = alternativeEquations;
       if (equation && targetDescriptor.kind === 'single' && isVariableIsolated(equation, task.response.options.expectedVariable || 'x', targetDescriptor.value)) completed = true;
-      if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
+      if (step.type === 'alternatives' && alternativeEquationsAreIsolatedRoots(alternativeEquations, targetDescriptor)) completed = true;
     }
 
     if (!targetDescriptor || targetDescriptor.kind !== 'single') {
@@ -4223,7 +4347,7 @@
 
 
   function validateQuadraticEquationChain(task, response) {
-    const steps = trimStructuredSteps(response.steps);
+    const steps = resolveStructuredStepContinuations(trimStructuredSteps(response.steps));
     if (!steps.length) {
       return { status: 'incorrect', title: 'Nėra sprendimo žingsnių', message: 'Įrašyk bent vieną naują lygtį.', stepResults: [] };
     }
@@ -4321,7 +4445,7 @@
       let semanticTransition = null;
       try {
         if (step.type === 'alternatives') {
-          if (semanticMode) {
+          if (semanticMode && step.values.every(value => String(value || '').trim())) {
             const semanticFormula = semanticModeV2
               ? classifyQuadraticFormulaAlternativesV2(step, semanticContext)
               : classifyQuadraticFormulaAlternatives(step, semanticContext);
@@ -4334,7 +4458,7 @@
             }
           }
           if (!descriptor) {
-            const parsedAlternatives = parseAlternativeDescriptor(step, false);
+            const parsedAlternatives = parseAlternativeDescriptorWithCarry(step, false, previousAlternativeEquations);
             descriptor = parsedAlternatives.descriptor;
             alternativeEquations = parsedAlternatives.equations;
           }
@@ -4410,7 +4534,7 @@
       previousSemanticKind = semanticTransition?.kind || transition?.kind || null;
       if (equation && descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, 'x', descriptorRoots(targetDescriptor)[0])) completed = true;
       if (semanticTransition?.kind === 'quadratic-formula') completed = true;
-      else if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
+      else if (step.type === 'alternatives' && alternativeEquationsAreIsolatedRoots(alternativeEquations, targetDescriptor)) completed = true;
     }
 
     if (semanticModeV2) finalizeQuadraticPendingDefinitionsV2(semanticContext, stepResults);

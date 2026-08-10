@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.16.1';
+  const BUILD = 'P2-SPLIT-P2.4.7.17';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,9 +30,8 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.16.1: pirmasis semantinio sprendimo žingsnio modelio prototipas.
-    // 3 diagnostinė kvadratinė lygtis leidžia ne tik ekvivalenčias lygtis, bet ir
-    // pagalbinius diskriminanto skaičiavimus bei kvadratinės formulės taikymą.
+    // P2-SPLIT-P2.4.7.17: sprendimo srauto prototipas su vertikaliomis šakomis
+    // ir lygybės tęsiniu naujoje eilutėje. Semantinis 7.16.1 tikrintuvas išlaikytas.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
@@ -226,6 +225,11 @@
   const liveSolutionTimers = new Map();
   let solutionFocusRequest = null;
   let activeSolutionStep = { taskId: null, index: 0 };
+  let branchGroupSequence = 0;
+  function createBranchGroupId(taskId = 'task') {
+    branchGroupSequence += 1;
+    return `branch-${String(taskId || 'task').replace(/[^a-z0-9_-]/gi, '-')}-${Date.now().toString(36)}-${branchGroupSequence}`;
+  }
 
   function deepCopy(value) {
     try { return JSON.parse(JSON.stringify(value)); }
@@ -698,14 +702,29 @@
     const activeStep = response.steps[activeIndex] || response.steps[0] || { type: 'equation' };
 
     const rows = response.steps.map((rawStep, index) => {
-      const step = practiceEngine?.createStep?.(rawStep?.type || 'equation', rawStep?.values || [''], rawStep?.latexValues || ['']) || rawStep;
+      const step = practiceEngine?.createStep?.(
+        rawStep?.type || 'equation',
+        rawStep?.values || [''],
+        rawStep?.latexValues || [''],
+        { branchGroupId: rawStep?.branchGroupId }
+      ) || rawStep;
       const result = stepResults[index] || null;
       const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
       const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const groupId = step.type === 'alternatives' ? String(step.branchGroupId || '') : '';
+      const previous = response.steps[index - 1];
+      const next = response.steps[index + 1];
+      const previousSameGroup = Boolean(groupId && previous?.type === 'alternatives' && previous?.branchGroupId === groupId);
+      const nextSameGroup = Boolean(groupId && next?.type === 'alternatives' && next?.branchGroupId === groupId);
+      const groupClass = step.type === 'alternatives' && groupId
+        ? ` is-branch-group-${previousSameGroup ? (nextSameGroup ? 'middle' : 'end') : (nextSameGroup ? 'start' : 'single')}`
+        : '';
+      const continuationClass = step.values?.some(value => String(value || '').trim().startsWith('=')) ? ' is-continuation-line' : '';
+      const separatorLabel = previousSameGroup ? '' : 'arba';
       const fields = step.type === 'alternatives'
         ? `<div class="p2-solution-branches p2-paper-branches">
             <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="0"></div>
-            <span class="p2-solution-branch-separator">arba</span>
+            <span class="p2-solution-branch-separator" aria-hidden="true">${separatorLabel}</span>
             <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="1"></div>
           </div>`
         : `<div class="p2-solution-single-field ${step.type === 'solution-set' ? 'is-answer' : ''}">
@@ -714,7 +733,7 @@
           </div>`;
 
       return `
-        <div class="p2-solution-step p2-paper-step${resultClass}" data-solution-step="${index}" data-solution-step-type="${escapeHtml(step.type || 'equation')}">
+        <div class="p2-solution-step p2-paper-step${resultClass}${groupClass}${continuationClass}" data-solution-step="${index}" data-solution-step-type="${escapeHtml(step.type || 'equation')}"${groupId ? ` data-branch-group="${escapeHtml(groupId)}"` : ''}>
           <div class="p2-solution-step-main">
             ${fields}
             <p class="p2-solution-step-message">${result?.message ? escapeHtml(result.message) : ''}</p>
@@ -738,7 +757,7 @@
       <section class="p2-solution-editor p2-solution-paper ${locked ? 'is-locked' : ''}">
         <header class="p2-solution-editor-head p2-solution-paper-head">
           <div><span>Sprendimas</span><small>${structuredModes ? 'Rašyk kaip lape. Eilutės paskirtį keisk tik tada, kai jos reikia.' : 'Rašyk po vieną sprendimo žingsnį eilutėje.'}</small></div>
-          <span><kbd>Enter</kbd> – nauja eilutė</span>
+          <span><kbd>Enter</kbd> – nauja eilutė; šakoje – tos pačios šakos tęsinys</span>
         </header>
         ${typeToolbar}
         <div class="p2-solution-steps p2-solution-paper-lines">${rows}</div>
@@ -890,8 +909,8 @@
     while (latexValues.length <= branchIndex) latexValues.push('');
     values[branchIndex] = plain;
     latexValues[branchIndex] = latex;
-    response.steps[index] = practiceEngine?.createStep?.(type, values, latexValues)
-      || { type, values, latexValues };
+    response.steps[index] = practiceEngine?.createStep?.(type, values, latexValues, { branchGroupId: current.branchGroupId })
+      || { type, values, latexValues, ...(current.branchGroupId ? { branchGroupId: current.branchGroupId } : {}) };
 
     next.status = 'in_progress';
     next.taskStates = {
@@ -920,8 +939,11 @@
     const current = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
     const firstValue = current.values?.[0] || '';
     const firstLatex = current.latexValues?.[0] || '';
+    const branchGroupId = type === 'alternatives'
+      ? (current.type === 'alternatives' && current.branchGroupId ? current.branchGroupId : createBranchGroupId(taskId))
+      : '';
     response.steps[index] = type === 'alternatives'
-      ? (practiceEngine?.createStep?.('alternatives', [firstValue, ''], [firstLatex, '']) || { type: 'alternatives', values: [firstValue, ''], latexValues: [firstLatex, ''] })
+      ? (practiceEngine?.createStep?.('alternatives', [firstValue, ''], [firstLatex, ''], { branchGroupId }) || { type: 'alternatives', values: [firstValue, ''], latexValues: [firstLatex, ''], branchGroupId })
       : (practiceEngine?.createStep?.(type, [firstValue], [firstLatex]) || { type, values: [firstValue], latexValues: [firstLatex] });
     const next = normalizedProgress(progress);
     next.status = 'in_progress';
@@ -964,7 +986,9 @@
         fieldKey: `p2:${task.id}:step:${index}:branch:${branchIndex}`,
         testid: branchIndex === 0 ? `p2-step-input-${index}` : `p2-step-input-${index}-${branchIndex}`,
         placeholder: step.type === 'alternatives'
-          ? (branchIndex === 0 ? 'Pirmas atvejis' : 'Antras atvejis')
+          ? (response.steps[index - 1]?.type === 'alternatives' && response.steps[index - 1]?.branchGroupId && response.steps[index - 1]?.branchGroupId === step.branchGroupId
+              ? '= tęsinys'
+              : (branchIndex === 0 ? 'Pirmas atvejis' : 'Antras atvejis'))
           : step.type === 'solution-set'
             ? 'Pvz., x = 2; x = 3'
             : (task.response?.placeholder || 'Kita lygtis'),
@@ -975,8 +999,8 @@
             : `P2 pratybų ${index + 1} sprendimo eilutė`,
         onCommit: (plain, latex) => updateLiveSolution(task, index, branchIndex, plain, latex, row),
         onEnter: () => {
-          if (step.type === 'alternatives' && branchIndex === 0) {
-            studentPanel.querySelector(`[data-testid="p2-step-input-${index}-1"]`)?.focus();
+          if (step.type === 'alternatives') {
+            addBranchSolutionLine(task.id, index, branchIndex);
             return;
           }
           addSolutionStep(task.id, index + 1);
@@ -1110,6 +1134,50 @@
     bindSolutionRowActions(row);
     hydrateStudentSolutionEditor({ onlyEmpty: true });
     return true;
+  }
+
+  function addBranchSolutionLine(taskId, index, branchIndex = 0) {
+    const task = DEMO_LESSON.tasks.find(candidate => candidate.id === taskId);
+    if (!task || !isSolutionTask(task)) return;
+    const previous = taskState(taskId);
+    if (previous.solved || isTaskExhausted(previous, taskId)) return;
+    const response = solutionResponseForItem(previous);
+    const current = response.steps[index];
+    if (!current || current.type !== 'alternatives') return;
+
+    const groupId = current.branchGroupId || createBranchGroupId(taskId);
+    if (!current.branchGroupId) {
+      response.steps[index] = practiceEngine?.createStep?.('alternatives', current.values, current.latexValues, { branchGroupId: groupId })
+        || { ...current, branchGroupId: groupId };
+    }
+
+    const nextExisting = response.steps[index + 1];
+    if (nextExisting?.type === 'alternatives' && nextExisting.branchGroupId === groupId) {
+      activeSolutionStep = { taskId, index: index + 1 };
+      practiceEngine?.holdMathToolbar?.(300);
+      focusStudentSolutionField(index + 1, branchIndex);
+      return;
+    }
+
+    const branchCount = Math.max(2, Array.isArray(current.values) ? current.values.length : 2);
+    const values = Array.from({ length: branchCount }, () => '');
+    const latexValues = Array.from({ length: branchCount }, () => '');
+    const added = practiceEngine?.createStep?.('alternatives', values, latexValues, { branchGroupId: groupId })
+      || { type: 'alternatives', values, latexValues, branchGroupId: groupId };
+    response.steps.splice(index + 1, 0, added);
+
+    const next = normalizedProgress(progress);
+    next.status = 'in_progress';
+    next.taskStates = {
+      ...next.taskStates,
+      [taskId]: { ...previous, liveSolution: response, validationResult: null, solutionUpdatedAt: Date.now() }
+    };
+    activeSolutionStep = { taskId, index: index + 1 };
+    solutionFocusRequest = { taskId, index: index + 1, branchIndex };
+    practiceEngine?.holdMathToolbar?.(420);
+    // Įterpiant eilutę branchGroup viduryje keičiasi tolesni indeksai, todėl sąmoningai
+    // perpiešiame sprendimo lapą ir atkuriame fokusą toje pačioje šakoje.
+    publishProgress(next);
   }
 
   function addSolutionStep(taskId, focusIndex = null) {
