@@ -3282,6 +3282,7 @@
     return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
   }
 
+  // P2-SPLIT-P2.4.7.15.1: semantinis koeficientų žingsnis priima kelis priskyrimus vienoje eilutėje (pvz. a=1, b=-7, c=12).
   // P2-SPLIT-P2.4.7.15: pirmasis semantinio sprendimo žingsnio modelis.
   // Ekvivalentiška lygtis yra tik vienas sprendimo žingsnio tipas. Diskriminanto
   // kelyje leidžiame ir pagalbinius dydžius (a, b, c, D) bei formulės taikymą,
@@ -3388,7 +3389,31 @@
     return Math.abs(actual - expected) <= EPSILON * Math.max(1, Math.abs(actual), Math.abs(expected));
   }
 
-  function classifyQuadraticAuxiliaryStep(source, context) {
+  function splitQuadraticAuxiliaryAssignments(source) {
+    const input = normalizeMathLiveAscii(source);
+    const assignments = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      const char = input[index];
+      if (char === '(') depth += 1;
+      else if (char === ')') depth = Math.max(0, depth - 1);
+      if (depth !== 0 || (char !== ',' && char !== ';')) continue;
+
+      // Lietuviškas dešimtainis kablelis neturi būti laikomas priskyrimų skirtuku.
+      // Skaidome tik tada, kai po kablelio / kabliataškio prasideda naujas a=, b=, c= arba D=.
+      const remainder = input.slice(index + 1);
+      if (!/^\s*[abcd]\s*=/i.test(remainder)) continue;
+      const part = input.slice(start, index).trim();
+      if (part) assignments.push(part);
+      start = index + 1;
+    }
+    const tail = input.slice(start).trim();
+    if (tail) assignments.push(tail);
+    return assignments;
+  }
+
+  function classifySingleQuadraticAuxiliaryStep(source, context) {
     let parts;
     try { parts = splitTopLevelEqualities(source); }
     catch (error) { return { recognized: false, parseError: error }; }
@@ -3449,6 +3474,40 @@
       solutionSetEffect: 'context-only',
       value: lastValue,
       message: `Teisingai nustatytas kvadratinės lygties koeficientas ${left} = ${formatSemanticNumber(expected)}.`
+    };
+  }
+
+  function classifyQuadraticAuxiliaryStep(source, context) {
+    const assignments = splitQuadraticAuxiliaryAssignments(source);
+    if (assignments.length <= 1) return classifySingleQuadraticAuxiliaryStep(source, context);
+
+    const results = [];
+    for (const assignment of assignments) {
+      const result = classifySingleQuadraticAuxiliaryStep(assignment, context);
+      if (!result.recognized) return { recognized: false };
+      if (!result.ok) return result;
+      results.push(result);
+    }
+
+    const coefficientResults = results.filter(result => result.kind === 'quadratic-coefficient');
+    const otherResults = results.filter(result => result.kind !== 'quadratic-coefficient');
+    const messages = [];
+    if (coefficientResults.length) {
+      const values = assignments
+        .map(assignment => assignment.split('=')[0].trim().toLowerCase())
+        .filter(symbol => /^[abc]$/.test(symbol))
+        .map(symbol => `${symbol} = ${formatSemanticNumber(context.coefficients[symbol])}`);
+      messages.push(`Teisingai nustatyti kvadratinės lygties koeficientai: ${values.join(', ')}.`);
+    }
+    messages.push(...otherResults.map(result => result.message));
+
+    return {
+      recognized: true,
+      ok: true,
+      semanticType: 'derived-value',
+      kind: otherResults.length ? otherResults[otherResults.length - 1].kind : 'quadratic-coefficients',
+      solutionSetEffect: 'context-only',
+      message: messages.join(' ')
     };
   }
 

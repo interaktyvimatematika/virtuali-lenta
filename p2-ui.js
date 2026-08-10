@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.15';
+  const BUILD = 'P2-SPLIT-P2.4.7.15.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,7 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.15: pirmasis semantinio sprendimo žingsnio modelio prototipas.
+    // P2-SPLIT-P2.4.7.15.1: pirmasis semantinio sprendimo žingsnio modelio prototipas.
     // 3 diagnostinė kvadratinė lygtis leidžia ne tik ekvivalenčias lygtis, bet ir
     // pagalbinius diskriminanto skaičiavimus bei kvadratinės formulės taikymą.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
