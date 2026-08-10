@@ -1957,15 +1957,24 @@
     });
     field.addEventListener('beforeinput', event => {
       reaffirm({ ensureVisible: false });
+      // P2.4.7.7.9.3 – fizinis „*“ neturi kurti atskiro MathLive ženklo.
+      // Jį pakeičiame tuo pačiu \cdot įterpimo keliu, kurį naudoja Matematikos juostos „·“.
+      // Taip paliekamas tik vienas taškas – tas, kuris turi teisingą operatoriaus tarpą.
+      if (!event.isComposing && event.inputType === 'insertText' && event.data === '*') {
+        event.preventDefault();
+        event.stopPropagation();
+        const handledAt = Number(field.__vbePhysicalStarHandledAt || 0);
+        if (!handledAt || Date.now() - handledAt > 120) {
+          field.__vbePhysicalStarHandledAt = Date.now();
+          insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
+        }
+        return;
+      }
+
       // Android / ekraninė klaviatūra ne visada duoda patikimą keydown.
-      // Jei operatorius rašomas dar esant mūsų vektoriaus įvedimo kontekste,
+      // Jei kitas operatorius rašomas dar esant mūsų vektoriaus įvedimo kontekste,
       // prieš natūralų MathLive įterpimą išeiname už visos vektoriaus struktūros.
-      // Event'o nestabdome: operatorių įterpia pats MathLive, todėl išlieka
-      // jo natūrali matematinė klasė ir tarpai.
-      // P2.4.7.7.9.2 – „*“ nebeperimame ir nebekonvertuojame patys.
-      // Leidžiame MathLive apdoroti fizinės / ekraninės klaviatūros įvestį vieną kartą.
-      // Jei operatorius rašomas aktyvaus vektoriaus kontekste, žemiau tik
-      // išeiname už vektoriaus prieš natūralų MathLive įterpimą.
+      // Event'o nestabdome: operatorių įterpia pats MathLive.
       if (!event.isComposing && event.inputType === 'insertText'
         && isVbeVectorKeyboardExitOperator(event.data)
         && field.__vbeVectorPromptActive === true) {
@@ -2012,8 +2021,17 @@
           if (field.isConnected && field.__vbeVectorDeletePending) finishVbeVectorDeletion(field);
         }, 0);
       }
-      // P2.4.7.7.9.2 – „*“ paliekamas natūraliam MathLive įvedimui;
-      // čia nebeįterpiame jokio papildomo daugybos taško.
+      // P2.4.7.7.9.3 – fizinio „*“ natyvaus MathLive ženklo nepaliekame.
+      // Sustabdome klaviatūros įvestį ir kviečiame lygiai tą patį \cdot kelią,
+      // kurį naudoja Matematikos juostos „·“. insertIntoDirectMathField() pats
+      // pasirūpina išėjimu iš aktyvaus vektoriaus prieš operatorių.
+      if (event.key === '*' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        field.__vbePhysicalStarHandledAt = Date.now();
+        insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
+        return;
+      }
 
       // Kiti fizinės klaviatūros operatoriai paliekami natūraliam MathLive įterpimui,
       // tačiau prieš juos, jei reikia, pilnai išeiname iš aktyvaus vektoriaus.
