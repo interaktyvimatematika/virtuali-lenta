@@ -3277,11 +3277,9 @@
     const normalized = normalizeStructuredStep(step);
     if (normalized.type !== 'alternatives') throw new Error('Šis žingsnis nėra alternatyvų eilutė');
     if (normalized.values.some(value => !String(value || '').trim())) throw new Error('Užpildyk visas alternatyvias lygtis');
-    const descriptors = normalized.values.map(value => {
-      const equation = parseEquation(value);
-      return linearOnly ? describeLinearEquation(equation) : describePolynomialEquation(equation);
-    });
-    return { descriptor: unionEquationDescriptors(descriptors), descriptors };
+    const equations = normalized.values.map(value => parseEquation(value));
+    const descriptors = equations.map(equation => linearOnly ? describeLinearEquation(equation) : describePolynomialEquation(equation));
+    return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
   }
 
   function alternativesAreIsolatedRoots(step, targetDescriptor) {
@@ -3309,7 +3307,7 @@
 
     const stepResults = [];
     const transitionValidationSetting = task.response?.options?.stepTransitionValidation;
-    // P2-SPLIT-P2.4.7.13: visos tiesinės lygtys pagal nutylėjimą tikrina ne tik sprendinių aibę,
+    // P2-SPLIT-P2.4.7.14: visos tiesinės lygtys pagal nutylėjimą tikrina ne tik sprendinių aibę,
     // bet ir tiesioginio žingsnio pagrįstumą. Seną elgesį galima aiškiai išjungti su 'off'.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     let previousEquation;
@@ -3462,12 +3460,19 @@
     }
 
     const stepResults = [];
+    const transitionValidationSetting = task.response?.options?.stepTransitionValidation;
+    // P2-SPLIT-P2.4.7.14: kvadratinėms lygtims pagal nutylėjimą taip pat tikriname
+    // ne tik sprendinių aibę, bet ir tiesioginio žingsnio pagrįstumą.
+    const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     let targetDescriptor;
     let previousDescriptor;
+    let previousEquation = null;
+    let previousAlternativeEquations = null;
     try {
       const initialEquation = parseEquation(task.response.options.initial || task.prompt?.value);
       targetDescriptor = describePolynomialEquation(initialEquation);
       previousDescriptor = targetDescriptor;
+      previousEquation = initialEquation;
     } catch (error) {
       return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults };
     }
@@ -3493,6 +3498,8 @@
           stepResults[index] = { status: 'correct', message: 'Sprendinių aibė užrašyta teisingai.' };
           completed = true;
           previousDescriptor = suppliedSetToDescriptor(suppliedSet);
+          previousEquation = null;
+          previousAlternativeEquations = null;
           continue;
         } catch (error) {
           stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
@@ -3502,9 +3509,12 @@
 
       let descriptor;
       let equation = null;
+      let alternativeEquations = null;
       try {
         if (step.type === 'alternatives') {
-          descriptor = parseAlternativeDescriptor(step, false).descriptor;
+          const parsedAlternatives = parseAlternativeDescriptor(step, false);
+          descriptor = parsedAlternatives.descriptor;
+          alternativeEquations = parsedAlternatives.equations;
         } else {
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Šiam žingsniui pasirink „Sprendimo šakos“.');
@@ -3526,11 +3536,45 @@
         };
       }
 
+      let transition = null;
+      if (localTransitionMode) {
+        try {
+          if (step.type === 'alternatives') {
+            if (previousEquation) transition = classifyEquationBranching(previousEquation, alternativeEquations);
+            else if (previousAlternativeEquations) transition = classifyAlternativeBranchTransitions(previousAlternativeEquations, alternativeEquations);
+          } else if (equation && previousEquation) {
+            transition = classifyQuadraticEquationTransition(previousEquation, equation);
+          }
+        } catch (error) {
+          stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
+          return {
+            status: 'incorrect',
+            title: `Nepavyko pagrįsti ${index + 1} žingsnio`,
+            message: friendlyParseError(error),
+            stepResults
+          };
+        }
+
+        if (!transition?.ok) {
+          stepResults[index] = { status: 'incorrect', message: 'Per didelis šuolis. Parodyk tarpinį žingsnį.' };
+          return {
+            status: 'incorrect',
+            title: `Per didelis šuolis – ${index + 1} žingsnyje`,
+            message: step.type === 'alternatives'
+              ? 'Sprendinių aibė nepasikeitė, tačiau šakojimas neišplaukia tiesiogiai iš ankstesnės eilutės. Pirmiausia parodyk lygtį sandaugos = 0 pavidalu.'
+              : 'Sprendinių aibė nepasikeitė, tačiau perėjimas nėra vienas aiškus lygiavertis pertvarkymas. Parodyk tarpinį žingsnį.',
+            stepResults
+          };
+        }
+      }
+
       stepResults[index] = {
         status: 'correct',
-        message: step.type === 'alternatives' ? 'Alternatyvų bendra sprendinių aibė išsaugota.' : 'Sprendinių aibė išsaugota.'
+        message: transition?.message || (step.type === 'alternatives' ? 'Alternatyvų bendra sprendinių aibė išsaugota.' : 'Sprendinių aibė išsaugota.')
       };
       previousDescriptor = descriptor;
+      previousEquation = equation;
+      previousAlternativeEquations = alternativeEquations;
       if (equation && descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, 'x', descriptorRoots(targetDescriptor)[0])) completed = true;
       if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
     }
@@ -3559,7 +3603,9 @@
     return {
       status: 'correct',
       title: 'Sprendimas teisingas',
-      message: `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
+      message: localTransitionMode
+        ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais pertvarkymais. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
+        : `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
       stepResults
     };
   }
@@ -6291,7 +6337,7 @@ KOKYBĖS REIKALAVIMAI:
     return samePolynomialSolutionSet(first, second);
   }
 
-  // P2-SPLIT-P2.4.7.13: bendras tiesinių lygčių žingsnio pagrįstumo variklis.
+  // P2-SPLIT-P2.4.7.14: bendras tiesinių lygčių žingsnio pagrįstumo variklis.
   // Sprendinių aibės sutapimas lieka saugos sluoksniu, o ši klasifikacija tikrina,
   // ar nauja eilutė gaunama vienu aiškiu mokykliniu lygiaverčiu pertvarkymu.
   // Sąmoningai leidžiame kelių narių perkėlimą vienu žingsniu, bet ne kelių skirtingų
@@ -6358,6 +6404,239 @@ KOKYBĖS REIKALAVIMAI:
     if (!polynomialsApproximatelyEqual(nextSides.left, polynomialScaled(previousSides.left, factor))) return null;
     if (!polynomialsApproximatelyEqual(nextSides.right, polynomialScaled(previousSides.right, factor))) return null;
     return factor;
+  }
+
+  // P2-SPLIT-P2.4.7.14: kvadratinių lygčių žingsnio pagrįstumo plėtra.
+  // Faktorizavimą ir nulinės sandaugos taisyklę atpažįstame atskirai, o kitoms
+  // lygiavertėms algebrinėms transformacijoms naudojame tą patį bendrą variklį.
+  function isZeroAst(node) {
+    const value = constantValue(node);
+    return value !== null && Math.abs(value) <= EPSILON;
+  }
+
+  function factorFormScore(node) {
+    if (!node) return 0;
+    if (node.type === 'binary' && node.operator === '*') {
+      const leftHasVariable = containsVariable(node.left, 'x');
+      const rightHasVariable = containsVariable(node.right, 'x');
+      const local = leftHasVariable && rightHasVariable ? 2 : (leftHasVariable || rightHasVariable ? 1 : 0);
+      return local + factorFormScore(node.left) + factorFormScore(node.right);
+    }
+    if (node.type === 'binary' && node.operator === '^') {
+      const exponent = constantValue(node.right);
+      if (containsVariable(node.left, 'x') && exponent !== null && Number.isInteger(exponent) && exponent >= 2) return 2 + factorFormScore(node.left);
+    }
+    return 0;
+  }
+
+  function equationZeroSideExpression(equation) {
+    if (isZeroAst(equation.right)) return { expression: equation.left, side: 'left' };
+    if (isZeroAst(equation.left)) return { expression: equation.right, side: 'right' };
+    return null;
+  }
+
+  function classifyQuadraticEquationTransition(previousEquation, nextEquation) {
+    const previous = equationSidePolynomials(previousEquation);
+    const next = equationSidePolynomials(nextEquation);
+    const sameOrientation = polynomialsApproximatelyEqual(previous.left, next.left) && polynomialsApproximatelyEqual(previous.right, next.right);
+
+    if (sameOrientation) {
+      const previousZeroSide = equationZeroSideExpression(previousEquation);
+      const nextZeroSide = equationZeroSideExpression(nextEquation);
+      if (previousZeroSide && nextZeroSide && previousZeroSide.side === nextZeroSide.side) {
+        const previousScore = factorFormScore(previousZeroSide.expression);
+        const nextScore = factorFormScore(nextZeroSide.expression);
+        if (nextScore > previousScore) {
+          return {
+            ok: true,
+            kind: 'factorize',
+            message: 'Atpažintas lygiavertis pertvarkymas: daugianaris išskaidytas dauginamaisiais arba užrašytas pilno kvadrato pavidalu.'
+          };
+        }
+        if (previousScore > nextScore) {
+          return {
+            ok: true,
+            kind: 'expand-factors',
+            message: 'Atpažintas lygiavertis pertvarkymas: dauginamieji išskleisti ir sutraukti nariai.'
+          };
+        }
+      }
+    }
+
+    const squareZero = squareEqualsZeroBase(previousEquation);
+    if (squareZero) {
+      const nextPolynomial = equationPolynomial(nextEquation);
+      const basePolynomial = expressionPolynomial(squareZero.base);
+      if (polynomialProportionalFactor(basePolynomial, nextPolynomial) !== null) {
+        return {
+          ok: true,
+          kind: 'square-zero-root',
+          message: 'Atpažintas lygiavertis pertvarkymas: jei reiškinio kvadratas lygus nuliui, pats reiškinys lygus nuliui.'
+        };
+      }
+    }
+
+    return classifyLocalEquationTransition(previousEquation, nextEquation);
+  }
+
+  function flattenProductFactors(node) {
+    if (node?.type === 'binary' && node.operator === '*') {
+      return [...flattenProductFactors(node.left), ...flattenProductFactors(node.right)];
+    }
+    return [node];
+  }
+
+  function nonzeroVariableFactorsFromZeroProduct(equation) {
+    const zeroSide = equationZeroSideExpression(equation);
+    if (!zeroSide) return [];
+    const raw = flattenProductFactors(zeroSide.expression);
+    const factors = [];
+    for (const factor of raw) {
+      const constant = constantValue(factor);
+      if (constant !== null) {
+        if (Math.abs(constant) <= EPSILON) return [];
+        continue;
+      }
+      if (!containsVariable(factor, 'x')) continue;
+      factors.push(expressionPolynomial(factor));
+    }
+    return factors;
+  }
+
+  function polynomialProportionalFactor(first, second) {
+    const a = cleanPolynomial(first);
+    const b = cleanPolynomial(second);
+    const length = Math.max(a.length, b.length);
+    let factor = null;
+    for (let index = 0; index < length; index += 1) {
+      const left = a[index] || 0;
+      const right = b[index] || 0;
+      if (Math.abs(left) <= EPSILON && Math.abs(right) <= EPSILON) continue;
+      if (Math.abs(left) <= EPSILON || Math.abs(right) <= EPSILON) return null;
+      const candidate = right / left;
+      if (!Number.isFinite(candidate) || Math.abs(candidate) <= EPSILON) return null;
+      if (factor === null) factor = candidate;
+      else {
+        const tolerance = EPSILON * Math.max(1, Math.abs(factor), Math.abs(candidate));
+        if (Math.abs(candidate - factor) > tolerance) return null;
+      }
+    }
+    return factor;
+  }
+
+  function squaredExpressionAndConstant(equation) {
+    const candidates = [
+      [equation.left, equation.right],
+      [equation.right, equation.left]
+    ];
+    for (const [powerSide, constantSide] of candidates) {
+      if (powerSide?.type !== 'binary' || powerSide.operator !== '^') continue;
+      const exponent = constantValue(powerSide.right);
+      const constant = constantValue(constantSide);
+      if (exponent === 2 && constant !== null && Number.isFinite(constant)) {
+        return { base: powerSide.left, constant };
+      }
+    }
+    return null;
+  }
+
+  function squareEqualsZeroBase(equation) {
+    const square = squaredExpressionAndConstant(equation);
+    return square && Math.abs(square.constant) <= EPSILON ? square : null;
+  }
+
+  function classifySquareEquationBranching(previousEquation, alternativeEquations) {
+    const square = squaredExpressionAndConstant(previousEquation);
+    if (!square || square.constant <= EPSILON || alternativeEquations.length !== 2) {
+      return { ok: false, kind: 'not-square-branch' };
+    }
+    const root = Math.sqrt(square.constant);
+    if (!Number.isFinite(root)) return { ok: false, kind: 'not-square-branch' };
+    const basePolynomial = expressionPolynomial(square.base);
+    const expected = [
+      addPolynomials(basePolynomial, [root], -1),
+      addPolynomials(basePolynomial, [-root], -1)
+    ];
+    const unused = new Set([0, 1]);
+    for (const equation of alternativeEquations) {
+      const branchPolynomial = equationPolynomial(equation);
+      let matched = null;
+      for (const index of unused) {
+        if (polynomialProportionalFactor(expected[index], branchPolynomial) !== null) {
+          matched = index;
+          break;
+        }
+      }
+      if (matched === null) return { ok: false, kind: 'not-square-branch' };
+      unused.delete(matched);
+    }
+    return {
+      ok: true,
+      kind: 'square-branches',
+      message: 'Atpažintas šakojimas: iš reiškinio kvadrato lygties gauti du atvejai su priešingais kvadratinės šaknies ženklais.'
+    };
+  }
+
+  function classifyEquationBranching(previousEquation, alternativeEquations) {
+    const zeroProduct = classifyZeroProductBranching(previousEquation, alternativeEquations);
+    if (zeroProduct.ok) return zeroProduct;
+    const squareBranches = classifySquareEquationBranching(previousEquation, alternativeEquations);
+    if (squareBranches.ok) return squareBranches;
+    return { ok: false, kind: 'unexplained-branch' };
+  }
+
+  function classifyZeroProductBranching(previousEquation, alternativeEquations) {
+    const factors = nonzeroVariableFactorsFromZeroProduct(previousEquation);
+    if (factors.length < 2 || alternativeEquations.length !== factors.length) {
+      return { ok: false, kind: 'not-zero-product-branch' };
+    }
+
+    const unused = new Set(factors.map((_, index) => index));
+    for (const equation of alternativeEquations) {
+      const branchPolynomial = equationPolynomial(equation);
+      let matched = null;
+      for (const index of unused) {
+        if (polynomialProportionalFactor(factors[index], branchPolynomial) !== null) {
+          matched = index;
+          break;
+        }
+      }
+      if (matched === null) return { ok: false, kind: 'not-zero-product-branch' };
+      unused.delete(matched);
+    }
+
+    return {
+      ok: true,
+      kind: 'zero-product-branches',
+      message: 'Atpažintas šakojimas: pritaikyta nulinės sandaugos taisyklė.'
+    };
+  }
+
+  function classifyAlternativeBranchTransitions(previousEquations, nextEquations) {
+    if (!Array.isArray(previousEquations) || !Array.isArray(nextEquations) || previousEquations.length !== nextEquations.length) {
+      return { ok: false, kind: 'branch-transition-mismatch' };
+    }
+    const unused = new Set(previousEquations.map((_, index) => index));
+    for (const nextEquation of nextEquations) {
+      const nextDescriptor = describePolynomialEquation(nextEquation);
+      let matchedIndex = null;
+      for (const index of unused) {
+        const previousEquation = previousEquations[index];
+        const previousDescriptor = describePolynomialEquation(previousEquation);
+        if (!samePolynomialSolutionSet(previousDescriptor, nextDescriptor)) continue;
+        const transition = classifyLocalEquationTransition(previousEquation, nextEquation);
+        if (!transition.ok) continue;
+        matchedIndex = index;
+        break;
+      }
+      if (matchedIndex === null) return { ok: false, kind: 'branch-transition-mismatch' };
+      unused.delete(matchedIndex);
+    }
+    return {
+      ok: true,
+      kind: 'branch-transform',
+      message: 'Atpažintas lygiavertis pertvarkymas: kiekviena sprendimo šaka pertvarkyta tiesioginiu lygiaverčiu veiksmu.'
+    };
   }
 
   function classifyLocalEquationTransition(previousEquation, nextEquation) {

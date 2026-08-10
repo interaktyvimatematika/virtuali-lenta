@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.13';
+  const BUILD = 'P2-SPLIT-P2.4.7.14';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,7 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.13: žingsnio pagrįstumo tikrinimas tapo bendru visų tiesinių lygčių režimu.
+    // P2-SPLIT-P2.4.7.14: žingsnio pagrįstumo tikrinimas išplėstas iš tiesinių į kvadratines lygtis.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
@@ -115,7 +115,8 @@
             expectedValues: [3, 4],
             expectedDisplay: 'x = 3; x = 4',
             minimumSteps: 2,
-            autoDerived: true
+            autoDerived: true,
+            stepTransitionValidation: 'quadratic-v1'
           }
         }
       },
@@ -141,7 +142,8 @@
             expectedValues: [3],
             expectedDisplay: 'x = 3',
             minimumSteps: 2,
-            autoDerived: true
+            autoDerived: true,
+            stepTransitionValidation: 'quadratic-v1'
           }
         }
       },
@@ -167,7 +169,8 @@
             expectedValues: [],
             expectedDisplay: 'sprendinių nėra',
             minimumSteps: 2,
-            autoDerived: true
+            autoDerived: true,
+            stepTransitionValidation: 'quadratic-v1'
           }
         }
       },
@@ -193,7 +196,8 @@
             expectedValues: [-0.5, 3],
             expectedDisplay: 'x = -1/2; x = 3',
             minimumSteps: 2,
-            autoDerived: true
+            autoDerived: true,
+            stepTransitionValidation: 'quadratic-v1'
           }
         }
       }
