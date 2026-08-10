@@ -4122,6 +4122,101 @@
     return { recognized: true, ok: true, value: successful.value, lhs: left, branch: successful.branch, candidates: matched.filter(item => item.branch === successful.branch).map(item => item.candidate) };
   }
 
+  // P2-SPLIT-P2.4.7.17.2: vertikalios kvadratinės formulės šakos gali tęsti
+  // lygybės grandinę per kelias eilutes, pvz. x_1 = ... ir kitoje eilutėje
+  // = 6/2 = 3. resolveStructuredStepContinuations() jau atkuria kairįjį narį,
+  // o ši funkcija patikrina visą grandinę kaip skaitinį tęsinį, užuot siuntusi ją
+  // į bendrą parseEquation(), kuris sąmoningai leidžia tik vieną '='.
+  function classifyQuadraticFormulaContinuationAlternativesV2(step, context, previousEquations) {
+    const normalized = normalizeStructuredStep(step);
+    if (normalized.type !== 'alternatives' || !Array.isArray(previousEquations) || !previousEquations.length) {
+      return { recognized: false };
+    }
+
+    const parsedValues = [];
+    const equations = [];
+    let sawContinuation = false;
+
+    for (let index = 0; index < normalized.values.length; index += 1) {
+      const source = String(normalized.values[index] || '').trim();
+      const previousEquation = previousEquations[index];
+      if (!source) {
+        if (!previousEquation) return { recognized: false };
+        const previousDescriptor = describePolynomialEquation(previousEquation);
+        const roots = descriptorRoots(previousDescriptor);
+        if (roots.length !== 1) return { recognized: false };
+        parsedValues.push(roots[0]);
+        equations.push(previousEquation);
+        continue;
+      }
+
+      let parts;
+      try { parts = splitTopLevelEqualities(source); }
+      catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+      if (parts.length < 2) return { recognized: false };
+
+      const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '').toLowerCase();
+      if (!/^x(?:1|2)?$/.test(left)) return { recognized: false };
+      sawContinuation = true;
+
+      const rhs = parts.slice(1).filter(part => String(part || '').trim());
+      if (!rhs.length || rhs.length !== parts.length - 1) {
+        return { recognized: true, ok: false, message: 'Lygybės tęsinio eilutėje po kiekvieno = turi būti reiškinys.' };
+      }
+
+      const ids = [...new Set(rhs.flatMap(part => semanticIdentifiersV2(part)))]
+        .filter(symbol => symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+      const candidates = semanticCandidateMappingsV2(context, ids);
+      let successful = null;
+
+      for (const candidate of candidates.length ? candidates : [{}]) {
+        const scope = semanticScopeForCandidateV2(context, candidate);
+        let value = null;
+        let ok = true;
+        try {
+          for (const part of rhs) {
+            const current = evaluateQuadraticSemanticNumericV2(part, scope);
+            if (value !== null && !semanticNumberMatches(current, value)) { ok = false; break; }
+            value = current;
+          }
+        } catch (_) { ok = false; }
+        if (!ok || value === null) continue;
+
+        if (previousEquation) {
+          const previousDescriptor = describePolynomialEquation(previousEquation);
+          const previousRoots = descriptorRoots(previousDescriptor);
+          if (previousRoots.length !== 1 || !semanticNumberMatches(value, previousRoots[0])) continue;
+        }
+        successful = { value, candidate };
+        break;
+      }
+
+      if (!successful) {
+        return {
+          recognized: true,
+          ok: false,
+          message: 'Šios šakos lygybės tęsinys nėra lygus ankstesnėje eilutėje gautai reikšmei.'
+        };
+      }
+
+      parsedValues.push(successful.value);
+      equations.push(syntheticRootEquation(successful.value));
+    }
+
+    if (!sawContinuation) return { recognized: false };
+    return {
+      recognized: true,
+      ok: true,
+      semanticType: 'formula-application',
+      kind: 'quadratic-formula-continuation',
+      solutionSetEffect: 'preserve-solutions',
+      values: parsedValues,
+      descriptor: descriptorFromRootValues(parsedValues),
+      equations,
+      message: 'Tęsiami kvadratinės formulės skaičiavimai; kiekvienos šakos lygybės grandinė išlieka teisinga.'
+    };
+  }
+
   function classifyQuadraticFormulaAlternativesV2(step, context) {
     const normalized = normalizeStructuredStep(step);
     if (normalized.type !== 'alternatives') return { recognized: false };
@@ -4445,7 +4540,22 @@
       let semanticTransition = null;
       try {
         if (step.type === 'alternatives') {
-          if (semanticMode && step.values.every(value => String(value || '').trim())) {
+          // 7.17.2: po kvadratinės formulės šakų leisk tęsti skaičiavimą naujomis
+          // eilutėmis, įskaitant kelis '=' vienoje tęsinio eilutėje.
+          if (semanticModeV2 && previousAlternativeEquations
+              && (previousSemanticKind === 'quadratic-formula' || previousSemanticKind === 'quadratic-formula-continuation')) {
+            const semanticContinuation = classifyQuadraticFormulaContinuationAlternativesV2(
+              step, semanticContext, previousAlternativeEquations
+            );
+            if (semanticContinuation.recognized) {
+              if (!semanticContinuation.ok) throw new Error(semanticContinuation.message);
+              semanticTransition = semanticContinuation;
+              descriptor = semanticContinuation.descriptor;
+              alternativeEquations = semanticContinuation.equations;
+              usedSemanticStep = true;
+            }
+          }
+          if (!descriptor && semanticMode && step.values.every(value => String(value || '').trim())) {
             const semanticFormula = semanticModeV2
               ? classifyQuadraticFormulaAlternativesV2(step, semanticContext)
               : classifyQuadraticFormulaAlternatives(step, semanticContext);
