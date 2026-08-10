@@ -1957,19 +1957,8 @@
     });
     field.addEventListener('beforeinput', event => {
       reaffirm({ ensureVisible: false });
-      // P2.4.7.7.9.3 – fizinis „*“ neturi kurti atskiro MathLive ženklo.
-      // Jį pakeičiame tuo pačiu \cdot įterpimo keliu, kurį naudoja Matematikos juostos „·“.
-      // Taip paliekamas tik vienas taškas – tas, kuris turi teisingą operatoriaus tarpą.
-      if (!event.isComposing && event.inputType === 'insertText' && event.data === '*') {
-        event.preventDefault();
-        event.stopPropagation();
-        const handledAt = Number(field.__vbePhysicalStarHandledAt || 0);
-        if (!handledAt || Date.now() - handledAt > 120) {
-          field.__vbePhysicalStarHandledAt = Date.now();
-          insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
-        }
-        return;
-      }
+      // P2.4.7.7.9.4: fizinį „*“ perimame dokumento CAPTURE fazėje, dar prieš
+      // MathLive vidinius klaviatūros handlerius. Čia jo papildomai nebeįterpiame.
 
       // Android / ekraninė klaviatūra ne visada duoda patikimą keydown.
       // Jei kitas operatorius rašomas dar esant mūsų vektoriaus įvedimo kontekste,
@@ -2021,18 +2010,7 @@
           if (field.isConnected && field.__vbeVectorDeletePending) finishVbeVectorDeletion(field);
         }, 0);
       }
-      // P2.4.7.7.9.3 – fizinio „*“ natyvaus MathLive ženklo nepaliekame.
-      // Sustabdome klaviatūros įvestį ir kviečiame lygiai tą patį \cdot kelią,
-      // kurį naudoja Matematikos juostos „·“. insertIntoDirectMathField() pats
-      // pasirūpina išėjimu iš aktyvaus vektoriaus prieš operatorių.
-      if (event.key === '*' && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        field.__vbePhysicalStarHandledAt = Date.now();
-        insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
-        return;
-      }
-
+      // P2.4.7.7.9.4: „*“ jau būna pilnai perimtas dokumento CAPTURE fazėje.
       // Kiti fizinės klaviatūros operatoriai paliekami natūraliam MathLive įterpimui,
       // tačiau prieš juos, jei reikia, pilnai išeiname iš aktyvaus vektoriaus.
       if (isVbeVectorKeyboardExitOperator(event.key)
@@ -2418,6 +2396,40 @@
   }
 
   function installMathEditingBoundary() {
+    // P2.4.7.7.9.4 – fizinės klaviatūros „*“ perimame CAPTURE fazėje,
+    // dar prieš įvykiui pasiekiant MathLive Shadow DOM / vidinius keydown handlerius.
+    // Ankstesnėse versijose perėmimas buvo pačiame <math-field> bubble etape, todėl
+    // MathLive spėdavo įterpti savo „*“ ženklą, o mūsų kodas po to dar įterpdavo \cdot.
+    // Rezultatas – du taškai. Dabar natyvus „*“ apskritai nepasiekia MathLive, o
+    // vienintelis įterpimas eina tuo pačiu keliu kaip Matematikos juostos „·“.
+    document.addEventListener('keydown', event => {
+      if (event.key !== '*' || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
+      const field = mathFieldFromEvent(event)
+        || (document.activeElement?.matches?.('math-field.direct-math-field') ? document.activeElement : null);
+      if (!field) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      field.__vbePhysicalStarCaptureAt = performance.now();
+      insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
+    }, true);
+
+    // Kai platforma siunčia beforeinput be patikimo keydown (pvz. kai kurios ekraninės
+    // klaviatūros), taip pat užblokuojame natyvų „*“. Jei prieš akimirką jį jau
+    // apdorojome keydown CAPTURE fazėje, nieko antro neįterpiame.
+    document.addEventListener('beforeinput', event => {
+      if (event.isComposing || event.inputType !== 'insertText' || event.data !== '*') return;
+      const field = mathFieldFromEvent(event)
+        || (document.activeElement?.matches?.('math-field.direct-math-field') ? document.activeElement : null);
+      if (!field) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const handledAt = Number(field.__vbePhysicalStarCaptureAt || 0);
+      if (!handledAt || performance.now() - handledAt > 160) {
+        field.__vbePhysicalStarCaptureAt = performance.now();
+        insertIntoDirectMathField(field, { label: '·', insert: '\\cdot ' });
+      }
+    }, true);
+
     document.addEventListener('pointerdown', event => {
       const field = mathFieldFromEvent(event);
       if (field) {
