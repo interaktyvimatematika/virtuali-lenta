@@ -3282,6 +3282,251 @@
     return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
   }
 
+  // P2-SPLIT-P2.4.7.15: pirmasis semantinio sprendimo žingsnio modelis.
+  // Ekvivalentiška lygtis yra tik vienas sprendimo žingsnio tipas. Diskriminanto
+  // kelyje leidžiame ir pagalbinius dydžius (a, b, c, D) bei formulės taikymą,
+  // kurie neturi atskiros sprendinių aibės ir todėl negali būti tikrinami kaip lygtis x atžvilgiu.
+  function splitTopLevelEqualities(source) {
+    const input = normalizeMathLiveAscii(source);
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      const char = input[index];
+      if (char === '(') depth += 1;
+      else if (char === ')') depth -= 1;
+      if (depth < 0) throw new Error('Parse error: uždarytas skliaustas neturi poros');
+      if (char === '=' && depth === 0) {
+        parts.push(input.slice(start, index).trim());
+        start = index + 1;
+      }
+    }
+    if (depth !== 0) throw new Error('Parse error: neuždaryti skliaustai');
+    parts.push(input.slice(start).trim());
+    return parts;
+  }
+
+  function quadraticContextFromInitialEquation(initialEquation, targetDescriptor) {
+    const polynomial = equationPolynomial(initialEquation);
+    const coefficients = {
+      a: Number(polynomial[2] || 0),
+      b: Number(polynomial[1] || 0),
+      c: Number(polynomial[0] || 0)
+    };
+    const discriminant = coefficients.b * coefficients.b - 4 * coefficients.a * coefficients.c;
+    return {
+      targetDescriptor,
+      coefficients,
+      discriminant,
+      seenCoefficients: new Set(),
+      seenDiscriminant: false,
+      semanticSteps: []
+    };
+  }
+
+  function formatSemanticNumber(value) {
+    return formatSupportedRoot(value);
+  }
+
+  function expandCompactQuadraticSymbols(source) {
+    let result = String(source || '').toLowerCase().replace(/√/g, 'sqrt');
+    // MathLive ASCII gali grąžinti 4ac be daugybos ženklų. Atskirame semantiniame
+    // skaičiavime a, b, c ir d laikome pavieniais simboliais, todėl „ac“ -> „a*c“.
+    result = result.replace(/[abcd]{2,}/g, match => match.split('').join('*'));
+    result = result.replace(/(\d|\))(?=[abcd])/g, '$1*');
+    result = result.replace(/([abcd])(?=\d|\()/g, '$1*');
+    return result;
+  }
+
+  function replaceSemanticSqrtCalls(source, symbols, depth = 0) {
+    if (depth > 12) throw new Error('Parse error: per daug įdėtų šaknų');
+    let result = String(source || '');
+    let guard = 0;
+    while (/sqrt\s*\(/i.test(result)) {
+      if (guard++ > 20) throw new Error('Parse error: nepavyko perskaityti kvadratinės šaknies');
+      const lower = result.toLowerCase();
+      const start = lower.lastIndexOf('sqrt(');
+      const open = start + 4;
+      let nesting = 0;
+      let close = -1;
+      for (let index = open; index < result.length; index += 1) {
+        if (result[index] === '(') nesting += 1;
+        else if (result[index] === ')') {
+          nesting -= 1;
+          if (nesting === 0) { close = index; break; }
+        }
+      }
+      if (close < 0) throw new Error('Parse error: neuždaryta kvadratinė šaknis');
+      const inner = result.slice(open + 1, close);
+      const value = evaluateQuadraticSemanticNumeric(inner, symbols, depth + 1);
+      const tolerance = EPSILON * Math.max(1, Math.abs(value));
+      if (value < -tolerance) throw new Error('Parse error: realiųjų skaičių srityje negalima traukti šaknies iš neigiamo skaičiaus');
+      const root = Math.sqrt(Math.max(0, value));
+      result = `${result.slice(0, start)}(${root})${result.slice(close + 1)}`;
+    }
+    return result;
+  }
+
+  function evaluateQuadraticSemanticNumeric(source, symbols = {}, depth = 0) {
+    let expression = expandCompactQuadraticSymbols(normalizeMathLiveAscii(source)).replace(/\s+/g, '');
+    expression = replaceSemanticSqrtCalls(expression, symbols, depth);
+    expression = expression.replace(/[abcd]/gi, symbol => {
+      const key = symbol.toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(symbols, key) || !Number.isFinite(symbols[key])) {
+        throw new Error(`Parse error: dar nežinoma ${symbol} reikšmė`);
+      }
+      return `(${symbols[key]})`;
+    });
+    const ast = parseExpression(expression);
+    if (containsVariable(ast, 'x')) throw new Error('Parse error: pagalbinio dydžio reikšmėje neturi likti x');
+    const value = evaluateAst(ast, {});
+    if (!Number.isFinite(value)) throw new Error('Parse error: gauta nebaigtinė skaitinė reikšmė');
+    return value;
+  }
+
+  function semanticNumberMatches(actual, expected) {
+    return Math.abs(actual - expected) <= EPSILON * Math.max(1, Math.abs(actual), Math.abs(expected));
+  }
+
+  function classifyQuadraticAuxiliaryStep(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: false, parseError: error }; }
+    if (parts.length < 2) return { recognized: false };
+    const left = parts[0].replace(/\s+/g, '').toLowerCase();
+    if (!/^[abcd]$/.test(left)) return { recognized: false };
+
+    const symbols = {
+      ...context.coefficients,
+      d: context.discriminant
+    };
+    const expected = left === 'd' ? context.discriminant : context.coefficients[left];
+    let lastValue = null;
+    try {
+      for (let index = 1; index < parts.length; index += 1) {
+        const value = evaluateQuadraticSemanticNumeric(parts[index], symbols);
+        if (!semanticNumberMatches(value, expected)) {
+          return {
+            recognized: true,
+            ok: false,
+            semanticType: 'derived-value',
+            kind: left === 'd' ? 'discriminant' : 'quadratic-coefficient',
+            message: left === 'd'
+              ? `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai D = ${formatSemanticNumber(expected)}.`
+              : `Koeficientas ${left} nustatytas neteisingai. Šiai lygčiai ${left} = ${formatSemanticNumber(expected)}.`
+          };
+        }
+        lastValue = value;
+      }
+    } catch (error) {
+      return { recognized: true, ok: false, semanticType: 'derived-value', kind: left === 'd' ? 'discriminant' : 'quadratic-coefficient', message: friendlyParseError(error) };
+    }
+
+    if (left === 'd') {
+      const mentionsFormulaSymbols = parts.slice(1).some(part => /[abc]/i.test(part));
+      context.seenDiscriminant = true;
+      context.semanticSteps.push({ semanticType: 'derived-value', kind: 'discriminant', value: expected });
+      return {
+        recognized: true,
+        ok: true,
+        semanticType: 'derived-value',
+        kind: 'discriminant',
+        solutionSetEffect: 'context-only',
+        value: expected,
+        message: mentionsFormulaSymbols
+          ? `Pritaikyta diskriminanto formulė; teisingai gauta D = ${formatSemanticNumber(expected)}.`
+          : `Teisingai apskaičiuotas diskriminantas: D = ${formatSemanticNumber(expected)}.`
+      };
+    }
+
+    context.seenCoefficients.add(left);
+    context.semanticSteps.push({ semanticType: 'derived-value', kind: 'quadratic-coefficient', symbol: left, value: expected });
+    return {
+      recognized: true,
+      ok: true,
+      semanticType: 'derived-value',
+      kind: 'quadratic-coefficient',
+      solutionSetEffect: 'context-only',
+      value: lastValue,
+      message: `Teisingai nustatytas kvadratinės lygties koeficientas ${left} = ${formatSemanticNumber(expected)}.`
+    };
+  }
+
+  function looksLikeQuadraticFormulaExpression(source) {
+    const compact = String(source || '').replace(/\s+/g, '');
+    if (/^[-+]?\d+(?:[.,]\d+)?(?:\/[-+]?\d+(?:[.,]\d+)?)?$/.test(compact)) return false;
+    return /sqrt|√|[abcd]|[+\-*/^()]/i.test(compact);
+  }
+
+  function parseQuadraticFormulaRootAssignment(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+    if (parts.length < 2) return { recognized: false };
+    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '').toLowerCase();
+    if (!/^x(?:1|2)?$/.test(left)) return { recognized: false };
+    if (!parts.slice(1).some(looksLikeQuadraticFormulaExpression)) return { recognized: false };
+
+    const symbols = { ...context.coefficients, d: context.discriminant };
+    if (parts.slice(1).some(part => /\bd\b/i.test(expandCompactQuadraticSymbols(part))) && !context.seenDiscriminant) {
+      return { recognized: true, ok: false, message: 'Prieš naudodamas D kvadratinės lygties formulėje pirmiausia parodyk diskriminanto skaičiavimą.' };
+    }
+    let value = null;
+    try {
+      for (let index = 1; index < parts.length; index += 1) {
+        const current = evaluateQuadraticSemanticNumeric(parts[index], symbols);
+        if (value !== null && !semanticNumberMatches(current, value)) {
+          return { recognized: true, ok: false, message: 'Toje pačioje formulės eilutėje užrašytos skaitinės reikšmės nėra lygios.' };
+        }
+        value = current;
+      }
+    } catch (error) {
+      return { recognized: true, ok: false, message: friendlyParseError(error) };
+    }
+    return { recognized: true, ok: true, value, lhs: left };
+  }
+
+  function syntheticRootEquation(value) {
+    return {
+      type: 'equation',
+      left: { type: 'variable', name: 'x' },
+      right: { type: 'number', value }
+    };
+  }
+
+  function classifyQuadraticFormulaAlternatives(step, context) {
+    const normalized = normalizeStructuredStep(step);
+    if (normalized.type !== 'alternatives') return { recognized: false };
+    const parsed = normalized.values.map(value => parseQuadraticFormulaRootAssignment(value, context));
+    if (!parsed.some(item => item.recognized)) return { recognized: false };
+    if (parsed.some(item => !item.recognized)) {
+      return { recognized: true, ok: false, message: 'Kvadratinės formulės žingsnyje abi šakas užrašyk tuo pačiu principu.' };
+    }
+    const failed = parsed.find(item => !item.ok);
+    if (failed) return { recognized: true, ok: false, message: failed.message };
+    const values = parsed.map(item => item.value);
+    const expectedRoots = descriptorRoots(context.targetDescriptor);
+    if (!sameRootValues(values, expectedRoots)) {
+      return {
+        recognized: true,
+        ok: false,
+        message: `Kvadratinės formulės šaknys apskaičiuotos neteisingai. Teisinga sprendinių aibė: ${formatSolutionDescriptor(context.targetDescriptor)}.`
+      };
+    }
+    context.semanticSteps.push({ semanticType: 'formula-application', kind: 'quadratic-formula', values: [...values] });
+    return {
+      recognized: true,
+      ok: true,
+      semanticType: 'formula-application',
+      kind: 'quadratic-formula',
+      solutionSetEffect: 'derive-solutions',
+      values,
+      descriptor: descriptorFromRootValues(values),
+      equations: values.map(syntheticRootEquation),
+      message: 'Pritaikyta kvadratinės lygties formulė; teisingai gautos abi sprendinių šakos.'
+    };
+  }
+
   function alternativesAreIsolatedRoots(step, targetDescriptor) {
     const normalized = normalizeStructuredStep(step);
     if (normalized.type !== 'alternatives' || targetDescriptor.kind === 'none' || targetDescriptor.kind === 'all') return false;
@@ -3307,7 +3552,7 @@
 
     const stepResults = [];
     const transitionValidationSetting = task.response?.options?.stepTransitionValidation;
-    // P2-SPLIT-P2.4.7.14: visos tiesinės lygtys pagal nutylėjimą tikrina ne tik sprendinių aibę,
+    // P2-SPLIT-P2.4.7.15: visos tiesinės lygtys pagal nutylėjimą tikrina ne tik sprendinių aibę,
     // bet ir tiesioginio žingsnio pagrįstumą. Seną elgesį galima aiškiai išjungti su 'off'.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     let previousEquation;
@@ -3461,18 +3706,24 @@
 
     const stepResults = [];
     const transitionValidationSetting = task.response?.options?.stepTransitionValidation;
-    // P2-SPLIT-P2.4.7.14: kvadratinėms lygtims pagal nutylėjimą taip pat tikriname
-    // ne tik sprendinių aibę, bet ir tiesioginio žingsnio pagrįstumą.
+    // P2-SPLIT-P2.4.7.15: „semantic-v1“ išplečia lygties grandinę į bendresnį
+    // matematinio sprendimo žingsnio modelį. Pagalbinis D skaičiavimas nėra nauja
+    // lygtis x atžvilgiu, todėl jis tikrinamas pagal sprendimo kontekstą, o ne pagal sprendinių aibę.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
+    const semanticMode = transitionValidationSetting === 'semantic-v1';
     let targetDescriptor;
     let previousDescriptor;
     let previousEquation = null;
     let previousAlternativeEquations = null;
+    let previousSemanticKind = null;
+    let semanticContext = null;
+    let usedSemanticStep = false;
     try {
       const initialEquation = parseEquation(task.response.options.initial || task.prompt?.value);
       targetDescriptor = describePolynomialEquation(initialEquation);
       previousDescriptor = targetDescriptor;
       previousEquation = initialEquation;
+      if (semanticMode) semanticContext = quadraticContextFromInitialEquation(initialEquation, targetDescriptor);
     } catch (error) {
       return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults };
     }
@@ -3500,6 +3751,7 @@
           previousDescriptor = suppliedSetToDescriptor(suppliedSet);
           previousEquation = null;
           previousAlternativeEquations = null;
+          previousSemanticKind = 'solution-set';
           continue;
         } catch (error) {
           stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
@@ -3507,14 +3759,49 @@
         }
       }
 
+      // Semantinis pagalbinio dydžio žingsnis, pvz. a = 1 arba D = b^2 - 4ac = 1.
+      // Jis nekeičia aktyvios lygties ir todėl previousEquation / previousDescriptor paliekami tokie patys.
+      if (semanticMode && step.type !== 'alternatives') {
+        const source = step.values[0];
+        const semanticAuxiliary = classifyQuadraticAuxiliaryStep(source, semanticContext);
+        if (semanticAuxiliary.recognized) {
+          if (!semanticAuxiliary.ok) {
+            stepResults[index] = { status: 'incorrect', message: semanticAuxiliary.message };
+            return {
+              status: 'incorrect',
+              title: `Patikrink ${index + 1} žingsnį`,
+              message: semanticAuxiliary.message,
+              stepResults
+            };
+          }
+          usedSemanticStep = true;
+          stepResults[index] = { status: 'correct', message: semanticAuxiliary.message };
+          previousSemanticKind = semanticAuxiliary.kind;
+          continue;
+        }
+      }
+
       let descriptor;
       let equation = null;
       let alternativeEquations = null;
+      let semanticTransition = null;
       try {
         if (step.type === 'alternatives') {
-          const parsedAlternatives = parseAlternativeDescriptor(step, false);
-          descriptor = parsedAlternatives.descriptor;
-          alternativeEquations = parsedAlternatives.equations;
+          if (semanticMode) {
+            const semanticFormula = classifyQuadraticFormulaAlternatives(step, semanticContext);
+            if (semanticFormula.recognized) {
+              if (!semanticFormula.ok) throw new Error(semanticFormula.message);
+              semanticTransition = semanticFormula;
+              descriptor = semanticFormula.descriptor;
+              alternativeEquations = semanticFormula.equations;
+              usedSemanticStep = true;
+            }
+          }
+          if (!descriptor) {
+            const parsedAlternatives = parseAlternativeDescriptor(step, false);
+            descriptor = parsedAlternatives.descriptor;
+            alternativeEquations = parsedAlternatives.equations;
+          }
         } else {
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Šiam žingsniui pasirink „Sprendimo šakos“.');
@@ -3536,12 +3823,21 @@
         };
       }
 
-      let transition = null;
-      if (localTransitionMode) {
+      let transition = semanticTransition;
+      if (localTransitionMode && !transition) {
         try {
           if (step.type === 'alternatives') {
-            if (previousEquation) transition = classifyEquationBranching(previousEquation, alternativeEquations);
-            else if (previousAlternativeEquations) transition = classifyAlternativeBranchTransitions(previousAlternativeEquations, alternativeEquations);
+            if (semanticMode && previousSemanticKind === 'quadratic-formula' && previousAlternativeEquations) {
+              const currentRoots = alternativeEquations.map(item => descriptorRoots(describePolynomialEquation(item))[0]);
+              const previousRoots = previousAlternativeEquations.map(item => descriptorRoots(describePolynomialEquation(item))[0]);
+              if (sameRootValues(currentRoots, previousRoots)) {
+                transition = { ok: true, kind: 'quadratic-formula-simplify', semanticType: 'formula-application', message: 'Supaprastintos kvadratinės formulės reikšmės.' };
+              }
+            }
+            if (!transition) {
+              if (previousEquation) transition = classifyEquationBranching(previousEquation, alternativeEquations);
+              else if (previousAlternativeEquations) transition = classifyAlternativeBranchTransitions(previousAlternativeEquations, alternativeEquations);
+            }
           } else if (equation && previousEquation) {
             transition = classifyQuadraticEquationTransition(previousEquation, equation);
           }
@@ -3561,7 +3857,7 @@
             status: 'incorrect',
             title: `Per didelis šuolis – ${index + 1} žingsnyje`,
             message: step.type === 'alternatives'
-              ? 'Sprendinių aibė nepasikeitė, tačiau šakojimas neišplaukia tiesiogiai iš ankstesnės eilutės. Pirmiausia parodyk lygtį sandaugos = 0 pavidalu.'
+              ? 'Sprendinių aibė nepasikeitė, tačiau šakojimas neišplaukia tiesiogiai iš ankstesnės eilutės. Parodyk tarpinį matematinį pagrindimą.'
               : 'Sprendinių aibė nepasikeitė, tačiau perėjimas nėra vienas aiškus lygiavertis pertvarkymas. Parodyk tarpinį žingsnį.',
             stepResults
           };
@@ -3575,8 +3871,10 @@
       previousDescriptor = descriptor;
       previousEquation = equation;
       previousAlternativeEquations = alternativeEquations;
+      previousSemanticKind = semanticTransition?.kind || transition?.kind || null;
       if (equation && descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, 'x', descriptorRoots(targetDescriptor)[0])) completed = true;
-      if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
+      if (semanticTransition?.kind === 'quadratic-formula') completed = true;
+      else if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
     }
 
     if (!completed) {
@@ -3603,9 +3901,11 @@
     return {
       status: 'correct',
       title: 'Sprendimas teisingas',
-      message: localTransitionMode
-        ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais pertvarkymais. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
-        : `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
+      message: semanticMode && usedSemanticStep
+        ? `Lygties pertvarkymai ir pagalbiniai matematiniai žingsniai pagrįsti. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
+        : localTransitionMode
+          ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais pertvarkymais. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
+          : `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
       stepResults
     };
   }
@@ -6337,7 +6637,7 @@ KOKYBĖS REIKALAVIMAI:
     return samePolynomialSolutionSet(first, second);
   }
 
-  // P2-SPLIT-P2.4.7.14: bendras tiesinių lygčių žingsnio pagrįstumo variklis.
+  // P2-SPLIT-P2.4.7.15: bendras tiesinių lygčių žingsnio pagrįstumo variklis.
   // Sprendinių aibės sutapimas lieka saugos sluoksniu, o ši klasifikacija tikrina,
   // ar nauja eilutė gaunama vienu aiškiu mokykliniu lygiaverčiu pertvarkymu.
   // Sąmoningai leidžiame kelių narių perkėlimą vienu žingsniu, bet ne kelių skirtingų
@@ -6406,7 +6706,7 @@ KOKYBĖS REIKALAVIMAI:
     return factor;
   }
 
-  // P2-SPLIT-P2.4.7.14: kvadratinių lygčių žingsnio pagrįstumo plėtra.
+  // P2-SPLIT-P2.4.7.15: kvadratinių lygčių žingsnio pagrįstumo plėtra.
   // Faktorizavimą ir nulinės sandaugos taisyklę atpažįstame atskirai, o kitoms
   // lygiavertėms algebrinėms transformacijoms naudojame tą patį bendrą variklį.
   function isZeroAst(node) {
@@ -6435,6 +6735,93 @@ KOKYBĖS REIKALAVIMAI:
     return null;
   }
 
+  function astStructureSignature(node) {
+    if (!node) return '';
+    if (node.type === 'number') return `n:${Number(node.value)}`;
+    if (node.type === 'variable') return `v:${node.name}`;
+    if (node.type === 'unary') return `u:${node.operator}(${astStructureSignature(node.value)})`;
+    return `b:${node.operator}(${astStructureSignature(node.left)},${astStructureSignature(node.right)})`;
+  }
+
+  function signedTopLevelTerms(node, sign = 1) {
+    if (node?.type === 'binary' && node.operator === '+') {
+      return [...signedTopLevelTerms(node.left, sign), ...signedTopLevelTerms(node.right, sign)];
+    }
+    if (node?.type === 'binary' && node.operator === '-') {
+      return [...signedTopLevelTerms(node.left, sign), ...signedTopLevelTerms(node.right, -sign)];
+    }
+    if (node?.type === 'unary' && node.operator === '-') return signedTopLevelTerms(node.value, -sign);
+    return [{ node, sign }];
+  }
+
+  function signedTermPolynomial(term) {
+    const polynomial = expressionPolynomial(term.node);
+    return term.sign < 0 ? polynomialScaled(polynomial, -1) : polynomial;
+  }
+
+  function polynomialMultisetMatches(first, second) {
+    if (first.length !== second.length) return false;
+    const used = new Set();
+    for (const item of first) {
+      let match = -1;
+      for (let index = 0; index < second.length; index += 1) {
+        if (used.has(index)) continue;
+        if (polynomialsApproximatelyEqual(item, second[index])) { match = index; break; }
+      }
+      if (match < 0) return false;
+      used.add(match);
+    }
+    return true;
+  }
+
+  function detectSingleTermSplit(previousExpression, nextExpression) {
+    const previousTerms = signedTopLevelTerms(previousExpression);
+    const nextTerms = signedTopLevelTerms(nextExpression);
+    if (nextTerms.length !== previousTerms.length + 1) return null;
+    const previousPolynomials = previousTerms.map(signedTermPolynomial);
+    const nextPolynomials = nextTerms.map(signedTermPolynomial);
+
+    for (let previousIndex = 0; previousIndex < previousPolynomials.length; previousIndex += 1) {
+      for (let firstIndex = 0; firstIndex < nextPolynomials.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < nextPolynomials.length; secondIndex += 1) {
+          const combined = addPolynomials(nextPolynomials[firstIndex], nextPolynomials[secondIndex]);
+          if (!polynomialsApproximatelyEqual(combined, previousPolynomials[previousIndex])) continue;
+          const remainingPrevious = previousPolynomials.filter((_, index) => index !== previousIndex);
+          const remainingNext = nextPolynomials.filter((_, index) => index !== firstIndex && index !== secondIndex);
+          if (!polynomialMultisetMatches(remainingPrevious, remainingNext)) continue;
+          return {
+            split: previousPolynomials[previousIndex],
+            pieces: [nextPolynomials[firstIndex], nextPolynomials[secondIndex]]
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function nonconstantFactorPolynomials(node) {
+    return flattenProductFactors(node)
+      .map(factor => {
+        try { return expressionPolynomial(factor); }
+        catch (_) { return null; }
+      })
+      .filter(polynomial => polynomial && cleanPolynomial(polynomial).length > 1);
+  }
+
+  function hasSharedNonconstantFactorAcrossTopLevelTerms(node) {
+    const terms = signedTopLevelTerms(node);
+    if (terms.length < 2) return false;
+    const factorLists = terms.map(term => nonconstantFactorPolynomials(term.node));
+    if (factorLists.some(list => !list.length)) return false;
+    return factorLists[0].some(candidate => factorLists.slice(1).every(list => list.some(factor => polynomialProportionalFactor(candidate, factor) !== null)));
+  }
+
+  function isSquarePowerExpression(node) {
+    if (node?.type !== 'binary' || node.operator !== '^') return false;
+    const exponent = constantValue(node.right);
+    return exponent !== null && Math.abs(exponent - 2) <= EPSILON;
+  }
+
   function classifyQuadraticEquationTransition(previousEquation, nextEquation) {
     const previous = equationSidePolynomials(previousEquation);
     const next = equationSidePolynomials(nextEquation);
@@ -6444,20 +6831,49 @@ KOKYBĖS REIKALAVIMAI:
       const previousZeroSide = equationZeroSideExpression(previousEquation);
       const nextZeroSide = equationZeroSideExpression(nextEquation);
       if (previousZeroSide && nextZeroSide && previousZeroSide.side === nextZeroSide.side) {
+        const termSplit = detectSingleTermSplit(previousZeroSide.expression, nextZeroSide.expression);
+        if (termSplit) {
+          return {
+            ok: true,
+            semanticType: 'equivalent-equation',
+            kind: 'split-term',
+            operations: ['split-term'],
+            message: 'Atpažintas lygiavertis pertvarkymas: vienas daugianario narys išskaidytas į du lygiaverčius narius.'
+          };
+        }
+
+        const previousTermCount = signedTopLevelTerms(previousZeroSide.expression).length;
+        const nextTermCount = signedTopLevelTerms(nextZeroSide.expression).length;
+        if (nextTermCount >= 2 && previousTermCount > nextTermCount && hasSharedNonconstantFactorAcrossTopLevelTerms(nextZeroSide.expression)) {
+          return {
+            ok: true,
+            semanticType: 'equivalent-equation',
+            kind: 'group-factor',
+            operations: ['group-terms', 'factor-common'],
+            message: 'Atpažintas lygiavertis pertvarkymas: nariai sugrupuoti ir iš grupių iškelti bendrieji daugikliai.'
+          };
+        }
+
         const previousScore = factorFormScore(previousZeroSide.expression);
         const nextScore = factorFormScore(nextZeroSide.expression);
         if (nextScore > previousScore) {
           return {
             ok: true,
+            semanticType: 'equivalent-equation',
             kind: 'factorize',
-            message: 'Atpažintas lygiavertis pertvarkymas: daugianaris išskaidytas dauginamaisiais arba užrašytas pilno kvadrato pavidalu.'
+            operations: ['factorize'],
+            message: isSquarePowerExpression(nextZeroSide.expression)
+              ? 'Atpažintas lygiavertis pertvarkymas: daugianaris užrašytas pilno kvadrato pavidalu.'
+              : 'Atpažintas lygiavertis pertvarkymas: daugianaris išskaidytas dauginamaisiais.'
           };
         }
         if (previousScore > nextScore) {
           return {
             ok: true,
+            semanticType: 'equivalent-equation',
             kind: 'expand-factors',
-            message: 'Atpažintas lygiavertis pertvarkymas: dauginamieji išskleisti ir sutraukti nariai.'
+            operations: ['expand-factors', 'combine-like-terms'],
+            message: 'Atpažintas lygiavertis pertvarkymas: dauginamieji išskleisti ir sutraukti panašieji nariai.'
           };
         }
       }
@@ -6470,7 +6886,9 @@ KOKYBĖS REIKALAVIMAI:
       if (polynomialProportionalFactor(basePolynomial, nextPolynomial) !== null) {
         return {
           ok: true,
+          semanticType: 'equivalent-equation',
           kind: 'square-zero-root',
+          operations: ['square-zero'],
           message: 'Atpažintas lygiavertis pertvarkymas: jei reiškinio kvadratas lygus nuliui, pats reiškinys lygus nuliui.'
         };
       }
@@ -6478,6 +6896,7 @@ KOKYBĖS REIKALAVIMAI:
 
     return classifyLocalEquationTransition(previousEquation, nextEquation);
   }
+
 
   function flattenProductFactors(node) {
     if (node?.type === 'binary' && node.operator === '*') {
@@ -6648,7 +7067,11 @@ KOKYBĖS REIKALAVIMAI:
     }
 
     if (polynomialsApproximatelyEqual(previous.left, next.right) && polynomialsApproximatelyEqual(previous.right, next.left)) {
-      return { ok: true, kind: 'swap', message: 'Atpažintas lygiavertis pertvarkymas: sukeistos lygties pusės.' };
+      const structurallyOnlySwapped = astStructureSignature(previous.left) === astStructureSignature(nextEquation.right)
+        && astStructureSignature(previous.right) === astStructureSignature(nextEquation.left);
+      return structurallyOnlySwapped
+        ? { ok: true, semanticType: 'equivalent-equation', kind: 'swap', operations: ['swap-sides'], message: 'Atpažintas lygiavertis pertvarkymas: sukeistos lygties pusės.' }
+        : { ok: true, semanticType: 'equivalent-equation', kind: 'swap-simplify', operations: ['swap-sides', 'simplify'], message: 'Atpažintas sudėtinis žingsnis: sukeistos lygties pusės ir lygiavertiškai pertvarkyta viena arba abi pusės.' };
     }
 
     const previousDifference = addPolynomials(previous.left, previous.right, -1);

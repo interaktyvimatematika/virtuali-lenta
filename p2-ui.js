@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.14';
+  const BUILD = 'P2-SPLIT-P2.4.7.15';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,9 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.14: žingsnio pagrįstumo tikrinimas išplėstas iš tiesinių į kvadratines lygtis.
+    // P2-SPLIT-P2.4.7.15: pirmasis semantinio sprendimo žingsnio modelio prototipas.
+    // 3 diagnostinė kvadratinė lygtis leidžia ne tik ekvivalenčias lygtis, bet ir
+    // pagalbinius diskriminanto skaičiavimus bei kvadratinės formulės taikymą.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
@@ -100,9 +102,9 @@
         label: '3 testas',
         title: 'Kvadratinė lygtis · du sveikieji sprendiniai',
         prompt: 'x^2 - 7x + 12 = 0',
-        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu. Kai sprendimas išsišakoja, naudok „Šakos“.',
+        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu. Gali faktorizuoti, sudaryti pilną kvadratą arba naudoti diskriminantą. Kai sprendimas išsišakoja, naudok „Šakos“.',
         answer: 'x = 3; x = 4',
-        hint: 'Galima išskaidyti: (x - 3)(x - 4) = 0, bet tikrintuvas neturėtų reikalauti būtent šio kelio.',
+        hint: 'Diskriminanto keliu gali rašyti, pvz., D = b^2 - 4ac = 1, o dvi kvadratinės formulės šaknis įvesti per „Šakos“.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
@@ -116,7 +118,7 @@
             expectedDisplay: 'x = 3; x = 4',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'quadratic-v1'
+            stepTransitionValidation: 'semantic-v1'
           }
         }
       },
