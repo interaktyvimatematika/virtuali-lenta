@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.17.2';
+  const BUILD = 'P2-SPLIT-P2.4.7.17.3';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -31,7 +31,7 @@
 
   const DEMO_LESSON = Object.freeze({
     // P2-SPLIT-P2.4.7.17: sprendimo srauto prototipas su vertikaliomis šakomis
-    // P2-SPLIT-P2.4.7.17.2: semantic-v2 įjungtas visoms kvadratinių lygčių diagnostinėms užduotims
+    // P2-SPLIT-P2.4.7.17.3: semantic-v2 įjungtas visoms kvadratinių lygčių diagnostinėms užduotims
     // ir lygybės tęsiniu naujoje eilutėje. Semantinis 7.16.1 tikrintuvas išlaikytas.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.

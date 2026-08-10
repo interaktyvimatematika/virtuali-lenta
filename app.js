@@ -4073,6 +4073,10 @@
     }
   }
 
+  // P2-SPLIT-P2.4.7.17.3: kvadratinės formulės simbolinis šablonas nėra privalomas.
+  // Jei sprendimo kontekstas jau aiškus, mokinys gali vienoje ar abiejose šakose
+  // iš karto statyti skaičius, pvz. x_2=(5+7)/4=3. Taip pat leidžiamas eilutės gale
+  // paliktas '=' kai skaičiavimas tęsiamas kitoje tos pačios šakos eilutėje.
   function parseQuadraticFormulaRootAssignmentV2(source, context) {
     let parts;
     try { parts = splitTopLevelEqualities(source); }
@@ -4082,47 +4086,112 @@
     if (!/^x(?:1|2)?$/.test(left)) return { recognized: false };
 
     const rhs = parts.slice(1);
-    const symbolicPart = rhs.find(part => {
-      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== 'x');
-      return ids.length > 0 || /sqrt|√/i.test(part);
-    });
-    if (!symbolicPart) return { recognized: false };
+    // Eilutė gali baigtis '=' ir būti tęsiama kitoje vertikalios šakos eilutėje.
+    while (rhs.length && !String(rhs[rhs.length - 1] || '').trim()) rhs.pop();
+    if (!rhs.length) return { recognized: false };
+    if (rhs.some(part => !String(part || '').trim())) {
+      return { recognized: true, ok: false, message: 'Lygybės grandinėje tarp dviejų = turi būti reiškinys.' };
+    }
 
-    const ids = semanticIdentifiersV2(symbolicPart)
+    // 1) Pirmiausia ieškome aiškiai užrašytos bendros kvadratinės formulės.
+    let matched = [];
+    let matchedFormulaPart = null;
+    for (const part of rhs) {
+      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+      if (!ids.length) continue;
+      const candidates = semanticCandidateMappingsV2(context, ids);
+      const localMatches = [];
+      for (const candidate of candidates) {
+        const branch = semanticQuadraticRootFormulaBranchV2(part, context, candidate);
+        if (branch) localMatches.push({ candidate, branch });
+      }
+      if (localMatches.length) {
+        matched = localMatches;
+        matchedFormulaPart = part;
+        break;
+      }
+    }
+
+    if (matched.length) {
+      if (semanticIdentifiersV2(matchedFormulaPart).some(symbol => context.discriminantSymbols.has(symbol)) && !context.seenDiscriminant) {
+        return { recognized: true, ok: false, message: 'Prieš naudodamas diskriminantą kvadratinės lygties formulėje pirmiausia parodyk jo skaičiavimą.' };
+      }
+
+      let successful = null;
+      for (const item of matched) {
+        const scope = semanticScopeForCandidateV2(context, item.candidate);
+        let value = null;
+        let ok = true;
+        try {
+          for (const part of rhs) {
+            const current = evaluateQuadraticSemanticNumericV2(part, scope);
+            if (value !== null && !semanticNumberMatches(current, value)) { ok = false; break; }
+            value = current;
+          }
+        } catch (_) { ok = false; }
+        if (ok) { successful = { ...item, value }; break; }
+      }
+      if (!successful) return { recognized: true, ok: false, message: 'Toje pačioje formulės eilutėje užrašytos reikšmės nėra lygios.' };
+      return {
+        recognized: true,
+        ok: true,
+        value: successful.value,
+        lhs: left,
+        branch: successful.branch,
+        mode: 'symbolic-formula',
+        candidates: matched.filter(item => item.branch === successful.branch).map(item => item.candidate)
+      };
+    }
+
+    // 2) Jei bendras simbolinis šablonas praleistas, leidžiame tiesioginį skaitinį
+    // įstatymą. Tai analogiška 5·6=30 vietoje A=a·b=5·6=30: formulės vardinis
+    // užrašymas nėra būtinas, jei sprendimo kontekstas ir pats skaičiavimas aiškūs.
+    // Saugumo sumetimais šis trumpinys netaikomas išraiškai su dar neišspręstais
+    // koeficientų simboliais: tokia išraiška turi būti atpažinta simboliškai aukščiau.
+    const nonDiscriminantIds = [...new Set(rhs.flatMap(part => semanticIdentifiersV2(part)))]
       .filter(symbol => symbol !== 'x' && !context.discriminantSymbols.has(symbol));
-    let candidates = semanticCandidateMappingsV2(context, ids);
-    const matched = [];
-    for (const candidate of candidates) {
-      const branch = semanticQuadraticRootFormulaBranchV2(symbolicPart, context, candidate);
-      if (branch) matched.push({ candidate, branch });
-    }
-    if (!matched.length) {
-      return { recognized: true, ok: false, message: 'Kvadratinės lygties formulė pagal pasirinktus simbolius užrašyta neteisingai.' };
+    if (nonDiscriminantIds.length) return { recognized: false };
+
+    const compactParts = rhs.map(part => normalizeMathLiveAscii(part).replace(/\s+/g, ''));
+    const hasNontrivialCalculation = compactParts.some(part => !/^[-+]?\d+(?:[.,]\d+)?$/.test(part));
+    if (!hasNontrivialCalculation) return { recognized: false };
+
+    // Jei mokinys remiasi jau apskaičiuotu diskriminantu, jis turi būti parodytas.
+    const usesDiscriminant = rhs.some(part => semanticIdentifiersV2(part).some(symbol => context.discriminantSymbols.has(symbol)));
+    if (usesDiscriminant && !context.seenDiscriminant) {
+      return { recognized: true, ok: false, message: 'Prieš naudodamas diskriminantą pirmiausia parodyk jo apskaičiavimą.' };
     }
 
-    if (semanticIdentifiersV2(symbolicPart).some(symbol => context.discriminantSymbols.has(symbol)) && !context.seenDiscriminant) {
-      return { recognized: true, ok: false, message: 'Prieš naudodamas diskriminantą kvadratinės lygties formulėje pirmiausia parodyk jo skaičiavimą.' };
-    }
-
-    let successful = null;
-    for (const item of matched) {
-      const scope = semanticScopeForCandidateV2(context, item.candidate);
-      let value = null;
-      let ok = true;
-      try {
-        for (const part of rhs) {
-          const current = evaluateQuadraticSemanticNumericV2(part, scope);
-          if (value !== null && !semanticNumberMatches(current, value)) { ok = false; break; }
-          value = current;
+    const scope = semanticScopeForCandidateV2(context, context.roleCandidates?.[0] || {});
+    let value = null;
+    try {
+      for (const part of rhs) {
+        const current = evaluateQuadraticSemanticNumericV2(part, scope);
+        if (value !== null && !semanticNumberMatches(current, value)) {
+          return { recognized: true, ok: false, message: 'Toje pačioje skaičiavimo eilutėje užrašytos reikšmės nėra lygios.' };
         }
-      } catch (_) { ok = false; }
-      if (ok) { successful = { ...item, value }; break; }
+        value = current;
+      }
+    } catch (error) {
+      return { recognized: true, ok: false, message: friendlyParseError(error) };
     }
-    if (!successful) return { recognized: true, ok: false, message: 'Toje pačioje formulės eilutėje užrašytos reikšmės nėra lygios.' };
-    return { recognized: true, ok: true, value: successful.value, lhs: left, branch: successful.branch, candidates: matched.filter(item => item.branch === successful.branch).map(item => item.candidate) };
+
+    const expectedRoots = descriptorRoots(context.targetDescriptor);
+    if (!expectedRoots.some(root => semanticNumberMatches(root, value))) {
+      return { recognized: true, ok: false, message: 'Skaitinis kvadratinės formulės pritaikymas neduoda pradinės lygties šaknies.' };
+    }
+    return {
+      recognized: true,
+      ok: true,
+      value,
+      lhs: left,
+      branch: 'numeric-substitution',
+      mode: 'numeric-substitution',
+      candidates: []
+    };
   }
 
-  // P2-SPLIT-P2.4.7.17.2: vertikalios kvadratinės formulės šakos gali tęsti
+  // P2-SPLIT-P2.4.7.17.3: vertikalios kvadratinės formulės šakos gali tęsti
   // lygybės grandinę per kelias eilutes, pvz. x_1 = ... ir kitoje eilutėje
   // = 6/2 = 3. resolveStructuredStepContinuations() jau atkuria kairįjį narį,
   // o ši funkcija patikrina visą grandinę kaip skaitinį tęsinį, užuot siuntusi ją
@@ -4222,21 +4291,39 @@
     if (normalized.type !== 'alternatives') return { recognized: false };
     const parsed = normalized.values.map(value => parseQuadraticFormulaRootAssignmentV2(value, context));
     if (!parsed.some(item => item.recognized)) return { recognized: false };
-    if (parsed.some(item => !item.recognized)) return { recognized: true, ok: false, message: 'Kvadratinės formulės žingsnyje abi šakas užrašyk tuo pačiu principu.' };
+    if (parsed.some(item => !item.recognized)) {
+      return {
+        recognized: true,
+        ok: false,
+        message: 'Abi sprendinių šakos turi būti matematiškai perskaitomos. Formulės simbolinio šablono kartoti neprivaloma – galima iš karto statyti skaičius.'
+      };
+    }
     const failed = parsed.find(item => !item.ok);
     if (failed) return { recognized: true, ok: false, message: failed.message };
 
-    let commonCandidates = parsed[0].candidates;
-    for (let index = 1; index < parsed.length; index += 1) commonCandidates = semanticIntersectMappingsV2(commonCandidates, parsed[index].candidates);
-    if (!commonCandidates.length) return { recognized: true, ok: false, message: 'Abiejose kvadratinės formulės šakose simboliai naudojami nevienodai.' };
+    // Simbolių vaidmenis tikslina tik tos šakos, kurios iš tiesų parašė simbolinę
+    // formulę. Skaitinis trumpinys neturi panaikinti kitos šakos suteikto konteksto.
+    const candidateSets = parsed.map(item => item.candidates || []).filter(items => items.length);
+    let commonCandidates = context.roleCandidates?.length ? context.roleCandidates.map(item => ({ ...item })) : [];
+    if (candidateSets.length) {
+      commonCandidates = candidateSets[0];
+      for (let index = 1; index < candidateSets.length; index += 1) {
+        commonCandidates = semanticIntersectMappingsV2(commonCandidates, candidateSets[index]);
+      }
+      if (!commonCandidates.length) {
+        return { recognized: true, ok: false, message: 'Kvadratinės formulės šakose pasirinkti simboliai naudojami nenuosekliai.' };
+      }
+    }
 
     const values = parsed.map(item => item.value);
     const expectedRoots = descriptorRoots(context.targetDescriptor);
     if (!sameRootValues(values, expectedRoots)) {
-      return { recognized: true, ok: false, message: `Kvadratinės formulės šaknys apskaičiuotos neteisingai. Teisinga sprendinių aibė: ${formatSolutionDescriptor(context.targetDescriptor)}.` };
+      return { recognized: true, ok: false, message: `Kvadratinės lygties šaknys apskaičiuotos neteisingai. Teisinga sprendinių aibė: ${formatSolutionDescriptor(context.targetDescriptor)}.` };
     }
-    context.roleCandidates = commonCandidates;
+    if (candidateSets.length) context.roleCandidates = commonCandidates;
     context.semanticSteps.push({ semanticType: 'formula-application', kind: 'quadratic-formula', values: [...values] });
+
+    const usedNumericShortcut = parsed.some(item => item.mode === 'numeric-substitution');
     return {
       recognized: true,
       ok: true,
@@ -4246,7 +4333,9 @@
       values,
       descriptor: descriptorFromRootValues(values),
       equations: values.map(syntheticRootEquation),
-      message: 'Pritaikyta kvadratinės lygties formulė pagal pasirinktus žymėjimus; teisingai gautos abi sprendinių šakos.'
+      message: usedNumericShortcut
+        ? 'Teisingai apskaičiuotos abi šaknys. Bendrą formulę galima užrašyti simboliais arba iš karto atlikti skaitinį įstatymą.'
+        : 'Pritaikyta kvadratinės lygties formulė pagal pasirinktus žymėjimus; teisingai gautos abi sprendinių šakos.'
     };
   }
 
