@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.17.3';
+  const BUILD = 'P2-SPLIT-P2.4.7.17.3.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -1709,12 +1709,19 @@
       const result = stepResults[index] || null;
       const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
       const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      // Teacher preview must render the same LaTeX representation that the student MathLive field uses.
+      // `values` is the plain/ASCII form used by validators (e.g. sqrt(D), /, *), and feeding it
+      // back into <math-field> as LaTeX makes formulas look broken in the teacher view.
+      const latexValues = Array.isArray(step?.latexValues) ? step.latexValues : [];
+      const plainValues = Array.isArray(step?.values) ? step.values : [];
+      const displayValue = branchIndex => String(latexValues[branchIndex] || plainValues[branchIndex] || '');
       let valueMarkup;
       if (step?.type === 'alternatives') {
-        const branches = (step.values || []).map(value => `<math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value || '')}</math-field>`);
+        const branchCount = Math.max(plainValues.length, latexValues.length, 2);
+        const branches = Array.from({ length: branchCount }, (_, branchIndex) => `<math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(displayValue(branchIndex))}</math-field>`);
         valueMarkup = `<div class="p2-teacher-solution-branches">${branches.map((branch, branchIndex) => `${branchIndex ? '<span>arba</span>' : ''}${branch}`).join('')}</div>`;
       } else {
-        const value = step?.values?.[0] || '';
+        const value = displayValue(0);
         valueMarkup = `<div class="p2-teacher-solution-single ${step?.type === 'solution-set' ? 'is-answer' : ''}">
           ${step?.type === 'solution-set' ? '<span class="p2-solution-answer-prefix">Ats.:</span>' : ''}
           <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(value)}</math-field>
@@ -1746,7 +1753,7 @@
       <section class="p2-teacher-expression-view${stateClass}">
         <header><div><strong>Mokinio atsakymas</strong><span>Tas pats MathLive laukas realiu laiku</span></div><b class="p2-live-label">● gyvai</b></header>
         <div class="p2-teacher-expression-value">
-          <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(response.answer || '')}</math-field>
+          <math-field class="p2-static-math p2-teacher-live-math" read-only tabindex="-1">${escapeHtml(response.answerLatex || response.answer || '')}</math-field>
           <b class="p2-expression-state" aria-hidden="true">${stateMark}</b>
         </div>
         ${result?.message ? `<p class="p2-expression-message">${escapeHtml(result.message)}</p>` : ''}
