@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.10';
+  const BUILD = 'P2-SPLIT-P2.4.7.11';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,93 +30,171 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
+    // P2-SPLIT-P2.4.7.11: diagnostinis lygčių rinkinys sprendimo žingsnių tikrintuvui.
+    // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
+    // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
-    title: 'Pamokos prototipas · Funkcija ir f(x)',
-    shortTitle: 'Funkcija ir f(x)',
-    description: 'Demonstracinė pamoka P2 darbo eigai išbandyti. Turinys vėliau bus pakeistas galutine medžiaga.',
+    title: 'Lygčių tikrintuvo diagnostika',
+    shortTitle: 'Lygčių diagnostika',
+    description: '6 skirtingos palaikomos tiesinės ir kvadratinės lygtys sprendimo žingsnių tikrintuvui bandyti po vieną.',
     taskCount: 6,
-    classCount: 4,
-    selfCount: 2,
+    classCount: 6,
+    selfCount: 0,
     tasks: [
       {
-        id: 'c1',
+        id: 'eqdiag-1',
         type: 'solution',
         section: 'class',
-        label: 'Pamokoje',
-        title: 'Išspręsk lygtį',
-        prompt: '3x + 7 = 22',
-        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą.',
-        answer: 'x = 5',
-        hint: 'Pirmiausia atimk 7 iš abiejų lygties pusių, tada abi puses padalyk iš 3.',
+        label: '1 testas',
+        title: 'Tiesinė lygtis · kintamasis abiejose pusėse',
+        prompt: '4x - 7 = 2x + 9',
+        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Gali rinktis bet kokį lygiavertį sprendimo kelią.',
+        answer: 'x = 8',
+        hint: 'Sutelk narius su x vienoje pusėje, skaičius – kitoje.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
-          placeholder: 'Pvz., 3x = 15',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
           validator: 'linear-equation-chain',
           options: {
-            initial: '3x + 7 = 22',
+            initial: '4x - 7 = 2x + 9',
             expectedVariable: 'x',
-            expectedValue: 5,
-            expectedDisplay: '5',
-            minimumSteps: 1
+            expectedValue: 8,
+            expectedDisplay: '8',
+            minimumSteps: 2
           }
         }
       },
       {
-        id: 'c2',
-        type: 'expression',
-        section: 'class',
-        label: 'Pamokoje',
-        title: 'Suprastink reiškinį',
-        prompt: '(2x^2 + 4x) : (2x)',
-        instruction: 'Suprastink reiškinį ir įrašyk galutinį atsakymą.',
-        answer: 'x + 2',
-        hint: 'Skaitiklyje iškelk 2x: 2x(x + 2). Tada sutrumpink bendrąjį daugiklį 2x.',
-        response: {
-          renderer: 'single-math-input',
-          valueType: 'expression',
-          label: 'Galutinis reiškinys',
-          placeholder: 'Pvz., x + 2',
-          validator: 'expression-equivalence',
-          options: {
-            expected: 'x + 2',
-            expectedDisplay: 'x + 2',
-            requireSimplified: true,
-            domain: 'x ≠ 0',
-            samples: [-7, -3, -1, 0.5, 2, 5, 11]
-          }
-        }
-      },
-      {
-        id: 'c3',
+        id: 'eqdiag-2',
         type: 'solution',
         section: 'class',
-        label: 'Pamokoje',
-        title: 'Išspręsk kvadratinę lygtį',
-        prompt: 'x^2 - 5x + 6 = 0',
-        instruction: 'Išspręsk kvadratinę lygtį parodydamas sprendimo eigą. Kai gausi du atvejus, pasirink „Šakos“.',
-        answer: 'x = 2; x = 3',
-        hint: 'Išskaidyk daugianarį dauginamaisiais: (x - 2)(x - 3) = 0.',
+        label: '2 testas',
+        title: 'Tiesinė lygtis · skliaustai',
+        prompt: '5 - 2(x + 1) = 3x - 7',
+        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Patikrinkime, ar tikrintuvas priima skirtingą skliaustų išskleidimo tvarką.',
+        answer: 'x = 2',
+        hint: 'Gali pirmiausia išskleisti skliaustus arba atlikti lygiaverčius veiksmus kita tvarka.',
         response: {
           renderer: 'math-step-list',
           valueType: 'equation',
           label: 'Sprendimo eiga',
-          placeholder: 'Pvz., (x - 2)(x - 3) = 0',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
+          validator: 'linear-equation-chain',
+          options: {
+            initial: '5 - 2(x + 1) = 3x - 7',
+            expectedVariable: 'x',
+            expectedValue: 2,
+            expectedDisplay: '2',
+            minimumSteps: 2
+          }
+        }
+      },
+      {
+        id: 'eqdiag-3',
+        type: 'solution',
+        section: 'class',
+        label: '3 testas',
+        title: 'Kvadratinė lygtis · du sveikieji sprendiniai',
+        prompt: 'x^2 - 7x + 12 = 0',
+        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu. Kai sprendimas išsišakoja, naudok „Šakos“.',
+        answer: 'x = 3; x = 4',
+        hint: 'Galima išskaidyti: (x - 3)(x - 4) = 0, bet tikrintuvas neturėtų reikalauti būtent šio kelio.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
           validator: 'quadratic-equation-chain',
           options: {
-            initial: 'x^2 - 5x + 6 = 0',
+            initial: 'x^2 - 7x + 12 = 0',
             expectedVariable: 'x',
-            expectedValues: [2, 3],
-            expectedDisplay: 'x = 2; x = 3',
+            expectedValues: [3, 4],
+            expectedDisplay: 'x = 3; x = 4',
             minimumSteps: 2,
             autoDerived: true
           }
         }
       },
-      { id: 'c4', section: 'class', label: 'Pamokoje', prompt: 'Jei f(x) = 3 − x, kokia yra f(−2) reikšmė?', choices: ['1', '5', '−5', '−1'], answer: '5', hint: 'Atsargiai su dviem minuso ženklais: 3 − (−2).' },
-      { id: 's1', section: 'self', label: 'Savarankiškai', prompt: 'Jei g(x) = 4x − 3, kokia yra g(2) reikšmė?', choices: ['5', '8', '11', '−5'], answer: '5', hint: 'Įrašyk x = 2 į formulę g(x) = 4x − 3.' },
-      { id: 's2', section: 'self', label: 'Savarankiškai', prompt: 'Kuris užrašas reiškia, kad taškas (2; 6) priklauso funkcijos h grafikui?', choices: ['h(6) = 2', 'h(2) = 6', 'h(x) = 2', 'h(2) = x'], answer: 'h(2) = 6', hint: 'Taško pirmoji koordinatė yra x, antroji – funkcijos reikšmė.' }
+      {
+        id: 'eqdiag-4',
+        type: 'solution',
+        section: 'class',
+        label: '4 testas',
+        title: 'Kvadratinė lygtis · dvigubas sprendinys',
+        prompt: 'x^2 - 6x + 9 = 0',
+        instruction: 'Išspręsk lygtį parodydamas eigą. Ši lygtis turi tik vieną skirtingą realų sprendinį.',
+        answer: 'x = 3',
+        hint: 'Atpažink pilną kvadratą arba spręsk kitu lygiaverčiu būdu.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
+          validator: 'quadratic-equation-chain',
+          options: {
+            initial: 'x^2 - 6x + 9 = 0',
+            expectedVariable: 'x',
+            expectedValues: [3],
+            expectedDisplay: 'x = 3',
+            minimumSteps: 2,
+            autoDerived: true
+          }
+        }
+      },
+      {
+        id: 'eqdiag-5',
+        type: 'solution',
+        section: 'class',
+        label: '5 testas',
+        title: 'Kvadratinė lygtis · realių sprendinių nėra',
+        prompt: 'x^2 + 4x + 5 = 0',
+        instruction: 'Išspręsk lygtį realiųjų skaičių aibėje. Pabaigoje naudok „Atsakymas“ ir užrašyk sprendinių aibę.',
+        answer: 'sprendinių nėra',
+        hint: 'Diskriminantas yra neigiamas. Galutiniame sprendinių aibės žingsnyje gali rašyti „sprendinių nėra“ arba ∅.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
+          validator: 'quadratic-equation-chain',
+          options: {
+            initial: 'x^2 + 4x + 5 = 0',
+            expectedVariable: 'x',
+            expectedValues: [],
+            expectedDisplay: 'sprendinių nėra',
+            minimumSteps: 2,
+            autoDerived: true
+          }
+        }
+      },
+      {
+        id: 'eqdiag-6',
+        type: 'solution',
+        section: 'class',
+        label: '6 testas',
+        title: 'Kvadratinė lygtis · trupmeninis sprendinys',
+        prompt: '2x^2 - 5x - 3 = 0',
+        instruction: 'Išspręsk kvadratinę lygtį bet kuriuo teisingu būdu ir parodyk sprendimo eigą.',
+        answer: 'x = -1/2; x = 3',
+        hint: 'Lygtis turi du racionalius sprendinius. Gali skaidyti dauginamaisiais arba naudoti kvadratinės lygties formulę.',
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: 'Sprendimo eiga',
+          placeholder: 'Įrašyk kitą lygties žingsnį',
+          validator: 'quadratic-equation-chain',
+          options: {
+            initial: '2x^2 - 5x - 3 = 0',
+            expectedVariable: 'x',
+            expectedValues: [-0.5, 3],
+            expectedDisplay: 'x = -1/2; x = 3',
+            minimumSteps: 2,
+            autoDerived: true
+          }
+        }
+      }
     ]
   });
 
