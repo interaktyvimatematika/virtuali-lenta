@@ -3308,6 +3308,7 @@
     }
 
     const stepResults = [];
+    const localTransitionMode = task.response?.options?.stepTransitionValidation === 'local-v1';
     let previousEquation;
     let previousDescriptor;
     let targetDescriptor;
@@ -3353,14 +3354,17 @@
           const source = step.values[0];
           if (/\b(?:arba|ar)\b/i.test(source)) throw new Error('Viename laukelyje rašyk vieną lygtį. Alternatyvoms pasirink atskirų laukelių žingsnį.');
           equation = parseEquation(source);
-          descriptor = describeLinearEquation(equation);
+          descriptor = localTransitionMode ? describePolynomialEquation(equation) : describeLinearEquation(equation);
         }
       } catch (error) {
         stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
         return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio`, message: friendlyParseError(error), stepResults };
       }
 
-      if (!sameLinearSolutionSet(previousDescriptor, descriptor)) {
+      const preservesSolutionSet = localTransitionMode
+        ? samePolynomialSolutionSet(previousDescriptor, descriptor)
+        : sameLinearSolutionSet(previousDescriptor, descriptor);
+      if (!preservesSolutionSet) {
         stepResults[index] = { status: 'incorrect', message: 'Šis žingsnis nebeturi tos pačios sprendinių aibės kaip ankstesnis.' };
         return {
           status: 'incorrect',
@@ -3369,8 +3373,41 @@
           stepResults
         };
       }
-      stepResults[index] = { status: 'correct', message: step.type === 'alternatives' ? 'Alternatyvų bendra sprendinių aibė išsaugota.' : 'Sprendinių aibė išsaugota.' };
+      let transition = null;
+      if (localTransitionMode && equation && previousEquation) {
+        try {
+          transition = classifyLocalEquationTransition(previousEquation, equation);
+        } catch (error) {
+          stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
+          return {
+            status: 'incorrect',
+            title: `Nepavyko pagrįsti ${index + 1} žingsnio`,
+            message: friendlyParseError(error),
+            stepResults
+          };
+        }
+        if (!transition.ok) {
+          stepResults[index] = {
+            status: 'incorrect',
+            message: `Sprendinių aibė ta pati. ${transition.message}`
+          };
+          return {
+            status: 'incorrect',
+            title: `Per didelis šuolis – ${index + 1} žingsnyje`,
+            message: `Matematiškai sprendinių aibė nepasikeitė, tačiau perėjimas iš ankstesnės eilutės neparodo vieno aiškaus lygiaverčio veiksmo. ${transition.message}`,
+            stepResults
+          };
+        }
+      }
+
+      stepResults[index] = {
+        status: 'correct',
+        message: step.type === 'alternatives'
+          ? 'Alternatyvų bendra sprendinių aibė išsaugota.'
+          : (transition?.message || 'Sprendinių aibė išsaugota.')
+      };
       previousDescriptor = descriptor;
+      previousEquation = equation || null;
       if (equation && targetDescriptor.kind === 'single' && isVariableIsolated(equation, task.response.options.expectedVariable || 'x', targetDescriptor.value)) completed = true;
       if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
     }
@@ -3407,7 +3444,9 @@
     return {
       status: 'correct',
       title: 'Sprendimas teisingas',
-      message: `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę, o galutinis atsakymas yra ${expectedVariable} = ${expectedDisplay}.`,
+      message: localTransitionMode
+        ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais lygiaverčiais pertvarkymais. Galutinis atsakymas: ${expectedVariable} = ${expectedDisplay}.`
+        : `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę, o galutinis atsakymas yra ${expectedVariable} = ${expectedDisplay}.`,
       stepResults
     };
   }
@@ -6247,6 +6286,114 @@ KOKYBĖS REIKALAVIMAI:
 
   function sameLinearSolutionSet(first, second) {
     return samePolynomialSolutionSet(first, second);
+  }
+
+  // P2-SPLIT-P2.4.7.12: pirmasis lokalaus lygties žingsnio pagrįstumo prototipas.
+  // Sprendinių aibės sutapimas lieka saugos sluoksniu, o ši klasifikacija tikrina,
+  // ar nauja eilutė gaunama vienu aiškiu lygiaverčiu pertvarkymu iš ankstesnės.
+  function expressionPolynomial(node) {
+    const rational = astToRationalPolynomial(node);
+    if (!isConstantPolynomial(rational.denominator)) {
+      throw new Error('Žingsnio pagrįstumo prototipas kol kas nepalaiko kintamojo vardiklyje');
+    }
+    const denominator = Number(rational.denominator[0] || 0);
+    if (Math.abs(denominator) < EPSILON) throw new Error('Dalyba iš nulio');
+    return cleanPolynomial(rational.numerator.map(coefficient => coefficient / denominator));
+  }
+
+  function polynomialsApproximatelyEqual(first, second) {
+    const a = cleanPolynomial(first);
+    const b = cleanPolynomial(second);
+    const length = Math.max(a.length, b.length);
+    for (let index = 0; index < length; index += 1) {
+      const left = a[index] || 0;
+      const right = b[index] || 0;
+      const tolerance = EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
+      if (Math.abs(left - right) > tolerance) return false;
+    }
+    return true;
+  }
+
+  function equationSidePolynomials(equation) {
+    return {
+      left: expressionPolynomial(equation.left),
+      right: expressionPolynomial(equation.right)
+    };
+  }
+
+  function polynomialScaled(poly, factor) {
+    return cleanPolynomial(poly.map(coefficient => coefficient * factor));
+  }
+
+  function equationUniformScale(previousSides, nextSides) {
+    const pairs = [
+      [previousSides.left, nextSides.left],
+      [previousSides.right, nextSides.right]
+    ];
+    let factor = null;
+    for (const [previous, next] of pairs) {
+      const length = Math.max(previous.length, next.length);
+      for (let index = 0; index < length; index += 1) {
+        const before = previous[index] || 0;
+        const after = next[index] || 0;
+        if (Math.abs(before) <= EPSILON) {
+          if (Math.abs(after) > EPSILON) return null;
+          continue;
+        }
+        const candidate = after / before;
+        if (!Number.isFinite(candidate)) return null;
+        if (factor === null) factor = candidate;
+        else {
+          const tolerance = EPSILON * Math.max(1, Math.abs(factor), Math.abs(candidate));
+          if (Math.abs(candidate - factor) > tolerance) return null;
+        }
+      }
+    }
+    if (factor === null || Math.abs(factor) <= EPSILON) return null;
+    if (!polynomialsApproximatelyEqual(nextSides.left, polynomialScaled(previousSides.left, factor))) return null;
+    if (!polynomialsApproximatelyEqual(nextSides.right, polynomialScaled(previousSides.right, factor))) return null;
+    return factor;
+  }
+
+  function classifyLocalEquationTransition(previousEquation, nextEquation) {
+    const previous = equationSidePolynomials(previousEquation);
+    const next = equationSidePolynomials(nextEquation);
+
+    if (polynomialsApproximatelyEqual(previous.left, next.left) && polynomialsApproximatelyEqual(previous.right, next.right)) {
+      return { ok: true, kind: 'simplify', message: 'Lygiavertis supaprastinimas atpažintas.' };
+    }
+
+    if (polynomialsApproximatelyEqual(previous.left, next.right) && polynomialsApproximatelyEqual(previous.right, next.left)) {
+      return { ok: true, kind: 'swap', message: 'Sukeistos lygties pusės.' };
+    }
+
+    const previousDifference = addPolynomials(previous.left, previous.right, -1);
+    const nextDifference = addPolynomials(next.left, next.right, -1);
+    if (polynomialsApproximatelyEqual(previousDifference, nextDifference)) {
+      return {
+        ok: true,
+        kind: 'balanced-add',
+        message: 'Atpažintas lygiavertis pertvarkymas: abiem lygties pusėms atliktas tas pats pridėjimo / atėmimo veiksmas.'
+      };
+    }
+
+    const factor = equationUniformScale(previous, next);
+    if (factor !== null) {
+      return {
+        ok: true,
+        kind: 'scale',
+        factor,
+        message: Math.abs(factor) < 1
+          ? 'Atpažintas lygiavertis pertvarkymas: abi lygties pusės padalytos iš to paties nenulinio skaičiaus.'
+          : 'Atpažintas lygiavertis pertvarkymas: abi lygties pusės padaugintos iš to paties nenulinio skaičiaus.'
+      };
+    }
+
+    return {
+      ok: false,
+      kind: 'unexplained-jump',
+      message: 'Sprendinių aibė išliko ta pati, tačiau ši eilutė nėra vienas tiesioginis ankstesnės lygties pertvarkymas. Parodyk tarpinį žingsnį.'
+    };
   }
 
   function formatSolutionDescriptor(descriptor) {

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.11';
+  const BUILD = 'P2-SPLIT-P2.4.7.12';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,7 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.11: diagnostinis lygčių rinkinys sprendimo žingsnių tikrintuvui.
+    // P2-SPLIT-P2.4.7.12: 1-oje tiesinėje lygtyje pridėtas lokalaus žingsnio pagrįstumo prototipas.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
@@ -48,7 +48,7 @@
         label: '1 testas',
         title: 'Tiesinė lygtis · kintamasis abiejose pusėse',
         prompt: '4x - 7 = 2x + 9',
-        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Gali rinktis bet kokį lygiavertį sprendimo kelią.',
+        instruction: 'Išspręsk lygtį parodydamas sprendimo eigą. Kiekvienoje eilutėje parodyk vieną aiškų lygiavertį pertvarkymą; narius perkelti galima ir kelis vienu žingsniu.',
         answer: 'x = 8',
         hint: 'Sutelk narius su x vienoje pusėje, skaičius – kitoje.',
         response: {
@@ -62,7 +62,8 @@
             expectedVariable: 'x',
             expectedValue: 8,
             expectedDisplay: '8',
-            minimumSteps: 2
+            minimumSteps: 2,
+            stepTransitionValidation: 'local-v1'
           }
         }
       },
