@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.17';
+  const BUILD = 'P2-SPLIT-P2.4.7.17.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -31,6 +31,7 @@
 
   const DEMO_LESSON = Object.freeze({
     // P2-SPLIT-P2.4.7.17: sprendimo srauto prototipas su vertikaliomis šakomis
+    // P2-SPLIT-P2.4.7.17.1: semantic-v2 įjungtas visoms kvadratinių lygčių diagnostinėms užduotims
     // ir lygybės tęsiniu naujoje eilutėje. Semantinis 7.16.1 tikrintuvas išlaikytas.
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
@@ -144,7 +145,7 @@
             expectedDisplay: 'x = 3',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'quadratic-v1'
+            stepTransitionValidation: 'semantic-v2'
           }
         }
       },
@@ -171,7 +172,7 @@
             expectedDisplay: 'sprendinių nėra',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'quadratic-v1'
+            stepTransitionValidation: 'semantic-v2'
           }
         }
       },
@@ -198,7 +199,7 @@
             expectedDisplay: 'x = -1/2; x = 3',
             minimumSteps: 2,
             autoDerived: true,
-            stepTransitionValidation: 'quadratic-v1'
+            stepTransitionValidation: 'semantic-v2'
           }
         }
       }
