@@ -3929,6 +3929,17 @@
   }
 
   function classifyQuadraticAuxiliaryStepV2(source, context) {
+    // P2-SPLIT-P2.4.7.16.1: keli atskiri simbolių priskyrimai vienoje eilutėje
+    // (pvz. c=1; b=12; a=-7) pirmiausia turi būti interpretuojami kaip
+    // vietinių simbolių apibrėžimai. Ankstesnėje 7.16 versijoje visa eilutė
+    // galėjo būti klaidingai palaikyta diskriminanto formule vien todėl, kad
+    // po pirmos lygybės dar buvo raidžių. Vieno priskyrimo atveju diskriminantą
+    // vis dar tikriname pirmą, kad trumpinys D=1 išliktų semantinis D žingsnis.
+    const assignments = splitSemanticAssignmentsV2(source);
+    if (assignments.length > 1) {
+      const definitions = classifyQuadraticDefinitionsV2(source, context);
+      if (definitions.recognized) return definitions;
+    }
     const discriminant = classifyQuadraticDiscriminantV2(source, context);
     if (discriminant.recognized) return discriminant;
     return classifyQuadraticDefinitionsV2(source, context);
