@@ -6251,3 +6251,125 @@ body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .mi-large-op > sup 
   .mi-integral > b { font-size: 30px; }
 }
 \n\n
+\n\n/* =========================================================
+   P2-SPLIT-P2.4.7.10 — Matematikos juostos vizualinis suvienodinimas
+   - vienodesnis ikonų optinis svoris ir centravimas;
+   - aiškesni baziniai matematiniai ženklai;
+   - šaknies miniatiūrose nebepiešiama dirbtinė tęsinio linija;
+   - kompaktiškesnės vektorių rodyklės;
+   - šiek tiek įskaitomesnės kategorijų kortelės.
+   Formulių įterpimo / redagavimo logika nekeičiama.
+   ========================================================= */
+body.p2-shell.p2-math-ribbon-active .math-category-tab {
+  font-size: 8.6px;
+  font-weight: 650;
+  letter-spacing: .005em;
+}
+
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category] {
+  border-radius: 8px;
+  border-color: #d7dce5;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(16,24,40,.025);
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category]:hover,
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category]:focus-visible {
+  border-color: #9eabd0;
+  background: #f7f8fc;
+  box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+
+/* Paprasti matematiniai ženklai — tipografiškai artimesni pačiai formulei. */
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Pagrindiniai"]:not(.has-rich-icon),
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Veiksmai ir palyginimai"]:not(.has-rich-icon),
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Logika"]:not(.has-rich-icon),
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Intervalai"]:not(.has-rich-icon),
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Raidės"]:not(.has-rich-icon) {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  font-size: 17.5px;
+}
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key[data-category="Logika"]:not(.has-rich-icon) {
+  min-width: 36px;
+  font-size: 19px;
+}
+
+/* Turtingos miniatiūros nebepermažinamos — jos turi būti lengvai perskaitomos vienu žvilgsniu. */
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon .mi,
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:hover .mi,
+body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:focus-visible .mi {
+  transform: scale(.92);
+  transform-origin: center center;
+}
+
+.mi-fraction {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: .88;
+}
+.mi-fraction > span { min-width: 21px; }
+.mi-fraction > span:first-child { padding-bottom: 2px; border-bottom-width: 1.25px; }
+.mi-fraction > span:last-child { padding-top: 2px; }
+
+/* Šaknies piktograma naudoja tikrą √ glifą; jokios CSS nupieštos tęsinio linijos. */
+.mi-basic-root { min-width: 30px; gap: 0; padding-top: 0; }
+.mi-basic-root > b { font-size: 26px; line-height: .92; }
+.mi-basic-root > i {
+  min-width: auto;
+  margin: 3px 0 0 -2px;
+  padding: 0;
+  border-top: 0;
+  font: italic 14px/1 Georgia, "Times New Roman", serif;
+}
+.mi-nth-root { min-width: 34px; gap: 0; align-items: center; padding-top: 0; }
+.mi-nth-root sup { align-self: flex-start; margin: 1px -1px 0 0; font-size: 8px; }
+.mi-nth-root b { font-size: 25px; line-height: .92; }
+.mi-nth-root i {
+  width: auto;
+  height: auto;
+  margin: 3px 0 0 -2px;
+  border: 0;
+  font: italic 13px/1 Georgia, "Times New Roman", serif;
+}
+
+.mi-basic-power > i { font-size: 17px; }
+.mi-basic-power > sup { margin-top: 0; font-size: 8.5px; }
+
+/* Ribos aiškiai priklauso didžiajam operatoriui. */
+.mi-large-op { grid-template-rows: 7px 18px 7px; min-width: 38px; }
+.mi-large-op > b { font-size: 24px; }
+.mi-large-op > sup, .mi-large-op > sub { font-size: 7.2px; }
+
+.mi-integral > b { font-size: 31px; }
+.mi-definite-integral > b { font-size: 30px; }
+.mi-definite-integral > sup, .mi-definite-integral > sub { font-size: 7.5px; }
+
+/* Vektoriaus rodyklė kompaktiškesnė ir kiekviena rodyklė lieka tik virš savo vektoriaus. */
+.mi-vector-symbol {
+  grid-template-rows: 7px 16px;
+  min-width: 17px;
+  min-height: 24px;
+}
+.mi-vector-symbol > .mi-vector-arrow {
+  min-width: 14px;
+  margin-bottom: -1px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -1px;
+  transform: scaleX(.72);
+}
+.mi-vector-symbol > i { font-size: 16px; }
+.mi-dot-product { min-width: 47px; gap: 3px; }
+.mi-dot-product > b { margin-top: 6px; font-size: 16px; }
+.mi-vector-norm { min-width: 41px; }
+.mi-vector-norm > b { margin-top: 5px; font-size: 21px; }
+
+@media (max-width: 860px) {
+  body.p2-shell.p2-math-ribbon-active .math-category-tab { font-size: 8.1px; }
+  body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon .mi,
+  body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:hover .mi,
+  body.p2-shell.p2-math-ribbon-active .universal-math-keyboard .math-key.has-rich-icon:focus-visible .mi {
+    transform: scale(.88);
+  }
+}

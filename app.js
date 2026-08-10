@@ -2061,6 +2061,7 @@
   const MATH_CATEGORIES = Object.freeze([
     'Pagrindiniai',
     'Veiksmai ir palyginimai',
+    'Logika',
     'Skliaustai',
     'Struktūros',
     'Raidės',
@@ -2105,6 +2106,15 @@
     { category: 'Veiksmai ir palyginimai', label: '∓', insert: '\\mp ' },
     { category: 'Veiksmai ir palyginimai', label: '∝', insert: '\\propto ' },
     { category: 'Veiksmai ir palyginimai', label: '∞', insert: '\\infty' },
+
+    // Matematinė logika — dažniausi loginiai ryšiai ir kvantoriai.
+    { category: 'Logika', label: '⇒', insert: '\\Rightarrow ', aria: 'Implikacija' },
+    { category: 'Logika', label: '⇔', insert: '\\Leftrightarrow ', aria: 'Ekvivalencija' },
+    { category: 'Logika', label: '¬', insert: '\\neg ', aria: 'Neigimas' },
+    { category: 'Logika', label: '∧', insert: '\\land ', aria: 'Loginė konjunkcija' },
+    { category: 'Logika', label: '∨', insert: '\\lor ', aria: 'Loginė disjunkcija' },
+    { category: 'Logika', label: '∀', insert: '\\forall ', aria: 'Universalusis kvantorius' },
+    { category: 'Logika', label: '∃', insert: '\\exists ', aria: 'Egzistavimo kvantorius' },
 
     // Skliaustai
     { category: 'Skliaustai', label: '( )', structure: 'parentheses', aria: 'Apvalieji skliaustai' },
@@ -2489,7 +2499,7 @@
     const cells = count => cell.repeat(count);
     const map = {
       'fraction': '<span class="mi mi-fraction" aria-hidden="true"><span>a</span><span>b</span></span>',
-      'nth-root': '<span class="mi mi-nth-root" aria-hidden="true"><sup>n</sup><b>√</b><i></i></span>',
+      'nth-root': '<span class="mi mi-nth-root" aria-hidden="true"><sup>n</sup><b>√</b><i>x</i></span>',
       'binomial': '<span class="mi mi-binomial" aria-hidden="true"><b>(</b><span><i>n</i><i>k</i></span><b>)</b></span>',
       'system-2': '<span class="mi mi-system" aria-hidden="true"><b>{</b><span class="mi-system-lines"><i></i><i></i></span></span>',
       'system-3': '<span class="mi mi-system mi-system-3" aria-hidden="true"><b>{</b><span class="mi-system-lines"><i></i><i></i><i></i></span></span>',
@@ -2522,6 +2532,7 @@
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `math-key${key.structure ? ' is-structure-key' : ''}${key.action === 'math-mode' ? ' is-math-mode-key' : ''}${key.visual ? ' has-rich-icon' : ''}${extraClass ? ` ${extraClass}` : ''}`;
+    if (key.category) button.dataset.category = key.category;
     if (key.visual) {
       button.innerHTML = mathKeyVisualMarkup(key.visual);
       button.dataset.visual = key.visual;
