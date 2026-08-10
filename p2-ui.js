@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.18';
+  const BUILD = 'P2-SPLIT-P2.4.7.18.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -30,7 +30,7 @@
   if (legacyPracticeButton) legacyPracticeButton.hidden = true;
 
   const DEMO_LESSON = Object.freeze({
-    // P2-SPLIT-P2.4.7.18: visa Lygčių diagnostika perrašyta į vieną naujausią
+    // P2-SPLIT-P2.4.7.18.1: visa Lygčių diagnostika perrašyta į vieną naujausią
     // semantinį sprendimo srautą. Tiesinės ir kvadratinės užduotys naudoja tą patį
     // Word tipo žingsnių modelį: Enter tęsiniai, vertikalios šakos, Atsakymas ir
     // automatinis tinkamo matematinio tikrintuvo parinkimas pagal pradinę lygtį.

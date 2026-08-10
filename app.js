@@ -4197,6 +4197,111 @@
     };
   }
 
+  // P2-SPLIT-P2.4.7.18.1: vienintelio (dvigubo) sprendinio atveju viena
+  // eilutė taip pat gali būti pilna lygybių / skaičiavimo grandinė, pvz.
+  // x = -b/(2a) = -(-6)/(2*1) = 3. Tai nėra kelių lygčių sistema – tai
+  // viena reikšmės grandinė, todėl jos negalima siųsti į parseEquation(),
+  // kuris sąmoningai priima tik vieną '='.
+  function semanticQuadraticDoubleRootFormulaMatchesV2(source, context, candidate) {
+    const probes = [
+      { A: 1, B: -6, C: 9 },
+      { A: 2, B: -8, C: 8 },
+      { A: 3, B: 12, C: 12 },
+      { A: -2, B: 4, C: -2 }
+    ];
+    try {
+      return probes.every(probe => {
+        const actual = evaluateQuadraticSemanticNumericV2(source, semanticScopeForCandidateV2(context, candidate, probe));
+        const expected = -probe.B / (2 * probe.A);
+        return semanticNumberMatches(actual, expected);
+      });
+    } catch (_) { return false; }
+  }
+
+  function parseQuadraticSingleRootCalculationV2(source, context) {
+    if (descriptorRoots(context.targetDescriptor).length !== 1) return { recognized: false };
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+    if (parts.length < 2) return { recognized: false };
+
+    const left = String(parts[0] || '').replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '').toLowerCase();
+    if (!/^x(?:1|2)?$/.test(left)) return { recognized: false };
+
+    const rhs = parts.slice(1);
+    // Leisti vizualiai užbaigti eilutę '=' ir tęsti kitame Enter žingsnyje.
+    while (rhs.length && !String(rhs[rhs.length - 1] || '').trim()) rhs.pop();
+    if (!rhs.length) return { recognized: false };
+    if (rhs.some(part => !String(part || '').trim())) {
+      return { recognized: true, ok: false, message: 'Lygybės grandinėje tarp dviejų = turi būti reiškinys.' };
+    }
+
+    const expectedRoot = descriptorRoots(context.targetDescriptor)[0];
+    const allIds = [...new Set(rhs.flatMap(part => semanticIdentifiersV2(part)))]
+      .filter(symbol => symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+    const candidatePool = semanticCandidateMappingsV2(context, allIds);
+
+    // Pirmiausia ieškome semantiškai atpažįstamos dvigubos šaknies formulės -B/(2A).
+    let formulaCandidates = [];
+    for (const candidate of candidatePool) {
+      if (rhs.some(part => semanticQuadraticDoubleRootFormulaMatchesV2(part, context, candidate))) {
+        formulaCandidates.push(candidate);
+      }
+    }
+
+    // Jei simbolinė formulė praleista, skaitinę grandinę leidžiame tik po parodyto
+    // D = 0 ir tik tada, kai eilutėje iš tiesų yra skaičiavimas, o ne vien x = 3.
+    const compact = rhs.map(part => normalizeMathLiveAscii(part).replace(/\s+/g, ''));
+    const numericContinuation = context.seenDiscriminant
+      && semanticNumberMatches(context.discriminant, 0)
+      && rhs.length >= 2
+      && compact.some(part => !/^[-+]?\d+(?:[.,]\d+)?$/.test(part));
+
+    if (!formulaCandidates.length && !numericContinuation) return { recognized: false };
+
+    const candidates = formulaCandidates.length
+      ? formulaCandidates
+      : (context.roleCandidates?.length ? context.roleCandidates : [{}]);
+    let successful = null;
+    for (const candidate of candidates) {
+      const scope = semanticScopeForCandidateV2(context, candidate);
+      let value = null;
+      let ok = true;
+      try {
+        for (const part of rhs) {
+          const current = evaluateQuadraticSemanticNumericV2(part, scope);
+          if (value !== null && !semanticNumberMatches(current, value)) { ok = false; break; }
+          value = current;
+        }
+      } catch (_) { ok = false; }
+      if (!ok || value === null || !semanticNumberMatches(value, expectedRoot)) continue;
+      successful = { candidate, value };
+      break;
+    }
+
+    if (!successful) {
+      return {
+        recognized: true,
+        ok: false,
+        message: 'Vienintelio sprendinio skaičiavimo grandinėje užrašytos reikšmės nėra lygios arba negaunamas teisingas sprendinys.'
+      };
+    }
+
+    if (formulaCandidates.length) context.roleCandidates = formulaCandidates;
+    context.semanticSteps.push({ semanticType: 'formula-application', kind: 'quadratic-formula-single', value: successful.value });
+    return {
+      recognized: true,
+      ok: true,
+      value: successful.value,
+      lhs: left,
+      semanticType: 'formula-application',
+      kind: 'quadratic-formula-single',
+      message: formulaCandidates.length
+        ? 'Pritaikyta dvigubos kvadratinės lygties šaknies formulė; lygybių grandinė apskaičiuota teisingai.'
+        : 'Tęsiamas vienintelio sprendinio skaičiavimas; lygybių grandinė išlieka teisinga.'
+    };
+  }
+
   // P2-SPLIT-P2.4.7.17.3: vertikalios kvadratinės formulės šakos gali tęsti
   // lygybės grandinę per kelias eilutes, pvz. x_1 = ... ir kitoje eilutėje
   // = 6/2 = 3. resolveStructuredStepContinuations() jau atkuria kairįjį narį,
@@ -4377,7 +4482,7 @@
     return sameRootValues(found, roots);
   }
 
-  // P2-SPLIT-P2.4.7.18: bendro semantinio sprendimo srauto pagalbinė funkcija.
+  // P2-SPLIT-P2.4.7.18.1: bendro semantinio sprendimo srauto pagalbinė funkcija.
   // Tiesinėje lygtyje leidžiame natūralią izoliuoto kintamojo lygybių grandinę,
   // pvz. x = 16/2 = 8. Pirmoji lygybė vis tiek turi būti tiesiogiai pagrįsta
   // ankstesniu lygties žingsniu; likusi grandinė tik patvirtina tą pačią reikšmę.
@@ -4725,7 +4830,7 @@
           // į dvi vienodas šakas. Leidžiame vieną natūralią formulės / skaičiavimo grandinę,
           // pvz. x=(-b+sqrt(D))/(2a)=3.
           if (semanticModeV2 && descriptorRoots(targetDescriptor).length === 1) {
-            const singleFormula = parseQuadraticFormulaRootAssignmentV2(source, semanticContext);
+            const singleFormula = parseQuadraticSingleRootCalculationV2(source, semanticContext);
             if (singleFormula.recognized) {
               if (!singleFormula.ok) throw new Error(singleFormula.message);
               const expectedRoot = descriptorRoots(targetDescriptor)[0];
@@ -4857,7 +4962,7 @@
   }
 
 
-  // P2-SPLIT-P2.4.7.18: vienas įėjimo taškas visai „Lygčių diagnostikai“.
+  // P2-SPLIT-P2.4.7.18.1: vienas įėjimo taškas visai „Lygčių diagnostikai“.
   // Užduotis nebesirenka seno tiesinio ar kvadratinio srauto rankiniu būdu:
   // pradinė lygtis išanalizuojama, o tada automatiškai prijungiamas naujausias
   // semantinis sprendimo modelis. UI, šakos, lygybės tęsiniai ir mokytojo peržiūra
