@@ -3282,7 +3282,7 @@
     return { descriptor: unionEquationDescriptors(descriptors), descriptors, equations };
   }
 
-  // P2-SPLIT-P2.4.7.15.1: semantinis koeficientų žingsnis priima kelis priskyrimus vienoje eilutėje (pvz. a=1, b=-7, c=12).
+  // P2-SPLIT-P2.4.7.16: semantinis koeficientų žingsnis priima kelis priskyrimus vienoje eilutėje (pvz. a=1, b=-7, c=12).
   // P2-SPLIT-P2.4.7.15: pirmasis semantinio sprendimo žingsnio modelis.
   // Ekvivalentiška lygtis yra tik vienas sprendimo žingsnio tipas. Diskriminanto
   // kelyje leidžiame ir pagalbinius dydžius (a, b, c, D) bei formulės taikymą,
@@ -3586,6 +3586,460 @@
     };
   }
 
+
+
+  // P2-SPLIT-P2.4.7.16: semantinis v2 kontekstas.
+  // Mokinio pasirinkti simbolių vardai nebėra tapatinami su jų matematiniu vaidmeniu.
+  // Vaidmuo nustatomas iš viso augančio sprendimo konteksto, todėl ankstesnė eilutė
+  // gali būti laikinai „laukianti konteksto“ ir perskaičiuota įvedus vėlesnį žingsnį.
+  function quadraticContextFromInitialEquationV2(initialEquation, targetDescriptor) {
+    const base = quadraticContextFromInitialEquation(initialEquation, targetDescriptor);
+    return {
+      ...base,
+      canonicalCoefficients: {
+        A: base.coefficients.a,
+        B: base.coefficients.b,
+        C: base.coefficients.c
+      },
+      localSymbols: {},
+      discriminantSymbols: new Set(),
+      roleCandidates: null,
+      pendingDefinitions: []
+    };
+  }
+
+  function semanticRoleLabelV2(role) {
+    if (role === 'A') return 'x² koeficientas';
+    if (role === 'B') return 'x koeficientas';
+    if (role === 'C') return 'laisvasis narys';
+    return role;
+  }
+
+  function semanticAstVariablesV2(node, out = new Set()) {
+    if (!node) return out;
+    if (node.type === 'variable') out.add(String(node.name || '').toLowerCase());
+    else if (node.type === 'unary') semanticAstVariablesV2(node.value, out);
+    else if (node.type === 'binary') {
+      semanticAstVariablesV2(node.left, out);
+      semanticAstVariablesV2(node.right, out);
+    }
+    return out;
+  }
+
+  function expandCompactSemanticSymbolsV2(source, symbolNames) {
+    const symbols = new Set([...symbolNames].map(item => String(item).toLowerCase()));
+    let result = String(source || '').toLowerCase().replace(/√/g, 'sqrt');
+    result = result.replace(/[a-z]{2,}/g, match => {
+      if (match === 'sqrt') return match;
+      const chars = [...match];
+      return chars.every(char => symbols.has(char)) ? chars.join('*') : match;
+    });
+    return result;
+  }
+
+  function replaceSemanticSqrtCallsV2(source, symbols, depth = 0) {
+    if (depth > 12) throw new Error('Parse error: per daug įdėtų šaknų');
+    let result = String(source || '');
+    let guard = 0;
+    while (/sqrt\s*\(/i.test(result)) {
+      if (guard++ > 20) throw new Error('Parse error: nepavyko perskaityti kvadratinės šaknies');
+      const lower = result.toLowerCase();
+      const start = lower.lastIndexOf('sqrt(');
+      const open = start + 4;
+      let nesting = 0;
+      let close = -1;
+      for (let index = open; index < result.length; index += 1) {
+        if (result[index] === '(') nesting += 1;
+        else if (result[index] === ')') {
+          nesting -= 1;
+          if (nesting === 0) { close = index; break; }
+        }
+      }
+      if (close < 0) throw new Error('Parse error: neuždaryta kvadratinė šaknis');
+      const inner = result.slice(open + 1, close);
+      const value = evaluateQuadraticSemanticNumericV2(inner, symbols, depth + 1);
+      const tolerance = EPSILON * Math.max(1, Math.abs(value));
+      if (value < -tolerance) throw new Error('Parse error: realiųjų skaičių srityje negalima traukti šaknies iš neigiamo skaičiaus');
+      const root = Math.sqrt(Math.max(0, value));
+      result = `${result.slice(0, start)}(${root})${result.slice(close + 1)}`;
+    }
+    return result;
+  }
+
+  function evaluateQuadraticSemanticNumericV2(source, symbols = {}, depth = 0) {
+    const normalizedSymbols = Object.fromEntries(Object.entries(symbols).map(([key, value]) => [String(key).toLowerCase(), value]));
+    let expression = expandCompactSemanticSymbolsV2(normalizeMathLiveAscii(source), Object.keys(normalizedSymbols)).replace(/\s+/g, '');
+    expression = replaceSemanticSqrtCallsV2(expression, normalizedSymbols, depth);
+    // Bendras P2 reiškinių parseris sąmoningai palaiko tik x. Semantiniame sluoksnyje
+    // vietinius mokinio simbolius pirmiausia pakeičiame jų skaitinėmis reikšmėmis,
+    // todėl nereikia plėsti viso lygties parserio ir rizikuoti regresijomis.
+    expression = expression.replace(/[a-z]/gi, symbol => {
+      const key = symbol.toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(normalizedSymbols, key) || !Number.isFinite(normalizedSymbols[key])) {
+        throw new Error(`Parse error: dar nežinoma ${symbol} reikšmė`);
+      }
+      return `(${normalizedSymbols[key]})`;
+    });
+    const ast = parseExpression(expression);
+    const value = evaluateAst(ast, {});
+    if (!Number.isFinite(value)) throw new Error('Parse error: gauta nebaigtinė skaitinė reikšmė');
+    return value;
+  }
+
+  function semanticIdentifiersV2(source) {
+    const normalized = normalizeMathLiveAscii(source).toLowerCase().replace(/sqrt/g, '');
+    const found = normalized.match(/[a-z]+/g) || [];
+    const result = new Set();
+    for (const token of found) {
+      for (const char of token) result.add(char);
+    }
+    return [...result];
+  }
+
+  function splitSemanticAssignmentsV2(source) {
+    const input = normalizeMathLiveAscii(source);
+    const assignments = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      const char = input[index];
+      if (char === '(') depth += 1;
+      else if (char === ')') depth = Math.max(0, depth - 1);
+      if (depth !== 0 || (char !== ',' && char !== ';')) continue;
+      const remainder = input.slice(index + 1);
+      if (!/^\s*[A-Za-z]\s*=/.test(remainder)) continue;
+      const part = input.slice(start, index).trim();
+      if (part) assignments.push(part);
+      start = index + 1;
+    }
+    const tail = input.slice(start).trim();
+    if (tail) assignments.push(tail);
+    return assignments;
+  }
+
+  function semanticMappingKeyV2(mapping) {
+    return Object.entries(mapping).sort(([a], [b]) => a.localeCompare(b)).map(([symbol, role]) => `${symbol}:${role}`).join('|');
+  }
+
+  function semanticIntersectMappingsV2(left, right) {
+    const rightKeys = new Set(right.map(semanticMappingKeyV2));
+    return left.filter(item => rightKeys.has(semanticMappingKeyV2(item)));
+  }
+
+  function semanticCandidateMappingsV2(context, requestedSymbols) {
+    const roles = ['A', 'B', 'C'];
+    const symbols = [...new Set(requestedSymbols.map(item => String(item).toLowerCase()))]
+      .filter(symbol => /^[a-z]$/.test(symbol) && symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+    let candidates = context.roleCandidates?.length ? context.roleCandidates.map(item => ({ ...item })) : [{}];
+
+    for (const symbol of symbols) {
+      const next = [];
+      for (const candidate of candidates) {
+        if (candidate[symbol]) { next.push(candidate); continue; }
+        const usedRoles = new Set(Object.values(candidate));
+        for (const role of roles) {
+          if (usedRoles.has(role)) continue;
+          next.push({ ...candidate, [symbol]: role });
+        }
+      }
+      candidates = next;
+    }
+
+    // Jei mokinys jau priskyrė simboliui skaitinę reikšmę, ji turi sutapti su
+    // to vaidmens koeficientu. Tačiau vien tik reikšmė dar nėra laikoma vaidmens paaiškinimu.
+    candidates = candidates.filter(candidate => Object.entries(candidate).every(([symbol, role]) => {
+      if (!Object.prototype.hasOwnProperty.call(context.localSymbols, symbol)) return true;
+      return semanticNumberMatches(context.localSymbols[symbol], context.canonicalCoefficients[role]);
+    }));
+    return candidates;
+  }
+
+  function semanticScopeForCandidateV2(context, candidate, probe = null) {
+    const scope = { ...context.localSymbols };
+    for (const [symbol, role] of Object.entries(candidate)) {
+      scope[symbol] = probe ? probe[role] : context.canonicalCoefficients[role];
+    }
+    const discriminant = probe
+      ? probe.B * probe.B - 4 * probe.A * probe.C
+      : context.discriminant;
+    for (const symbol of context.discriminantSymbols) scope[symbol] = discriminant;
+    return scope;
+  }
+
+  function semanticDiscriminantFormulaMatchesV2(source, context, candidate) {
+    const probes = [
+      { A: 1, B: 2, C: 3 },
+      { A: 2, B: -5, C: 1 },
+      { A: -1, B: 4, C: 2 },
+      { A: 3, B: 0, C: -2 }
+    ];
+    try {
+      return probes.every(probe => {
+        const actual = evaluateQuadraticSemanticNumericV2(source, semanticScopeForCandidateV2(context, candidate, probe));
+        const expected = probe.B * probe.B - 4 * probe.A * probe.C;
+        return semanticNumberMatches(actual, expected);
+      });
+    } catch (_) { return false; }
+  }
+
+  function semanticQuadraticRootFormulaBranchV2(source, context, candidate) {
+    const probes = [
+      { A: 1, B: -5, C: 6 },
+      { A: 2, B: -7, C: 3 },
+      { A: 1, B: 4, C: 3 },
+      { A: 3, B: -10, C: 3 }
+    ];
+    const branchMatches = sign => {
+      try {
+        return probes.every(probe => {
+          const D = probe.B * probe.B - 4 * probe.A * probe.C;
+          if (D < 0) return true;
+          const actual = evaluateQuadraticSemanticNumericV2(source, semanticScopeForCandidateV2(context, candidate, probe));
+          const expected = (-probe.B + sign * Math.sqrt(D)) / (2 * probe.A);
+          return semanticNumberMatches(actual, expected);
+        });
+      } catch (_) { return false; }
+    };
+    if (branchMatches(-1)) return 'minus';
+    if (branchMatches(1)) return 'plus';
+    return null;
+  }
+
+  function classifyQuadraticDefinitionsV2(source, context) {
+    const assignments = splitSemanticAssignmentsV2(source);
+    if (!assignments.length) return { recognized: false };
+    const parsed = [];
+    const workingSymbols = { ...context.localSymbols };
+    for (const assignment of assignments) {
+      let parts;
+      try { parts = splitTopLevelEqualities(assignment); }
+      catch (_) { return { recognized: false }; }
+      if (parts.length !== 2) return { recognized: false };
+      const symbol = parts[0].replace(/\s+/g, '').toLowerCase();
+      if (!/^[a-z]$/.test(symbol) || symbol === 'x') return { recognized: false };
+      let value;
+      try { value = evaluateQuadraticSemanticNumericV2(parts[1], workingSymbols); }
+      catch (_) { return { recognized: false }; }
+      workingSymbols[symbol] = value;
+      parsed.push({ symbol, value });
+    }
+    Object.assign(context.localSymbols, workingSymbols);
+
+    // Standartinis a,b,c žymėjimas, kai reikšmės sutampa su įprastais vaidmenimis,
+    // yra pakankamai aiškus jau pats savaime.
+    const standard = parsed.length >= 1 && parsed.every(({ symbol, value }) => {
+      const role = symbol === 'a' ? 'A' : symbol === 'b' ? 'B' : symbol === 'c' ? 'C' : null;
+      return role && semanticNumberMatches(value, context.canonicalCoefficients[role]);
+    });
+    if (standard) {
+      const mapping = {};
+      for (const { symbol } of parsed) mapping[symbol] = symbol === 'a' ? 'A' : symbol === 'b' ? 'B' : 'C';
+      const candidates = semanticCandidateMappingsV2(context, Object.keys(mapping)).filter(candidate =>
+        Object.entries(mapping).every(([symbol, role]) => candidate[symbol] === role));
+      if (candidates.length) context.roleCandidates = candidates;
+      return {
+        recognized: true,
+        ok: true,
+        status: 'correct',
+        semanticType: 'symbol-definition',
+        kind: 'quadratic-coefficients',
+        symbols: parsed.map(item => item.symbol),
+        message: `Teisingai nustatyti kvadratinės lygties koeficientai: ${parsed.map(item => `${item.symbol} = ${formatSemanticNumber(item.value)}`).join(', ')}.`
+      };
+    }
+
+    return {
+      recognized: true,
+      ok: true,
+      status: 'warning',
+      semanticType: 'symbol-definition',
+      kind: 'local-symbols-pending',
+      symbols: parsed.map(item => item.symbol),
+      message: 'Žymėjimai užfiksuoti. Jų matematinis vaidmuo bus patikslintas iš tolesnio sprendimo.'
+    };
+  }
+
+  function classifyQuadraticDiscriminantV2(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: false, parseError: error }; }
+    if (parts.length < 2) return { recognized: false };
+    const left = parts[0].replace(/\s+/g, '').toLowerCase();
+    if (!/^[a-z]$/.test(left) || left === 'x') return { recognized: false };
+
+    const rhs = parts.slice(1);
+    let formulaPart = null;
+    for (const part of rhs) {
+      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== left && symbol !== 'x');
+      if (ids.length || /sqrt|√/i.test(part)) { formulaPart = part; break; }
+    }
+
+    // Grynas D=1 tebėra leidžiamas kaip įprastas trumpinys.
+    if (!formulaPart) {
+      if (left !== 'd' && !context.discriminantSymbols.has(left)) return { recognized: false };
+      try {
+        for (const part of rhs) {
+          const value = evaluateQuadraticSemanticNumericV2(part, context.localSymbols);
+          if (!semanticNumberMatches(value, context.discriminant)) {
+            return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai D = ${formatSemanticNumber(context.discriminant)}.` };
+          }
+        }
+      } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+      context.discriminantSymbols.add(left);
+      context.localSymbols[left] = context.discriminant;
+      context.seenDiscriminant = true;
+      return { recognized: true, ok: true, status: 'correct', semanticType: 'derived-value', kind: 'discriminant', message: `Teisingai apskaičiuotas diskriminantas: ${left.toUpperCase()} = ${formatSemanticNumber(context.discriminant)}.` };
+    }
+
+    const formulaSymbols = semanticIdentifiersV2(formulaPart)
+      .filter(symbol => symbol !== left && symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+    let candidates = semanticCandidateMappingsV2(context, formulaSymbols);
+    const beforeStructure = candidates.length;
+    candidates = candidates.filter(candidate => semanticDiscriminantFormulaMatchesV2(formulaPart, context, candidate));
+    if (!candidates.length) {
+      if (left === 'd' || beforeStructure) {
+        return { recognized: true, ok: false, message: 'Užrašyta formulė pagal pasirinktus simbolius neatitinka diskriminanto D = B² − 4AC.' };
+      }
+      return { recognized: false };
+    }
+
+    const scope = semanticScopeForCandidateV2(context, candidates[0]);
+    try {
+      for (const part of rhs) {
+        const value = evaluateQuadraticSemanticNumericV2(part, scope);
+        if (!semanticNumberMatches(value, context.discriminant)) {
+          return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai D = ${formatSemanticNumber(context.discriminant)}.` };
+        }
+      }
+    } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+
+    context.roleCandidates = candidates;
+    context.discriminantSymbols.add(left);
+    context.localSymbols[left] = context.discriminant;
+    context.seenDiscriminant = true;
+    context.semanticSteps.push({ semanticType: 'derived-value', kind: 'discriminant', value: context.discriminant });
+    return {
+      recognized: true,
+      ok: true,
+      status: 'correct',
+      semanticType: 'derived-value',
+      kind: 'discriminant',
+      message: `Pritaikyta diskriminanto formulė pagal pasirinktus žymėjimus; teisingai gauta ${left.toUpperCase()} = ${formatSemanticNumber(context.discriminant)}.`
+    };
+  }
+
+  function classifyQuadraticAuxiliaryStepV2(source, context) {
+    const discriminant = classifyQuadraticDiscriminantV2(source, context);
+    if (discriminant.recognized) return discriminant;
+    return classifyQuadraticDefinitionsV2(source, context);
+  }
+
+  function semanticResolvedRoleV2(context, symbol) {
+    if (!context.roleCandidates?.length) return null;
+    const roles = new Set(context.roleCandidates.map(candidate => candidate[symbol]).filter(Boolean));
+    return roles.size === 1 ? [...roles][0] : null;
+  }
+
+  function finalizeQuadraticPendingDefinitionsV2(context, stepResults) {
+    for (const pending of context.pendingDefinitions) {
+      const details = [];
+      let resolved = true;
+      for (const symbol of pending.symbols) {
+        const role = semanticResolvedRoleV2(context, symbol);
+        if (!role) { resolved = false; break; }
+        details.push(`${symbol} – ${semanticRoleLabelV2(role)}`);
+      }
+      if (resolved && stepResults[pending.index]) {
+        stepResults[pending.index] = {
+          status: 'correct',
+          message: `Tolesnis sprendimas patikslino pasirinktus žymėjimus: ${details.join(', ')}.`
+        };
+      }
+    }
+  }
+
+  function parseQuadraticFormulaRootAssignmentV2(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+    if (parts.length < 2) return { recognized: false };
+    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '').toLowerCase();
+    if (!/^x(?:1|2)?$/.test(left)) return { recognized: false };
+
+    const rhs = parts.slice(1);
+    const symbolicPart = rhs.find(part => {
+      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== 'x');
+      return ids.length > 0 || /sqrt|√/i.test(part);
+    });
+    if (!symbolicPart) return { recognized: false };
+
+    const ids = semanticIdentifiersV2(symbolicPart)
+      .filter(symbol => symbol !== 'x' && !context.discriminantSymbols.has(symbol));
+    let candidates = semanticCandidateMappingsV2(context, ids);
+    const matched = [];
+    for (const candidate of candidates) {
+      const branch = semanticQuadraticRootFormulaBranchV2(symbolicPart, context, candidate);
+      if (branch) matched.push({ candidate, branch });
+    }
+    if (!matched.length) {
+      return { recognized: true, ok: false, message: 'Kvadratinės lygties formulė pagal pasirinktus simbolius užrašyta neteisingai.' };
+    }
+
+    if (semanticIdentifiersV2(symbolicPart).some(symbol => context.discriminantSymbols.has(symbol)) && !context.seenDiscriminant) {
+      return { recognized: true, ok: false, message: 'Prieš naudodamas diskriminantą kvadratinės lygties formulėje pirmiausia parodyk jo skaičiavimą.' };
+    }
+
+    let successful = null;
+    for (const item of matched) {
+      const scope = semanticScopeForCandidateV2(context, item.candidate);
+      let value = null;
+      let ok = true;
+      try {
+        for (const part of rhs) {
+          const current = evaluateQuadraticSemanticNumericV2(part, scope);
+          if (value !== null && !semanticNumberMatches(current, value)) { ok = false; break; }
+          value = current;
+        }
+      } catch (_) { ok = false; }
+      if (ok) { successful = { ...item, value }; break; }
+    }
+    if (!successful) return { recognized: true, ok: false, message: 'Toje pačioje formulės eilutėje užrašytos reikšmės nėra lygios.' };
+    return { recognized: true, ok: true, value: successful.value, lhs: left, branch: successful.branch, candidates: matched.filter(item => item.branch === successful.branch).map(item => item.candidate) };
+  }
+
+  function classifyQuadraticFormulaAlternativesV2(step, context) {
+    const normalized = normalizeStructuredStep(step);
+    if (normalized.type !== 'alternatives') return { recognized: false };
+    const parsed = normalized.values.map(value => parseQuadraticFormulaRootAssignmentV2(value, context));
+    if (!parsed.some(item => item.recognized)) return { recognized: false };
+    if (parsed.some(item => !item.recognized)) return { recognized: true, ok: false, message: 'Kvadratinės formulės žingsnyje abi šakas užrašyk tuo pačiu principu.' };
+    const failed = parsed.find(item => !item.ok);
+    if (failed) return { recognized: true, ok: false, message: failed.message };
+
+    let commonCandidates = parsed[0].candidates;
+    for (let index = 1; index < parsed.length; index += 1) commonCandidates = semanticIntersectMappingsV2(commonCandidates, parsed[index].candidates);
+    if (!commonCandidates.length) return { recognized: true, ok: false, message: 'Abiejose kvadratinės formulės šakose simboliai naudojami nevienodai.' };
+
+    const values = parsed.map(item => item.value);
+    const expectedRoots = descriptorRoots(context.targetDescriptor);
+    if (!sameRootValues(values, expectedRoots)) {
+      return { recognized: true, ok: false, message: `Kvadratinės formulės šaknys apskaičiuotos neteisingai. Teisinga sprendinių aibė: ${formatSolutionDescriptor(context.targetDescriptor)}.` };
+    }
+    context.roleCandidates = commonCandidates;
+    context.semanticSteps.push({ semanticType: 'formula-application', kind: 'quadratic-formula', values: [...values] });
+    return {
+      recognized: true,
+      ok: true,
+      semanticType: 'formula-application',
+      kind: 'quadratic-formula',
+      solutionSetEffect: 'derive-solutions',
+      values,
+      descriptor: descriptorFromRootValues(values),
+      equations: values.map(syntheticRootEquation),
+      message: 'Pritaikyta kvadratinės lygties formulė pagal pasirinktus žymėjimus; teisingai gautos abi sprendinių šakos.'
+    };
+  }
+
   function alternativesAreIsolatedRoots(step, targetDescriptor) {
     const normalized = normalizeStructuredStep(step);
     if (normalized.type !== 'alternatives' || targetDescriptor.kind === 'none' || targetDescriptor.kind === 'all') return false;
@@ -3769,7 +4223,9 @@
     // matematinio sprendimo žingsnio modelį. Pagalbinis D skaičiavimas nėra nauja
     // lygtis x atžvilgiu, todėl jis tikrinamas pagal sprendimo kontekstą, o ne pagal sprendinių aibę.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
-    const semanticMode = transitionValidationSetting === 'semantic-v1';
+    const semanticModeV1 = transitionValidationSetting === 'semantic-v1';
+    const semanticModeV2 = transitionValidationSetting === 'semantic-v2';
+    const semanticMode = semanticModeV1 || semanticModeV2;
     let targetDescriptor;
     let previousDescriptor;
     let previousEquation = null;
@@ -3782,7 +4238,8 @@
       targetDescriptor = describePolynomialEquation(initialEquation);
       previousDescriptor = targetDescriptor;
       previousEquation = initialEquation;
-      if (semanticMode) semanticContext = quadraticContextFromInitialEquation(initialEquation, targetDescriptor);
+      if (semanticModeV2) semanticContext = quadraticContextFromInitialEquationV2(initialEquation, targetDescriptor);
+      else if (semanticModeV1) semanticContext = quadraticContextFromInitialEquation(initialEquation, targetDescriptor);
     } catch (error) {
       return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults };
     }
@@ -3822,9 +4279,12 @@
       // Jis nekeičia aktyvios lygties ir todėl previousEquation / previousDescriptor paliekami tokie patys.
       if (semanticMode && step.type !== 'alternatives') {
         const source = step.values[0];
-        const semanticAuxiliary = classifyQuadraticAuxiliaryStep(source, semanticContext);
+        const semanticAuxiliary = semanticModeV2
+          ? classifyQuadraticAuxiliaryStepV2(source, semanticContext)
+          : classifyQuadraticAuxiliaryStep(source, semanticContext);
         if (semanticAuxiliary.recognized) {
           if (!semanticAuxiliary.ok) {
+            if (semanticModeV2) finalizeQuadraticPendingDefinitionsV2(semanticContext, stepResults);
             stepResults[index] = { status: 'incorrect', message: semanticAuxiliary.message };
             return {
               status: 'incorrect',
@@ -3834,7 +4294,11 @@
             };
           }
           usedSemanticStep = true;
-          stepResults[index] = { status: 'correct', message: semanticAuxiliary.message };
+          const semanticStatus = semanticAuxiliary.status || 'correct';
+          stepResults[index] = { status: semanticStatus, message: semanticAuxiliary.message };
+          if (semanticModeV2 && semanticStatus === 'warning' && semanticAuxiliary.symbols?.length) {
+            semanticContext.pendingDefinitions.push({ index, symbols: [...semanticAuxiliary.symbols] });
+          }
           previousSemanticKind = semanticAuxiliary.kind;
           continue;
         }
@@ -3847,7 +4311,9 @@
       try {
         if (step.type === 'alternatives') {
           if (semanticMode) {
-            const semanticFormula = classifyQuadraticFormulaAlternatives(step, semanticContext);
+            const semanticFormula = semanticModeV2
+              ? classifyQuadraticFormulaAlternativesV2(step, semanticContext)
+              : classifyQuadraticFormulaAlternatives(step, semanticContext);
             if (semanticFormula.recognized) {
               if (!semanticFormula.ok) throw new Error(semanticFormula.message);
               semanticTransition = semanticFormula;
@@ -3936,6 +4402,9 @@
       else if (step.type === 'alternatives' && alternativesAreIsolatedRoots(step, targetDescriptor)) completed = true;
     }
 
+    if (semanticModeV2) finalizeQuadraticPendingDefinitionsV2(semanticContext, stepResults);
+    const unresolvedSemanticContext = semanticModeV2 && stepResults.some(item => item?.status === 'warning');
+
     if (!completed) {
       return {
         status: 'warning',
@@ -3958,9 +4427,11 @@
     }
 
     return {
-      status: 'correct',
-      title: 'Sprendimas teisingas',
-      message: semanticMode && usedSemanticStep
+      status: unresolvedSemanticContext ? 'warning' : 'correct',
+      title: unresolvedSemanticContext ? 'Sprendimas matematiškai nuoseklus, bet dalis žymėjimų dar dviprasmiai' : 'Sprendimas teisingas',
+      message: unresolvedSemanticContext
+        ? 'Sprendimas neprieštarauja matematikai, tačiau ne visų tavo pasirinktų simbolių vaidmuo vienareikšmiškai paaiškėjo iš pateiktų žingsnių.'
+        : semanticMode && usedSemanticStep
         ? `Lygties pertvarkymai ir pagalbiniai matematiniai žingsniai pagrįsti. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
         : localTransitionMode
           ? `Visi įvesti žingsniai išlaiko tą pačią sprendinių aibę ir yra pagrįsti tiesioginiais pertvarkymais. Galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`
