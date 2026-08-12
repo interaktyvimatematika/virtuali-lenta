@@ -156,6 +156,7 @@ const roomRef = ref(db, `p772Rooms/${roomId}`);
 const workspaceRef = ref(db, `p772Rooms/${roomId}/workspace`);
 const drawingRef = ref(db, `p772Rooms/${roomId}/workspace/drawing`);
 const notesRef = ref(db, `p772Rooms/${roomId}/workspace/notes`);
+const boardImagesRef = ref(db, `p772Rooms/${roomId}/workspace/boardImages`);
 const boardTasksRef = ref(db, `p772Rooms/${roomId}/workspace/boardTasks`);
 const boardPracticesRef = ref(db, `p772Rooms/${roomId}/workspace/boardPractices`);
 const windowRef = ref(db, `p772Rooms/${roomId}/workspace/window`);
@@ -181,7 +182,7 @@ let liveTimer = null;
 let pendingLive = null;
 const pendingLiveCommits = new Map();
 let remoteCache = {
-  drawing: '', notes: '', boardTasks: '', boardPractices: '', window: ''
+  drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: ''
 };
 let pendingRemoteNotes = null;
 let localNotesRevision = 0;
@@ -198,7 +199,7 @@ const NOTES_LIVE_INTERVAL_MS = 55;
 // ankstesnį. Laikome neseniai išsiųstų pilnų dalių fingerprintus ir jų echo
 // priimame tik kaip Firebase patvirtinimą, bet neperpiešiame lokalaus vaizdo.
 const pendingLocalEchoes = {
-  drawing: [], notes: [], boardTasks: [], boardPractices: [], window: []
+  drawing: [], notes: [], boardImages: [], boardTasks: [], boardPractices: [], window: []
 };
 
 function rememberLocalEcho(part, value) {
@@ -234,6 +235,7 @@ function localParts() {
   return {
     drawing: toMap(snap.drawing),
     notes: toMap(snap.notes),
+    boardImages: toMap(snap.boardImages),
     boardTasks: toMap(snap.boardTasks),
     boardPractices: toMap(snap.boardPractices),
     window: snap.window || {}
@@ -259,6 +261,7 @@ async function publishLocalChanges() {
   const currentRemote = {
     drawing: JSON.parse(remoteCache.drawing || '{}'),
     notes: JSON.parse(remoteCache.notes || '{}'),
+    boardImages: JSON.parse(remoteCache.boardImages || '{}'),
     boardTasks: JSON.parse(remoteCache.boardTasks || '{}'),
     boardPractices: JSON.parse(remoteCache.boardPractices || '{}')
   };
@@ -266,6 +269,7 @@ async function publishLocalChanges() {
   const changed = {
     drawing: stable(parts.drawing) !== remoteCache.drawing,
     notes: stable(parts.notes) !== remoteCache.notes,
+    boardImages: stable(parts.boardImages) !== remoteCache.boardImages,
     boardTasks: stable(parts.boardTasks) !== remoteCache.boardTasks,
     boardPractices: stable(parts.boardPractices) !== remoteCache.boardPractices,
     window: stable(parts.window) !== remoteCache.window
@@ -273,6 +277,7 @@ async function publishLocalChanges() {
 
   diffMap('workspace/drawing', parts.drawing, currentRemote.drawing, updates);
   diffMap('workspace/notes', parts.notes, currentRemote.notes, updates);
+  diffMap('workspace/boardImages', parts.boardImages, currentRemote.boardImages, updates);
   diffMap('workspace/boardTasks', parts.boardTasks, currentRemote.boardTasks, updates);
   diffMap('workspace/boardPractices', parts.boardPractices, currentRemote.boardPractices, updates);
   if (changed.window) updates['workspace/window'] = parts.window;
@@ -292,7 +297,7 @@ async function publishLocalChanges() {
   }
 
   const echoes = {};
-  for (const part of ['drawing', 'notes', 'boardTasks', 'boardPractices', 'window']) {
+  for (const part of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices', 'window']) {
     if (changed[part]) echoes[part] = rememberLocalEcho(part, parts[part]);
   }
 
@@ -434,6 +439,7 @@ function cacheWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   remoteCache.drawing = stable(workspace.drawing || {});
   remoteCache.notes = stable(workspace.notes || {});
+  remoteCache.boardImages = stable(workspace.boardImages || {});
   remoteCache.boardTasks = stable(workspace.boardTasks || {});
   remoteCache.boardPractices = stable(workspace.boardPractices || {});
   remoteCache.window = stable(workspace.window || {});
@@ -444,6 +450,7 @@ function applyInitialWorkspace(data) {
   cacheWorkspace(workspace);
   bridge.applySharedPart('drawing', mapToArray(workspace.drawing || {}));
   bridge.applySharedPart('notes', mapToArray(workspace.notes || {}));
+  bridge.applySharedPart('boardImages', mapToArray(workspace.boardImages || {}));
   bridge.applySharedPart('boardTasks', mapToArray(workspace.boardTasks || {}));
   bridge.applySharedPart('boardPractices', mapToArray(workspace.boardPractices || {}));
   if (workspace.window) bridge.applySharedPart('window', workspace.window);
@@ -456,6 +463,7 @@ function subscribeWorkspaceParts() {
     const workspace = snapshot.val() || {};
     applyNotesPart(workspace.notes || {}, workspace.meta || {});
   });
+  onValue(boardImagesRef, snapshot => applyMapPart('boardImages', snapshot.val()));
   onValue(boardTasksRef, snapshot => applyMapPart('boardTasks', snapshot.val()));
   onValue(boardPracticesRef, snapshot => applyMapPart('boardPractices', snapshot.val()));
   onValue(windowRef, snapshot => {
@@ -472,6 +480,7 @@ function emptyWorkspace() {
   return {
     drawing: {},
     notes: {},
+    boardImages: {},
     boardTasks: {},
     boardPractices: {},
     window: {}
@@ -481,6 +490,7 @@ function emptyWorkspace() {
 function clearLocalSharedWorkspace() {
   bridge.applySharedPart('drawing', []);
   bridge.applySharedPart('notes', []);
+  bridge.applySharedPart('boardImages', []);
   bridge.applySharedPart('boardTasks', []);
   bridge.applySharedPart('boardPractices', []);
   bridge.applySharedPart('window', {});

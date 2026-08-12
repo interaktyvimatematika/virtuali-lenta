@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.19.1';
+  const BUILD = 'P2-SPLIT-P2.4.7.19.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -207,7 +207,7 @@
     ]
   });
 
-  // P2-SPLIT-P2.4.7.19.1: 5 klasės rinkinio sąlygose ir pasirinkimuose rodomos tikros LaTeX formulės.
+  // P2-SPLIT-P2.4.7.19.2: 5 klasės rinkinio sąlygose ir pasirinkimuose rodomos tikros LaTeX formulės.
   // Sąmoningai naudojami tik testiniai klausimai ir paprasti vienos eilutės
   // atsakymo laukeliai, kad penktokei nereikėtų sudėtingo formulės įvedimo.
   const GRADE5_REVIEW_LESSON = Object.freeze({

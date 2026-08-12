@@ -6502,7 +6502,7 @@ body.p2-shell .p2-teacher-simple-answer small {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.1 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
+/* P2-SPLIT-P2.4.7.19.2 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
 body.p2-shell math-field.p2-inline-math {
   display:inline-block;
   width:auto;
@@ -6523,4 +6523,99 @@ body.p2-shell .p2-choice math-field.p2-inline-math {
 body.p2-shell .p2-preview-choice math-field.p2-inline-math,
 body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
   font-size:1.12em;
+}
+
+
+/* P2-SPLIT-P2.4.7.19.2 · paveikslėliai bendroje lentoje */
+.board-image-object {
+  position: absolute;
+  margin: 0;
+  min-width: 110px;
+  min-height: 80px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255,255,255,.3);
+  box-shadow: 0 8px 24px rgba(31,43,68,.08);
+  overflow: visible;
+  pointer-events: auto;
+  touch-action: none;
+}
+.board-image-object:hover,
+.board-image-object.is-active-object {
+  border-color: #8298df;
+  box-shadow: 0 0 0 3px rgba(74,103,214,.10), 0 12px 32px rgba(31,43,68,.16);
+  z-index: 14;
+}
+.board-image-object > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9px;
+  object-fit: contain;
+  background: rgba(255,255,255,.75);
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.board-image-handle,
+.board-image-remove,
+.board-image-resize {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(207,214,226,.95);
+  background: rgba(255,255,255,.96);
+  color: #66738a;
+  box-shadow: 0 3px 10px rgba(31,43,68,.12);
+  opacity: 0;
+  transition: opacity .12s ease, background .12s ease, color .12s ease;
+  cursor: pointer;
+  touch-action: none;
+}
+.board-image-object:hover .board-image-handle,
+.board-image-object:hover .board-image-remove,
+.board-image-object:hover .board-image-resize,
+.board-image-object.is-active-object .board-image-handle,
+.board-image-object.is-active-object .board-image-remove,
+.board-image-object.is-active-object .board-image-resize { opacity: 1; }
+.board-image-handle {
+  left: 6px;
+  top: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 17px;
+  cursor: grab;
+}
+.board-image-handle:active { cursor: grabbing; }
+.board-image-remove {
+  right: 6px;
+  top: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+}
+.board-image-remove:hover { background: #fff0f1; color: #a23d49; }
+.board-image-resize {
+  right: -6px;
+  bottom: -6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: nwse-resize;
+}
+.board-image-resize::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #75849b;
+  border-bottom: 2px solid #75849b;
+}
+#addImageButton:disabled { opacity: .55; cursor: wait; }
+@media (pointer: coarse) {
+  .board-image-object.is-active-object .board-image-handle,
+  .board-image-object.is-active-object .board-image-remove,
+  .board-image-object.is-active-object .board-image-resize { opacity: 1; }
 }

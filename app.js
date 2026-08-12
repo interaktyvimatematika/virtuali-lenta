@@ -54,6 +54,8 @@
     taskDots: document.getElementById('taskDots'),
     saveState: document.getElementById('saveState'),
     addNoteButton: document.getElementById('addNoteButton'),
+    addImageButton: document.getElementById('addImageButton'),
+    boardImageInput: document.getElementById('boardImageInput'),
     universalMathToolbar: document.getElementById('universalMathToolbar'),
     universalMathCategories: document.getElementById('universalMathCategories'),
     universalMathKeyboard: document.getElementById('universalMathKeyboard'),
@@ -440,6 +442,7 @@
     drawing: [],
     notes: [],
     formulas: [], // legacy: P7.7.2 formulės gyvena notes[].nodes modelyje
+    boardImages: [],
     boardTasks: [],
     activeBoardTaskId: null,
     boardPractices: [],
@@ -685,6 +688,7 @@
         drawing: Array.isArray(parsed.drawing) ? parsed.drawing : [],
         notes: migrateMixedNotes(parsed.notes, parsed.formulas),
         formulas: [],
+        boardImages: Array.isArray(parsed.boardImages) ? parsed.boardImages.map(normalizeBoardImageInstance).filter(Boolean) : [],
         boardTasks: Array.isArray(parsed.boardTasks) ? parsed.boardTasks.map(normalizeBoardTaskInstance).filter(Boolean) : [],
         activeBoardTaskId: typeof parsed.activeBoardTaskId === 'string' ? parsed.activeBoardTaskId : null,
         boardPractices: Array.isArray(parsed.boardPractices) ? parsed.boardPractices.map(normalizeBoardPracticeInstance).filter(Boolean) : [],
@@ -746,11 +750,12 @@
         state.packageData = practicePackage;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         refs.saveState.textContent = 'Išsaugota';
-        window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
       } catch (error) {
-        refs.saveState.textContent = 'Neišsaugota';
-        console.error('Nepavyko išsaugoti:', error);
+        refs.saveState.textContent = 'Neišsaugota vietoje';
+        console.error('Nepavyko išsaugoti vietinės kopijos:', error);
       }
+      // Net jei didesnė nuotrauka viršytų localStorage kvotą, online lenta vis tiek turi sinchronizuotis.
+      window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
     }, 180);
   }
 
@@ -1166,6 +1171,7 @@
     if (safeType === 'task' && state.boardTasks.some(item => item.id === safeId)) return { type: safeType, id: safeId };
     if (safeType === 'practice' && state.boardPractices.some(item => item.id === safeId)) return { type: safeType, id: safeId };
     if (safeType === 'note' && state.notes.some(item => item.id === safeId)) return { type: safeType, id: safeId };
+    if (safeType === 'image' && state.boardImages.some(item => item.id === safeId)) return { type: safeType, id: safeId };
     if (safeType === 'formula' && state.formulas.some(item => item.id === safeId)) return { type: safeType, id: safeId };
     if (safeType === 'practice-window' && safeId === 'main' && !state.window.shelved) return { type: safeType, id: safeId };
     return null;
@@ -10657,6 +10663,179 @@ KOKYBĖS REIKALAVIMAI:
     return object;
   }
 
+  const BOARD_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024;
+  const BOARD_IMAGE_MAX_DIMENSION = 1600;
+  const BOARD_IMAGE_TARGET_DATA_URL_LENGTH = 850000;
+
+  function normalizeBoardImageInstance(candidate) {
+    if (!candidate || typeof candidate !== 'object') return null;
+    const src = String(candidate.src || '');
+    if (!src.startsWith('data:image/')) return null;
+    const ratio = Math.max(0.05, Math.min(20, Number(candidate.aspectRatio) || 1));
+    return {
+      id: String(candidate.id || `board-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+      src,
+      name: String(candidate.name || 'Nuotrauka').slice(0, 160),
+      x: Math.max(0, Math.min(1, Number(candidate.x) || 0)),
+      y: Math.max(0, Math.min(1, Number(candidate.y) || 0)),
+      width: Math.max(0.03, Math.min(1, Number(candidate.width) || 0.22)),
+      height: Math.max(0.03, Math.min(1, Number(candidate.height) || 0.18)),
+      aspectRatio: ratio,
+      naturalWidth: Math.max(1, Number(candidate.naturalWidth) || 1),
+      naturalHeight: Math.max(1, Number(candidate.naturalHeight) || 1),
+      createdAt: String(candidate.createdAt || new Date().toISOString())
+    };
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Nepavyko perskaityti failo'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImageFromDataUrl(src) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Nepavyko atverti paveikslėlio'));
+      image.src = src;
+    });
+  }
+
+  async function prepareBoardImageFile(file) {
+    if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Pasirink paveikslėlio failą');
+    if (file.size > BOARD_IMAGE_MAX_INPUT_BYTES) throw new Error('Paveikslėlis per didelis. Didžiausias pradinis failas – 20 MB.');
+    const original = await readFileAsDataUrl(file);
+    const source = await loadImageFromDataUrl(original);
+    const naturalWidth = Math.max(1, source.naturalWidth || source.width || 1);
+    const naturalHeight = Math.max(1, source.naturalHeight || source.height || 1);
+    let scale = Math.min(1, BOARD_IMAGE_MAX_DIMENSION / Math.max(naturalWidth, naturalHeight));
+    let quality = 0.88;
+    let dataUrl = original;
+    let outputWidth = naturalWidth;
+    let outputHeight = naturalHeight;
+
+    // Nuotrauką sumažiname prieš siųsdami per bendros lentos Firebase būseną.
+    // Taip viena nuotrauka neužkemša localStorage ir realaus laiko sinchronizacijos.
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      outputWidth = Math.max(1, Math.round(naturalWidth * scale));
+      outputHeight = Math.max(1, Math.round(naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const context = canvas.getContext('2d', { alpha: true });
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(source, 0, 0, outputWidth, outputHeight);
+      dataUrl = canvas.toDataURL('image/webp', quality);
+      if (dataUrl.length <= BOARD_IMAGE_TARGET_DATA_URL_LENGTH) break;
+      scale *= 0.82;
+      quality = Math.max(0.62, quality - 0.06);
+    }
+    if (dataUrl.length > 1200000) throw new Error('Nepavyko pakankamai sumažinti paveikslėlio. Pabandyk mažesnį failą.');
+    return {
+      src: dataUrl,
+      naturalWidth: outputWidth,
+      naturalHeight: outputHeight,
+      aspectRatio: outputWidth / Math.max(1, outputHeight)
+    };
+  }
+
+  function visibleBoardWorldCenter() {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    return {
+      x: (refs.board.scrollLeft + refs.board.clientWidth / 2) / zoom,
+      y: (refs.board.scrollTop + refs.board.clientHeight / 2) / zoom
+    };
+  }
+
+  async function insertBoardImage(file) {
+    const prepared = await prepareBoardImageFile(file);
+    const boardRect = getBoardWorldRect();
+    const maxWidth = Math.min(620, boardRect.width * 0.42);
+    const maxHeight = Math.min(480, boardRect.height * 0.36);
+    let width = Math.min(maxWidth, Math.max(180, prepared.naturalWidth));
+    let height = width / prepared.aspectRatio;
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * prepared.aspectRatio;
+    }
+    width = Math.max(120, Math.min(boardRect.width, width));
+    height = Math.max(90, Math.min(boardRect.height, height));
+    const center = visibleBoardWorldCenter();
+    const left = Math.max(0, Math.min(boardRect.width - width, center.x - width / 2));
+    const top = Math.max(0, Math.min(boardRect.height - height, center.y - height / 2));
+    const instance = normalizeBoardImageInstance({
+      id: `board-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      src: prepared.src,
+      name: file.name || 'Nuotrauka',
+      x: boardRect.width ? left / boardRect.width : 0,
+      y: boardRect.height ? top / boardRect.height : 0,
+      width: boardRect.width ? width / boardRect.width : 0.22,
+      height: boardRect.height ? height / boardRect.height : 0.18,
+      aspectRatio: prepared.aspectRatio,
+      naturalWidth: prepared.naturalWidth,
+      naturalHeight: prepared.naturalHeight,
+      createdAt: new Date().toISOString()
+    });
+    if (!instance) throw new Error('Nepavyko parengti paveikslėlio');
+    state.boardImages.push(instance);
+    setTool('select');
+    renderBoardObjects();
+    setActiveBoardObject('image', instance.id, { save: false });
+    scheduleSave();
+  }
+
+  function makeBoardImageResizable(element, model, handle) {
+    let resize = null;
+    handle.addEventListener('pointerdown', event => {
+      if (state.practiceOnly?.active) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const boardRect = getBoardWorldRect();
+      resize = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+        maxWidth: boardRect.width - element.offsetLeft,
+        maxHeight: boardRect.height - element.offsetTop
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!resize || event.pointerId !== resize.pointerId) return;
+      const zoom = Math.max(0.001, currentBoardZoom());
+      const dx = (event.clientX - resize.startX) / zoom;
+      const dy = (event.clientY - resize.startY) / zoom;
+      const denom = resize.width * resize.width + resize.height * resize.height;
+      let scale = 1 + ((dx * resize.width + dy * resize.height) / Math.max(1, denom));
+      const minScale = Math.max(110 / resize.width, 80 / resize.height);
+      const maxScale = Math.min(resize.maxWidth / resize.width, resize.maxHeight / resize.height);
+      scale = Math.max(minScale, Math.min(maxScale, scale));
+      const width = resize.width * scale;
+      const height = resize.height * scale;
+      element.style.width = `${width}px`;
+      element.style.height = `${height}px`;
+      const boardRect = getBoardWorldRect();
+      model.width = boardRect.width ? width / boardRect.width : model.width;
+      model.height = boardRect.height ? height / boardRect.height : model.height;
+    });
+    const finish = event => {
+      if (!resize) return;
+      const pointerId = resize.pointerId;
+      resize = null;
+      try { handle.releasePointerCapture(pointerId); } catch (_) {}
+      scheduleSave();
+    };
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+  }
+
   function renderBoardObjects() {
     prepareMathDomReplacement(refs.objectsLayer);
     if (refs.practiceOnlyHost?.contains(activeDirectMathField)) prepareMathDomReplacement(refs.practiceOnlyHost);
@@ -10776,6 +10955,59 @@ KOKYBĖS REIKALAVIMAI:
       requestAnimationFrame(() => applyMixedNoteContentSizing(note, editor));
     }
 
+    for (const imageModel of state.boardImages) {
+      const element = document.createElement('figure');
+      element.className = 'board-image-object';
+      element.classList.toggle('is-active-object', state.activeBoardObject?.type === 'image' && state.activeBoardObject.id === imageModel.id);
+      element.dataset.boardImageId = imageModel.id;
+      element.dataset.boardObjectType = 'image';
+      element.dataset.boardObjectId = imageModel.id;
+      element.style.left = `${imageModel.x * boardRect.width}px`;
+      element.style.top = `${imageModel.y * boardRect.height}px`;
+      element.style.width = `${Math.max(110, Math.min(boardRect.width, imageModel.width * boardRect.width))}px`;
+      element.style.height = `${Math.max(80, Math.min(boardRect.height, imageModel.height * boardRect.height))}px`;
+
+      const image = document.createElement('img');
+      image.src = imageModel.src;
+      image.alt = imageModel.name || 'Lentos nuotrauka';
+      image.draggable = false;
+      image.decoding = 'async';
+
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'board-image-handle';
+      handle.textContent = '⠿';
+      handle.setAttribute('aria-label', 'Perkelti nuotrauką');
+      handle.title = 'Perkelti';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'board-image-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', 'Pašalinti nuotrauką');
+      remove.title = 'Pašalinti';
+      remove.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.boardImages = state.boardImages.filter(item => item.id !== imageModel.id);
+        if (state.activeBoardObject?.type === 'image' && state.activeBoardObject.id === imageModel.id) clearActiveBoardObject({ save: false });
+        element.remove();
+        scheduleSave();
+      });
+
+      const resize = document.createElement('button');
+      resize.type = 'button';
+      resize.className = 'board-image-resize';
+      resize.setAttribute('aria-label', 'Keisti nuotraukos dydį');
+      resize.title = 'Keisti dydį';
+
+      element.append(image, handle, remove, resize);
+      element.addEventListener('pointerdown', () => setActiveBoardObject('image', imageModel.id));
+      makeBoardObjectDraggable(element, imageModel, handle, { alwaysAllow: true });
+      makeBoardImageResizable(element, imageModel, resize);
+      refs.objectsLayer.appendChild(element);
+    }
+
     for (const instance of state.boardPractices) {
       refs.objectsLayer.appendChild(createBoardPracticePage(instance, boardRect));
     }
@@ -10870,6 +11102,22 @@ KOKYBĖS REIKALAVIMAI:
       element.style.top = `${top}px`;
       note.x = boardRect.width ? left / boardRect.width : note.x;
       note.y = boardRect.height ? top / boardRect.height : note.y;
+    }
+    for (const imageModel of state.boardImages) {
+      const element = refs.objectsLayer.querySelector(`[data-board-image-id="${CSS.escape(String(imageModel.id))}"]`);
+      if (!element) continue;
+      const width = Math.min(boardRect.width, Math.max(110, imageModel.width * boardRect.width));
+      const height = Math.min(boardRect.height, Math.max(80, imageModel.height * boardRect.height));
+      const left = Math.max(0, Math.min(boardRect.width - width, imageModel.x * boardRect.width));
+      const top = Math.max(0, Math.min(boardRect.height - height, imageModel.y * boardRect.height));
+      element.style.left = `${left}px`;
+      element.style.top = `${top}px`;
+      element.style.width = `${width}px`;
+      element.style.height = `${height}px`;
+      imageModel.x = boardRect.width ? left / boardRect.width : imageModel.x;
+      imageModel.y = boardRect.height ? top / boardRect.height : imageModel.y;
+      imageModel.width = boardRect.width ? width / boardRect.width : imageModel.width;
+      imageModel.height = boardRect.height ? height / boardRect.height : imageModel.height;
     }
     for (const instance of state.boardPractices) {
       const element = refs.objectsLayer.querySelector(`[data-board-practice-id="${instance.id}"]`);
@@ -11097,6 +11345,7 @@ KOKYBĖS REIKALAVIMAI:
       schemaVersion: 1,
       drawing: deepClone(state.drawing),
       notes: deepClone(state.notes),
+      boardImages: deepClone(state.boardImages),
       boardTasks: deepClone(state.boardTasks),
       boardPractices: deepClone(state.boardPractices),
       window: deepClone(state.window)
@@ -11176,6 +11425,10 @@ KOKYBĖS REIKALAVIMAI:
         state.notes = incoming;
         renderBoardObjects();
       }
+    } else if (part === 'boardImages') {
+      state.boardImages = (Array.isArray(value) ? value : []).map(normalizeBoardImageInstance).filter(Boolean);
+      if (state.activeBoardObject?.type === 'image' && !state.boardImages.some(item => item.id === state.activeBoardObject.id)) state.activeBoardObject = null;
+      renderBoardObjects();
     } else if (part === 'boardTasks') {
       state.boardTasks = (Array.isArray(value) ? value : []).map(normalizeBoardTaskInstance).filter(Boolean);
       if (state.activeBoardTaskId && !state.boardTasks.some(item => item.id === state.activeBoardTaskId)) state.activeBoardTaskId = null;
@@ -11298,6 +11551,29 @@ KOKYBĖS REIKALAVIMAI:
     saveWindowGeometry();
   });
   refs.addNoteButton.addEventListener('click', () => { setTool('select'); addNote(); });
+  refs.addImageButton.addEventListener('click', () => {
+    setTool('select');
+    refs.boardImageInput.value = '';
+    refs.boardImageInput.click();
+  });
+  refs.boardImageInput.addEventListener('change', async () => {
+    const file = refs.boardImageInput.files?.[0];
+    refs.boardImageInput.value = '';
+    if (!file) return;
+    refs.addImageButton.disabled = true;
+    const previousTitle = refs.addImageButton.title;
+    refs.addImageButton.title = 'Nuotrauka ruošiama…';
+    try {
+      await insertBoardImage(file);
+      showToast('Nuotrauka įkelta į lentą');
+    } catch (error) {
+      console.error('Nuotraukos įkėlimo klaida:', error);
+      showToast(error?.message || 'Nepavyko įkelti nuotraukos');
+    } finally {
+      refs.addImageButton.disabled = false;
+      refs.addImageButton.title = previousTitle;
+    }
+  });
   refs.centerPracticeButton.addEventListener('click', centerPracticeWindow);
   refs.resetButton.addEventListener('click', () => {
     if (onlineAccessRole !== 'teacher') { showToast('Bendrą lentą gali išvalyti tik mokytojas'); return; }
