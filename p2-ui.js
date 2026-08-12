@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P1.2';
+  const BUILD = 'P2-SPLIT-P2.5-P2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -410,13 +410,15 @@
   let progress = null;
   let selectedAnswers = {};
 
-  // P2-SPLIT-P2.5-P1.2: mokinys yra ilgalaikis objektas, o Room – tik vienos
+  // P2-SPLIT-P2.5-P2: mokinys yra ilgalaikis objektas, o Room – tik vienos
   // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
   // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
   let studentsModal = null;
   let selectedStudentId = null;
   let studentDbSnapshotTimer = null;
-  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {} };
+  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {} };
+  let roomStudentProfile = null;
+  let lessonStudentTabs = null;
 
   function lessonForId(lessonId) {
     const id = String(lessonId || '').trim();
@@ -1709,6 +1711,8 @@
   function renderTeacherPanel() {
     const count = Math.max(0, Number(userCount?.textContent || 0));
     const studentOnline = count >= 2;
+    const learnerName = currentStudentName('Mokinys');
+    const learnerInitial = String(learnerName || 'M').trim().slice(0, 1).toUpperCase() || 'M';
     const state = normalizedProgress(progress);
     const stats = progressStats();
     const task = assignment ? currentTask() : null;
@@ -1719,17 +1723,17 @@
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${activeLesson().taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
     const currentPedagogy = started ? pedagogicalStatus(item, { taskId: task?.id, current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
-    const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? 'Mokinys dar neatidarė pratybų' : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
+    const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? `${learnerName} dar neatidarė pratybų` : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
-      ? 'Priskirk pamoką Bibliotekoje. Mokinys ją iškart pamatys savo „Mano pratybos“ srityje.'
+      ? `Priskirk pamoką Bibliotekoje. ${learnerName} ją iškart pamatys savo „Mano pratybos“ srityje.`
       : !started
-        ? 'Pamoka priskirta. Kai mokinys paspaus „Atidaryti“, čia realiu laiku atsiras jo dabartinė užduotis, bandymai ir pagalbos būsena.'
+        ? `Pamoka priskirta. Kai ${learnerName} paspaus „Atidaryti“, čia realiu laiku atsiras dabartinė užduotis, bandymai ir pagalbos būsena.`
         : `${task?.prompt || ''}`;
 
     teacherPanel.innerHTML = `
       <div class="p2-learner-card p2-learner-overview">
-        <div class="p2-avatar" aria-hidden="true">M</div>
-        <div class="p2-learner-copy"><span class="p2-label">Mokinio eiga</span><h3>${studentOnline ? 'Mokinys prisijungęs' : 'Laukiama mokinio'}</h3><p>${studentOnline ? 'Bendra lenta ir individuali pratybų būsena sinchronizuojamos realiu laiku.' : 'Nukopijuok mokinio nuorodą ir atidaryk ją kitame įrenginyje.'}</p></div>
+        <div class="p2-avatar" aria-hidden="true">${escapeHtml(learnerInitial)}</div>
+        <div class="p2-learner-copy"><span class="p2-label">${escapeHtml(learnerName)} · eiga</span><h3>${studentOnline ? `Prisijungė: ${escapeHtml(learnerName)}` : `Laukiama: ${escapeHtml(learnerName)}`}</h3><p>${studentOnline ? 'Lenta ir individuali pratybų būsena sinchronizuojamos realiu laiku.' : 'Nukopijuok šio mokinio nuorodą ir atidaryk ją kitame įrenginyje.'}</p></div>
         <span class="p2-presence-pill ${studentOnline ? 'is-online' : ''}">${studentOnline ? 'Prisijungęs' : `${count} įrenginys`}</span>
       </div>
       <div class="p2-teacher-dashboard-grid">
@@ -1755,7 +1759,7 @@
       </div>
       <div class="p2-insight-card ${started ? '' : 'p2-insight-empty'}">
         <div class="p2-insight-icon" aria-hidden="true">✦</div>
-        <div><span class="p2-label">Mokinio įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
+        <div><span class="p2-label">${escapeHtml(learnerName)} · įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
       </div>
     `;
 
@@ -1775,10 +1779,10 @@
     teacherPanel.hidden = !isTeacher;
     if (!isTeacher || teacherPreviewMode !== 'docked') {
       sideKicker.textContent = isTeacher ? 'MOKYTOJO STEBĖJIMAS' : 'MOKINIO ERDVĖ';
-      sideTitle.textContent = isTeacher ? 'Mokinio eiga' : 'Mano pratybos';
+      sideTitle.textContent = isTeacher ? `${currentStudentName('Mokinys')} · eiga` : 'Mano pratybos';
     }
-    practiceModeButton.textContent = isTeacher ? 'Mokinio eiga' : 'Tik pratybos';
-    if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : 'Mokinys';
+    practiceModeButton.textContent = isTeacher ? `${currentStudentName('Mokinys')} · eiga` : 'Tik pratybos';
+    if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : currentStudentName('Mokinys');
     document.querySelectorAll('.p2-teacher-only').forEach(el => el.hidden = !isTeacher);
     const p2LibraryButton = document.getElementById('libraryButton');
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
@@ -1791,6 +1795,8 @@
       body.classList.remove('p2-teacher-preview-maximized');
       sidePane.classList.remove('has-preview-docked');
     }
+    updateStudentIdentityLabels();
+    renderLessonStudentTabs();
     updatePresence();
     renderPanels();
     if (isTeacher && teacherPreviewMode === 'docked') setTeacherSideHeader(true);
@@ -1821,7 +1827,8 @@
     return {
       profileId: String(source.profileId || ''),
       students: source.students && typeof source.students === 'object' ? source.students : {},
-      roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {}
+      roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {},
+      classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {}
     };
   }
 
@@ -1833,6 +1840,104 @@
 
   function linkedStudentIdForRoom(roomId = currentRoomId()) {
     return String(teacherStudentDb.roomLinks?.[roomId]?.studentId || '');
+  }
+
+
+  function linkedClassSessionIdForRoom(roomId = currentRoomId()) {
+    return String(teacherStudentDb.roomLinks?.[roomId]?.classSessionId || roomStudentProfile?.classSessionId || '');
+  }
+
+  function studentRecord(studentId) {
+    const id = String(studentId || '').trim();
+    return id ? teacherStudentDb.students?.[id] || null : null;
+  }
+
+  function currentStudentId() {
+    return String(roomStudentProfile?.studentId || linkedStudentIdForRoom() || '').trim();
+  }
+
+  function currentStudentName(fallback = 'Mokinys') {
+    const id = currentStudentId();
+    const fromDb = studentRecord(id)?.name;
+    const value = String(roomStudentProfile?.name || fromDb || '').trim();
+    return value || fallback;
+  }
+
+  function classSessionParticipants(classSessionId = linkedClassSessionIdForRoom()) {
+    const session = teacherStudentDb.classSessions?.[classSessionId];
+    const entries = Object.entries(session?.students && typeof session.students === 'object' ? session.students : {});
+    return entries.map(([studentId, item]) => ({
+      studentId,
+      roomId: String(item?.roomId || '').trim().toUpperCase(),
+      name: String(studentRecord(studentId)?.name || 'Mokinys').trim() || 'Mokinys',
+      addedAt: Number(item?.addedAt || 0)
+    })).filter(item => item.roomId).sort((a, b) => a.addedAt - b.addedAt || a.name.localeCompare(b.name, 'lt'));
+  }
+
+  function ensureLessonStudentTabs() {
+    if (lessonStudentTabs) return lessonStudentTabs;
+    lessonStudentTabs = document.createElement('nav');
+    lessonStudentTabs.id = 'p2LessonStudentTabs';
+    lessonStudentTabs.className = 'p2-lesson-student-tabs';
+    lessonStudentTabs.setAttribute('aria-label', 'Pamokos mokiniai');
+    const topbar = document.querySelector('.topbar');
+    if (topbar?.parentNode) topbar.insertAdjacentElement('afterend', lessonStudentTabs);
+    return lessonStudentTabs;
+  }
+
+  function renderLessonStudentTabs() {
+    if (role() !== 'teacher') {
+      body.classList.remove('p2-lesson-student-tabs-active');
+      if (lessonStudentTabs) lessonStudentTabs.hidden = true;
+      return;
+    }
+    const classSessionId = linkedClassSessionIdForRoom();
+    const participants = classSessionParticipants(classSessionId);
+    if (!classSessionId || participants.length < 2) {
+      body.classList.remove('p2-lesson-student-tabs-active');
+      if (lessonStudentTabs) lessonStudentTabs.hidden = true;
+      return;
+    }
+    const bar = ensureLessonStudentTabs();
+    const activeRoom = currentRoomId();
+    bar.hidden = false;
+    bar.innerHTML = `<span class="p2-lesson-tabs-label">Pamokos mokiniai</span><div class="p2-lesson-tabs-scroll">${participants.map(item => {
+      const active = item.roomId === activeRoom;
+      const initial = String(item.name || 'M').trim().slice(0, 1).toUpperCase() || 'M';
+      return `<button type="button" class="p2-lesson-student-tab ${active ? 'is-active' : ''}" data-lesson-student-room="${escapeHtml(item.roomId)}" ${active ? 'aria-current="page"' : ''}><span class="p2-lesson-tab-avatar">${escapeHtml(initial)}</span><span>${escapeHtml(item.name)}</span></button>`;
+    }).join('')}</div>`;
+    bar.querySelectorAll('[data-lesson-student-room]').forEach(button => button.addEventListener('click', () => {
+      const targetRoom = String(button.dataset.lessonStudentRoom || '').trim().toUpperCase();
+      if (!targetRoom || targetRoom === activeRoom) return;
+      const url = new URL(location.href);
+      url.searchParams.set('room', targetRoom);
+      url.searchParams.set('role', 'teacher');
+      url.searchParams.delete('stay');
+      url.searchParams.delete('new');
+      location.href = url.toString();
+    }));
+    body.classList.add('p2-lesson-student-tabs-active');
+  }
+
+  function updateStudentIdentityLabels() {
+    const isTeacher = role() === 'teacher';
+    const name = currentStudentName('Mokinys');
+    const hasName = currentStudentId() && name !== 'Mokinys';
+    const roleBadge = document.getElementById('onlineRoleBadge');
+    if (roleBadge) {
+      roleBadge.textContent = isTeacher ? 'Mokytojas' : (hasName ? name : 'Mokinys');
+      roleBadge.title = isTeacher ? 'Mokytojo režimas' : (hasName ? `Mokinio režimas · ${name}` : 'Mokinio režimas');
+    }
+    const boardTitle = document.querySelector('.p2-board-heading strong');
+    const boardSubtitle = document.querySelector('.p2-board-subtitle');
+    if (boardTitle) boardTitle.textContent = hasName ? `${name} · lenta` : 'Bendra lenta';
+    if (boardSubtitle) boardSubtitle.textContent = hasName ? 'Individuali realaus laiko erdvė' : 'Bendra realaus laiko erdvė';
+    if (isTeacher) {
+      if (teacherPreviewMode !== 'docked' && sideTitle) sideTitle.textContent = `${name} · eiga`;
+      if (practiceModeButton) practiceModeButton.textContent = `${name} · eiga`;
+    } else if (sideRolePill) {
+      sideRolePill.textContent = hasName ? name : 'Mokinys';
+    }
   }
 
   function formatStudentDate(value, compact = false) {
@@ -1926,7 +2031,7 @@
     const target = targetRole === 'student' ? 'student' : 'teacher';
     const activeRoomId = currentRoomId();
 
-    // P2-SPLIT-P2.5-P1.2: jei mokytojas iš kortelės atidaro būtent tą pačią
+    // P2-SPLIT-P2.5-P2: jei mokytojas iš kortelės atidaro būtent tą pačią
     // aktyvią lentą, jokios istorinės navigacijos nereikia. Tiesiog uždarome
     // kortelę, todėl URL lieka be stay=1 ir aktyvios sesijos funkcijos išlieka.
     if (safe === activeRoomId && target === role()) {
@@ -1999,6 +2104,10 @@
     const currentLesson = selected?.lessons?.[roomId] || null;
     const defaultLessonId = currentLesson?.lessonId || assignment?.lessonId || '';
     const linkedToOther = linkedStudentId && linkedStudentId !== selectedStudentId;
+    const currentLinkedStudent = linkedStudentId ? teacherStudentDb.students?.[linkedStudentId] || null : null;
+    const classSessionId = linkedClassSessionIdForRoom(roomId);
+    const classParticipants = classSessionParticipants(classSessionId);
+    const selectedClassParticipant = classParticipants.find(item => item.studentId === selectedStudentId) || null;
 
     const listMarkup = students.length ? students.map(student => {
       const count = lessonHistoryForStudent(student).length;
@@ -2041,14 +2150,19 @@
           <label><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
           <button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button>
         </section>
-        <section class="p2-student-current-session ${currentLesson ? 'is-linked' : ''}">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė sesija</span><h3>Room ${escapeHtml(roomId || '—')}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Susieta</span>' : ''}</div>
-          ${linkedToOther ? `<div class="p2-student-link-warning">Ši Room šiuo metu susieta su kitu mokiniu. Susiejus čia, ji bus perkelta į pasirinktą kortelę.</div>` : ''}
-          <div class="p2-student-assign-row">
-            <label><span>Pratybos šiai pamokai</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
-            <button type="button" class="p2-primary" data-student-link-current>${currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką'}</button>
-          </div>
-          <p class="p2-student-current-help">Pamokos įraše išsaugomas Room kodas. Todėl šią lentą galėsi atidaryti vėliau net pradėjęs naują sesiją.</p>
+        <section class="p2-student-current-session ${currentLesson || selectedClassParticipant ? 'is-linked' : ''}">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(currentLinkedStudent?.name || 'Mokinys')} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
+          ${linkedToOther ? (selectedClassParticipant
+            ? `<div class="p2-student-class-info"><strong>${escapeHtml(selected.name || 'Mokinys')}</strong> jau yra šioje pamokoje ir turi atskirą lentą <code>${escapeHtml(selectedClassParticipant.roomId)}</code>.</div>`
+            : `<div class="p2-student-class-info">Dabar atidaryta <strong>${escapeHtml(currentLinkedStudent?.name || 'kito mokinio')}</strong> lenta. Pasirinktam mokiniui <strong>„${escapeHtml(selected.name || 'Mokinys')}“</strong> bus automatiškai sukurta <strong>atskira lenta</strong>, o viršuje atsiras jo vardinis skirtukas.</div>`)
+            : ''}
+          ${linkedToOther && selectedClassParticipant
+            ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(selected.name || 'Mokinys')}</button></div>`
+            : `<div class="p2-student-assign-row">
+                <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
+                <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką')}</button>
+              </div>`}
+          <p class="p2-student-current-help">Kiekvienas mokinys turi savo Room, lentą ir pratybų eigą. Tos pačios pamokos mokinius mokytojas perjungia viršuje esančiais vardiniais skirtukais.</p>
         </section>
         <section class="p2-student-history">
           <div class="p2-student-section-heading"><div><span class="p2-label">Pamokų istorija</span><h3>${history.length} ${history.length === 1 ? 'pamoka' : 'pamokos'}</h3></div></div>
@@ -2094,7 +2208,6 @@
     });
     host.querySelector('[data-student-link-current]')?.addEventListener('click', () => {
       if (!selectedStudentId || !roomId) return;
-      if (linkedToOther && !window.confirm('Ši sesija jau susieta su kitu mokiniu. Perkelti ją į pasirinktą mokinio kortelę?')) return;
       const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
       const lesson = lessonForId(selectedLessonId);
       requestStudentDb({
@@ -2106,6 +2219,31 @@
         taskCount: lesson?.taskCount || 0,
         attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
       });
+    });
+    host.querySelector('[data-student-add-to-class]')?.addEventListener('click', () => {
+      if (!selectedStudentId || !roomId || !linkedStudentId) return;
+      const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
+      const lesson = lessonForId(selectedLessonId);
+      requestStudentDb({
+        action: 'add-to-class-session',
+        studentId: selectedStudentId,
+        roomId,
+        lessonId: lesson?.id || '',
+        title: lesson?.shortTitle || '',
+        taskCount: lesson?.taskCount || 0,
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+      });
+    });
+    host.querySelector('[data-student-switch-class-room]')?.addEventListener('click', event => {
+      const targetRoom = String(event.currentTarget?.dataset.studentSwitchClassRoom || '').trim().toUpperCase();
+      if (!targetRoom) return;
+      if (studentsModal) studentsModal.hidden = true;
+      const url = new URL(location.href);
+      url.searchParams.set('room', targetRoom);
+      url.searchParams.set('role', 'teacher');
+      url.searchParams.delete('stay');
+      url.searchParams.delete('new');
+      location.href = url.toString();
     });
     host.querySelectorAll('[data-student-open-room]').forEach(button => button.addEventListener('click', () => {
       openHistoricalRoom(button.dataset.studentOpenRoom, button.dataset.roomRole || 'teacher');
@@ -2147,9 +2285,20 @@
     }, 450);
   }
 
+  window.addEventListener('p2:room-student-state', event => {
+    roomStudentProfile = event.detail && typeof event.detail === 'object' ? event.detail : null;
+    updateStudentIdentityLabels();
+    renderLessonStudentTabs();
+    renderPanels();
+    renderTeacherPreview();
+    renderStudentsModal();
+  });
+
   window.addEventListener('p2:students-state', event => {
     teacherStudentDb = normalizeTeacherStudentDb(event.detail);
     if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
+    updateStudentIdentityLabels();
+    renderLessonStudentTabs();
 
     // Grįžus iš istorinės lentos tame pačiame skirtuke, atstatome būtent
     // tą mokinio kortelę, iš kurios pamoka buvo atidaryta.
@@ -2307,7 +2456,7 @@
   function setTeacherSideHeader(previewActive = false) {
     if (role() !== 'teacher') return;
     sideKicker.textContent = previewActive ? 'MOKYTOJO PERŽIŪRA' : 'MOKYTOJO STEBĖJIMAS';
-    sideTitle.textContent = previewActive ? 'Pratybų peržiūra' : 'Mokinio eiga';
+    sideTitle.textContent = previewActive ? 'Pratybų peržiūra' : `${currentStudentName('Mokinys')} · eiga`;
   }
 
   function setTeacherPreviewMode(nextMode) {
@@ -2571,12 +2720,12 @@
     }).join('');
 
     const locationText = isStudentTask
-      ? `Mokinys · ${studentIndex} / ${activeLesson().taskCount}`
-      : `Mokinys · ${studentIndex} / ${activeLesson().taskCount} · Peržiūri ${previewIndex}`;
+      ? `${currentStudentName('Mokinys')} · ${studentIndex} / ${activeLesson().taskCount}`
+      : `${currentStudentName('Mokinys')} · ${studentIndex} / ${activeLesson().taskCount} · Peržiūri ${previewIndex}`;
 
     host.innerHTML = `
       <div class="p2-preview-toolbar">
-        <div class="p2-preview-location"><span class="p2-live-dot" aria-hidden="true"></span><strong>${locationText}</strong></div>
+        <div class="p2-preview-location"><span class="p2-live-dot" aria-hidden="true"></span><strong>${escapeHtml(locationText)}</strong></div>
         <div class="p2-preview-follow-actions">
           ${teacherFollowStudent
             ? '<button type="button" class="p2-secondary is-active" data-preview-action="follow">✓ Sekama</button>'
@@ -2588,7 +2737,7 @@
           <article class="p2-preview-detail ${(solutionTask || expressionTask) ? 'p2-solution-preview-detail' : ''}${simpleInputTask ? ' p2-simple-input-preview-detail' : ''}">
             <header class="p2-preview-detail-head">
               <div>
-                <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
+                <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ` · ${escapeHtml(currentStudentName('Mokinys'))} dabar čia` : ''}</span>
                 ${conditionMarkup}
                 ${answerKeyMarkup}
               </div>

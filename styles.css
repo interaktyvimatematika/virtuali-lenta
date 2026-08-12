@@ -6636,7 +6636,7 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 }
 
 
-/* P2-SPLIT-P2.5-P1.2 — mokinių duomenų bazė ir pamokų istorija */
+/* P2-SPLIT-P2.5-P2 — mokinių duomenų bazė ir pamokų istorija */
 .p2-students-modal[hidden]{display:none!important}
 .p2-students-modal{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:24px}
 .p2-students-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44);backdrop-filter:blur(3px)}
@@ -6663,13 +6663,13 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 @media(max-width:850px){.p2-students-modal{padding:10px}.p2-students-panel{width:100%;height:96vh;border-radius:18px}.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{border-right:0;border-bottom:1px solid #e8edf4;max-height:250px}.p2-student-detail-pane{padding:16px}.p2-student-edit-card{grid-template-columns:1fr}.p2-student-assign-row{grid-template-columns:1fr}.p2-student-history-item{grid-template-columns:1fr}.p2-student-history-actions{justify-content:flex-start;max-width:none}}
 
 
-/* P2-SPLIT-P2.5-P1.2 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
+/* P2-SPLIT-P2.5-P2 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
 .p2-history-return-button{white-space:nowrap}
 .p2-history-return-button>span:first-child{font-size:15px;line-height:1}
 @media(max-width:1100px){.p2-history-return-button>span:last-child{display:none}}
 
 
-/* P2-SPLIT-P2.5-P1.2 — mokinio istorijos navigacija nebeardo pagrindinio topbar */
+/* P2-SPLIT-P2.5-P2 — mokinio istorijos navigacija nebeardo pagrindinio topbar */
 body.p2-shell.p2-student-history-nav-active .app{
   grid-template-rows:var(--p2-topbar-height) 38px minmax(0,1fr);
 }
@@ -6731,4 +6731,31 @@ body.p2-shell.p2-student-history-nav-active .app{
   .p2-history-return-context strong{display:none}
   .p2-history-return-button>span:last-child{display:none}
   .p2-history-return-button{width:30px;padding:0;justify-content:center}
+}
+
+/* P2-SPLIT-P2.5-P2 — keli mokiniai vienoje pamokoje, kiekvienas savo Room */
+.p2-lesson-student-tabs[hidden]{display:none!important}
+body.p2-shell.p2-lesson-student-tabs-active .app{
+  grid-template-rows:var(--p2-topbar-height) 42px minmax(0,1fr);
+}
+body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
+  grid-template-rows:var(--p2-topbar-height) 42px 38px minmax(0,1fr);
+}
+.p2-lesson-student-tabs{
+  min-width:0;height:42px;display:flex;align-items:center;gap:10px;padding:5px 14px;
+  border-bottom:1px solid #e3e8f0;background:#f8fafc;z-index:20;overflow:hidden;
+}
+.p2-lesson-tabs-label{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#7b8799;white-space:nowrap}
+.p2-lesson-tabs-scroll{min-width:0;display:flex;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.p2-lesson-tabs-scroll::-webkit-scrollbar{display:none}
+.p2-lesson-student-tab{flex:0 0 auto;height:31px;border:1px solid #dce3ed;background:#fff;color:#536176;border-radius:10px;padding:3px 10px 3px 5px;display:flex;align-items:center;gap:7px;font:inherit;font-size:11px;font-weight:750;cursor:pointer;white-space:nowrap}
+.p2-lesson-student-tab:hover{background:#f2f6fb;border-color:#cfd9e7}
+.p2-lesson-student-tab.is-active{background:#eef3ff;border-color:#c6d2f0;color:#3954a2;box-shadow:0 1px 3px rgba(35,55,105,.08)}
+.p2-lesson-tab-avatar{width:23px;height:23px;border-radius:7px;background:#e7edf6;color:#506078;display:grid;place-items:center;font-size:10px;font-weight:850}
+.p2-lesson-student-tab.is-active .p2-lesson-tab-avatar{background:#dce6ff;color:#36529f}
+.p2-student-class-info{margin-top:11px;padding:10px 12px;border:1px solid #dce5f0;background:#f7faff;border-radius:11px;color:#5f6e82;font-size:11px;line-height:1.5}
+.p2-student-class-info strong{color:#34445a}.p2-student-class-info code{font-size:10px;color:#5b6d83}
+.p2-student-current-actions{margin-top:12px;display:flex;justify-content:flex-end}
+@media(max-width:760px){
+  .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
 }

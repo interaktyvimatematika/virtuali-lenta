@@ -168,7 +168,7 @@ if (newButton) {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// P2-SPLIT-P2.5-P1.2: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
+// P2-SPLIT-P2.5-P2: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
 // naršyklė gauna ilgalaikį atsitiktinį profilio ID; jis niekada nepridedamas
 // prie mokinio nuorodos. Tai dar nėra paskyrų/autentifikacijos sistema, bet
 // neleidžia skirtingų mokytojų sąrašams susimaišyti viename bendrame mazge.
@@ -191,7 +191,7 @@ function resolveTeacherProfileId() {
 }
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
-let teacherProfileCache = { students: {}, roomLinks: {} };
+let teacherProfileCache = { students: {}, roomLinks: {}, classSessions: {} };
 
 const roomRef = ref(db, `p772Rooms/${roomId}`);
 const workspaceRef = ref(db, `p772Rooms/${roomId}/workspace`);
@@ -217,6 +217,7 @@ const connectedRef = ref(db, '.info/connected');
 // svarbią eigą. Langų dydžiai, split santykis ir scroll pozicijos čia nepatenka.
 const p2AssignmentRef = ref(db, `p772Rooms/${roomId}/p2/student/assignment`);
 const p2ProgressRef = ref(db, `p772Rooms/${roomId}/p2/student/progress`);
+const p2StudentProfileRef = ref(db, `p772Rooms/${roomId}/p2/student/profile`);
 
 let bootstrapped = false;
 let liveTimer = null;
@@ -587,7 +588,7 @@ onValue(liveRef, snapshot => {
 });
 
 
-// P2-SPLIT-P2.5-P1.2: ilgalaikė mokinių bazė / pamokų indeksas.
+// P2-SPLIT-P2.5-P2: ilgalaikė mokinių bazė / pamokų indeksas.
 function safeStudentId(value) {
   const id = String(value || '').trim();
   return /^[a-z0-9_-]{6,48}$/i.test(id) ? id : '';
@@ -595,6 +596,14 @@ function safeStudentId(value) {
 function newStudentId() {
   const random = Math.random().toString(36).slice(2, 9);
   return `s_${Date.now().toString(36)}_${random}`;
+}
+function newClassSessionId() {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `c_${Date.now().toString(36)}_${random}`;
+}
+function safeClassSessionId(value) {
+  const id = String(value || '').trim();
+  return /^[a-z0-9_-]{6,64}$/i.test(id) ? id : '';
 }
 function cleanStudentName(value) { return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80); }
 function cleanStudentNotes(value) { return String(value || '').trim().slice(0, 600); }
@@ -604,7 +613,8 @@ function emitTeacherProfile() {
     detail: {
       profileId: teacherProfileId,
       students: teacherProfileCache.students || {},
-      roomLinks: teacherProfileCache.roomLinks || {}
+      roomLinks: teacherProfileCache.roomLinks || {},
+      classSessions: teacherProfileCache.classSessions || {}
     }
   }));
 }
@@ -613,11 +623,12 @@ if (teacherProfileRef) {
     const value = snapshot.val() || {};
     teacherProfileCache = {
       students: value.students && typeof value.students === 'object' ? value.students : {},
-      roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {}
+      roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {},
+      classSessions: value.classSessions && typeof value.classSessions === 'object' ? value.classSessions : {}
     };
     emitTeacherProfile();
   }, error => {
-    console.error('P2-SPLIT-P2.5-P1.2 mokinių bazės skaitymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
     emitTeacherProfile();
   });
@@ -635,6 +646,13 @@ function cleanLessonSummary(value) {
     updatedAt: Date.now()
   };
 }
+
+onValue(p2StudentProfileRef, snapshot => {
+  const value = snapshot.val();
+  window.dispatchEvent(new CustomEvent('p2:room-student-state', {
+    detail: value && typeof value === 'object' ? value : null
+  }));
+});
 
 window.addEventListener('p2:students-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
@@ -658,32 +676,54 @@ window.addEventListener('p2:students-request', async event => {
       await update(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), {
         name, notes: cleanStudentNotes(detail.notes), updatedAt: Date.now()
       });
+      const linkedRooms = Object.entries(teacherProfileCache.roomLinks || {})
+        .filter(([, link]) => link?.studentId === studentId)
+        .map(([linkedRoom]) => safeRoom(linkedRoom))
+        .filter(Boolean);
+      await Promise.all(linkedRooms.map(linkedRoom => update(ref(db, `p772Rooms/${linkedRoom}/p2/student/profile`), {
+        studentId, name, updatedAt: Date.now()
+      }).catch(() => {})));
       bridge.showToast?.('Mokinio kortelė atnaujinta');
       return;
     }
     if (detail.action === 'delete') {
       const updates = { [`students/${studentId}`]: null };
+      const linkedRooms = [];
       for (const [linkedRoom, link] of Object.entries(teacherProfileCache.roomLinks || {})) {
-        if (link?.studentId === studentId) updates[`roomLinks/${linkedRoom}`] = null;
+        if (link?.studentId !== studentId) continue;
+        updates[`roomLinks/${linkedRoom}`] = null;
+        linkedRooms.push(linkedRoom);
+        const classSessionId = safeClassSessionId(link?.classSessionId);
+        if (classSessionId) updates[`classSessions/${classSessionId}/students/${studentId}`] = null;
       }
       await update(teacherProfileRef, updates);
+      await Promise.all(linkedRooms.map(linkedRoom => remove(ref(db, `p772Rooms/${safeRoom(linkedRoom)}/p2/student/profile`)).catch(() => {})));
       bridge.showToast?.('Mokinys pašalintas iš bazės');
       return;
     }
     const targetRoom = safeRoom(detail.roomId);
     if (!targetRoom) return;
     if (detail.action === 'unlink-room') {
+      const link = teacherProfileCache.roomLinks?.[targetRoom] || {};
       const updates = { [`students/${studentId}/lessons/${targetRoom}`]: null };
-      if (teacherProfileCache.roomLinks?.[targetRoom]?.studentId === studentId) updates[`roomLinks/${targetRoom}`] = null;
+      if (link?.studentId === studentId) {
+        updates[`roomLinks/${targetRoom}`] = null;
+        const classSessionId = safeClassSessionId(link.classSessionId);
+        if (classSessionId) updates[`classSessions/${classSessionId}/students/${studentId}`] = null;
+      }
       await update(teacherProfileRef, updates);
+      if (link?.studentId === studentId) await remove(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`)).catch(() => {});
       bridge.showToast?.('Pamokos įrašas pašalintas. Lenta liko Firebase.');
       return;
     }
     if (detail.action === 'link-room') {
       const previousStudentId = safeStudentId(teacherProfileCache.roomLinks?.[targetRoom]?.studentId);
+      const previousClassSessionId = safeClassSessionId(teacherProfileCache.roomLinks?.[targetRoom]?.classSessionId);
+      const classSessionId = previousClassSessionId || newClassSessionId();
       const updates = {};
       if (previousStudentId && previousStudentId !== studentId) {
         updates[`students/${previousStudentId}/lessons/${targetRoom}`] = null;
+        if (previousClassSessionId) updates[`classSessions/${previousClassSessionId}/students/${previousStudentId}`] = null;
       }
 
       const currentAssignmentSnap = await get(p2AssignmentRef);
@@ -693,9 +733,6 @@ window.addEventListener('p2:students-request', async event => {
       let title = String(detail.title || '').trim().slice(0, 140);
       let taskCount = Math.max(0, Math.min(500, Number(detail.taskCount) || 0));
 
-      // Jei pasirenkama TA PATI jau vykdoma pamoka, jos progreso nenunuliname –
-      // mokytojas gali tiesiog susieti realios pamokos Room su mokinio kortele.
-      // Naują progresą pradedame tik sąmoningai pasirinkus kitą pratybų rinkinį.
       if (lessonId) {
         if (String(currentAssignment?.lessonId || '') !== lessonId) {
           const assignmentPayload = {
@@ -718,10 +755,13 @@ window.addEventListener('p2:students-request', async event => {
         taskCount = Math.max(0, Math.min(500, Number(currentAssignment.taskCount) || 0));
       }
 
+      const student = teacherProfileCache.students?.[studentId] || {};
+      const studentName = cleanStudentName(student.name) || 'Mokinys';
       const existingRecord = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom] || {};
       const progressValue = currentProgressSnap.val();
       const record = {
         roomId: targetRoom,
+        classSessionId,
         lessonId,
         title: title || (lessonId ? 'Pamoka' : 'Lentos sesija'),
         taskCount,
@@ -732,9 +772,90 @@ window.addEventListener('p2:students-request', async event => {
       };
       updates[`students/${studentId}/lessons/${targetRoom}`] = record;
       updates[`students/${studentId}/updatedAt`] = Date.now();
-      updates[`roomLinks/${targetRoom}`] = { studentId, linkedAt: Date.now() };
+      updates[`roomLinks/${targetRoom}`] = { studentId, classSessionId, linkedAt: Date.now() };
+      updates[`classSessions/${classSessionId}/createdAt`] = Number(teacherProfileCache.classSessions?.[classSessionId]?.createdAt || 0) || Date.now();
+      updates[`classSessions/${classSessionId}/updatedAt`] = Date.now();
+      updates[`classSessions/${classSessionId}/students/${studentId}`] = { roomId: targetRoom, addedAt: Date.now() };
       await update(teacherProfileRef, updates);
+      await set(p2StudentProfileRef, { studentId, name: studentName, classSessionId, updatedAt: Date.now() });
       bridge.showToast?.('Pamoka susieta su mokiniu');
+      return;
+    }
+
+    if (detail.action === 'add-to-class-session') {
+      const sourceRoom = targetRoom;
+      const sourceLink = teacherProfileCache.roomLinks?.[sourceRoom] || {};
+      const sourceStudentId = safeStudentId(sourceLink.studentId);
+      if (!sourceStudentId) throw new Error('Dabartinė Room dar nesusieta su mokiniu');
+      let classSessionId = safeClassSessionId(sourceLink.classSessionId);
+      const updates = {};
+      if (!classSessionId) {
+        classSessionId = newClassSessionId();
+        updates[`roomLinks/${sourceRoom}/classSessionId`] = classSessionId;
+        updates[`students/${sourceStudentId}/lessons/${sourceRoom}/classSessionId`] = classSessionId;
+        updates[`classSessions/${classSessionId}/students/${sourceStudentId}`] = { roomId: sourceRoom, addedAt: Date.now() };
+        const sourceStudentName = cleanStudentName(teacherProfileCache.students?.[sourceStudentId]?.name) || 'Mokinys';
+        await update(ref(db, `p772Rooms/${sourceRoom}/p2/student/profile`), {
+          studentId: sourceStudentId, name: sourceStudentName, classSessionId, updatedAt: Date.now()
+        });
+      }
+
+      const existingParticipant = teacherProfileCache.classSessions?.[classSessionId]?.students?.[studentId];
+      if (existingParticipant?.roomId) {
+        bridge.showToast?.('Šis mokinys jau yra šioje pamokoje');
+        return;
+      }
+
+      const targetStudentRoom = newRoomId();
+      const student = teacherProfileCache.students?.[studentId] || {};
+      const studentName = cleanStudentName(student.name) || 'Mokinys';
+      let lessonId = String(detail.lessonId || '').trim().slice(0, 80);
+      let title = String(detail.title || '').trim().slice(0, 140);
+      let taskCount = Math.max(0, Math.min(500, Number(detail.taskCount) || 0));
+      if (!lessonId) {
+        const sourceAssignment = (await get(p2AssignmentRef)).val();
+        if (sourceAssignment?.lessonId) {
+          lessonId = String(sourceAssignment.lessonId).slice(0, 80);
+          title = String(sourceAssignment.title || '').slice(0, 140);
+          taskCount = Math.max(0, Math.min(500, Number(sourceAssignment.taskCount) || 0));
+        }
+      }
+
+      const blank = emptyWorkspace();
+      await set(ref(db, `p772Rooms/${targetStudentRoom}/workspace`), {
+        ...blank,
+        meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
+      });
+      if (lessonId) {
+        await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/assignment`), {
+          lessonId, title: title || 'Pamoka', taskCount,
+          attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
+          assignedAt: Date.now(), assignedBy: me
+        });
+        await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/progress`), {
+          assignmentId: lessonId, status: 'not_started', currentTaskId: '', taskStates: {},
+          startedAt: null, updatedAt: Date.now()
+        });
+      }
+      await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/profile`), {
+        studentId, name: studentName, classSessionId, updatedAt: Date.now()
+      });
+
+      const now = Date.now();
+      const record = {
+        roomId: targetStudentRoom, classSessionId, lessonId,
+        title: title || (lessonId ? 'Pamoka' : 'Lentos sesija'), taskCount,
+        createdAt: now, linkedAt: now, updatedAt: now,
+        summary: cleanLessonSummary({ taskCount })
+      };
+      updates[`students/${studentId}/lessons/${targetStudentRoom}`] = record;
+      updates[`students/${studentId}/updatedAt`] = now;
+      updates[`roomLinks/${targetStudentRoom}`] = { studentId, classSessionId, linkedAt: now };
+      updates[`classSessions/${classSessionId}/createdAt`] = Number(teacherProfileCache.classSessions?.[classSessionId]?.createdAt || 0) || now;
+      updates[`classSessions/${classSessionId}/updatedAt`] = now;
+      updates[`classSessions/${classSessionId}/students/${studentId}`] = { roomId: targetStudentRoom, addedAt: now };
+      await update(teacherProfileRef, updates);
+      bridge.showToast?.(`Pamoka papildyta: ${studentName}`);
       return;
     }
     if (detail.action === 'snapshot') {
@@ -753,7 +874,7 @@ window.addEventListener('p2:students-request', async event => {
       await update(teacherProfileRef, updates);
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P1.2 mokinių bazės įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P2 mokinių bazės įrašymo klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti mokinio duomenų');
   }
 });
@@ -943,7 +1064,7 @@ async function commitDrawingStroke(stroke) {
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P1.2 brūkšnio persistavimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P2 brūkšnio persistavimo klaida', error);
     // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
     window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
   }
