@@ -767,6 +767,37 @@ function safeScheduleDuration(value) {
   return Math.max(15, Math.min(180, Math.round(Number(value) || 40)));
 }
 function cleanScheduleLabel(value) { return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80); }
+function scheduleTimeMinutes(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(safeScheduleTime(value));
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+}
+function scheduleClockMinutes(value) {
+  const total = Math.max(0, Math.min(24 * 60, Math.round(Number(value) || 0)));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+function findScheduleConflict(day, start, durationMinutes, excludeScheduleId = '') {
+  const safeDay = safeScheduleDay(day);
+  const startMinutes = scheduleTimeMinutes(start);
+  const duration = safeScheduleDuration(durationMinutes);
+  const endMinutes = startMinutes + duration;
+  for (const [id, raw] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
+    if (String(id) === String(excludeScheduleId || '')) continue;
+    if (!raw || typeof raw !== 'object' || safeScheduleDay(raw.day) !== safeDay) continue;
+    const otherStart = scheduleTimeMinutes(raw.start);
+    const otherDuration = safeScheduleDuration(raw.durationMinutes);
+    const otherEnd = otherStart + otherDuration;
+    if (startMinutes < otherEnd && endMinutes > otherStart) return { id, ...raw, startMinutes: otherStart, endMinutes: otherEnd };
+  }
+  return null;
+}
+function scheduleConflictError(conflict) {
+  const label = cleanScheduleLabel(conflict?.label) || 'kita pamoka';
+  const start = safeScheduleTime(conflict?.start);
+  const end = scheduleClockMinutes(Number(conflict?.endMinutes || scheduleTimeMinutes(start) + safeScheduleDuration(conflict?.durationMinutes)));
+  const error = new Error(`Laikas persidengia su „${label}“ (${start}–${end}).`);
+  error.code = 'schedule-conflict';
+  return error;
+}
 function safeDateKey(value) {
   const text = String(value || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
@@ -912,10 +943,15 @@ window.addEventListener('p2:schedule-request', async event => {
         : Object.keys(existing.studentIds && typeof existing.studentIds === 'object' ? existing.studentIds : {})
             .filter(id => existing.studentIds[id] && teacherProfileCache.students?.[id]);
       const lessonId = String(detail.lessonId ?? existing.lessonId ?? '').trim().slice(0, 80);
+      const day = safeScheduleDay(detail.day ?? existing.day);
+      const start = safeScheduleTime(detail.start ?? existing.start);
+      const durationMinutes = safeScheduleDuration(detail.durationMinutes ?? existing.durationMinutes);
+      const conflict = findScheduleConflict(day, start, durationMinutes, scheduleId);
+      if (conflict) throw scheduleConflictError(conflict);
       const payload = {
-        day: safeScheduleDay(detail.day ?? existing.day),
-        start: safeScheduleTime(detail.start ?? existing.start),
-        durationMinutes: safeScheduleDuration(detail.durationMinutes ?? existing.durationMinutes),
+        day,
+        start,
+        durationMinutes,
         label: cleanScheduleLabel(detail.label ?? existing.label),
         studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
         lessonId,
@@ -1115,9 +1151,10 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.2 tvarkaraščio įrašymo klaida', error);
-    bridge.showToast?.('Nepavyko atnaujinti tvarkaraščio');
-    window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message: String(error?.message || error) } }));
+    console.error('P2-SPLIT-P2.5-P4-P1.4 tvarkaraščio įrašymo klaida', error);
+    const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
+    bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
+    window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
   }
 });
 

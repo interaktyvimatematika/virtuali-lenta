@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.3';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.4';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -416,6 +416,7 @@
   let studentsModal = null;
   let scheduleModal = null;
   let editingScheduleId = '';
+  let scheduleSelectedDay = 0;
   let selectedStudentId = null;
   let studentDbSnapshotTimer = null;
   let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
@@ -2334,6 +2335,48 @@
     return `${String(date.getHours()).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   }
 
+  function scheduleTimeToMinutes(value) {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  function scheduleClockFromMinutes(value) {
+    const total = Math.max(0, Math.min(24 * 60, Math.round(Number(value) || 0)));
+    const hours = Math.floor(total / 60);
+    const minutes = total % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  function scheduleFindConflict(day, start, durationMinutes, excludeScheduleId = '') {
+    const startMinutes = scheduleTimeToMinutes(start);
+    if (startMinutes === null) return null;
+    const duration = Math.max(15, Math.min(180, Math.round(Number(durationMinutes) || 40)));
+    const endMinutes = startMinutes + duration;
+    return scheduleEntriesList().find(entry => {
+      if (String(entry.id || '') === String(excludeScheduleId || '')) return false;
+      if (Number(entry.day || 0) !== Number(day || 0)) return false;
+      const otherStart = scheduleTimeToMinutes(entry.start);
+      if (otherStart === null) return false;
+      const otherDuration = Math.max(15, Math.min(180, Math.round(Number(entry.durationMinutes) || 40)));
+      const otherEnd = otherStart + otherDuration;
+      // Gretimos pamokos leidžiamos: 15:00–15:40 ir 15:40–16:20 nesikerta.
+      return startMinutes < otherEnd && endMinutes > otherStart;
+    }) || null;
+  }
+
+  function scheduleConflictText(conflict) {
+    if (!conflict) return '';
+    const startMinutes = scheduleTimeToMinutes(conflict.start);
+    const duration = Math.max(15, Math.min(180, Math.round(Number(conflict.durationMinutes) || 40)));
+    const end = startMinutes === null ? '' : scheduleClockFromMinutes(startMinutes + duration);
+    const label = String(conflict.label || '').trim() || 'kita pamoka';
+    return `Laikas persidengia su „${label}“ (${conflict.start || '—'}${end ? `–${end}` : ''}).`;
+  }
+
   function scheduleEntriesList() {
     return Object.entries(teacherStudentDb.scheduleEntries || {})
       .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
@@ -2391,6 +2434,8 @@
 
     const entries = scheduleEntriesList();
     const today = scheduleTodayIndex();
+    const selectedDay = scheduleSelectedDay >= 1 && scheduleSelectedDay <= 7 ? scheduleSelectedDay : today;
+    scheduleSelectedDay = selectedDay;
     const todayKey = localDateKey();
     const students = studentList();
     const editing = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] || null : null;
@@ -2403,21 +2448,23 @@
         const practice = entry.lessonId ? (entry.practiceTitle || lessonForId(entry.lessonId)?.shortTitle || 'Pratybos') : '';
         const duration = Math.max(15, Number(entry.durationMinutes || 40));
         const label = String(entry.label || '').trim();
-        return `<article class="p2-schedule-card ${editingScheduleId === entry.id ? 'is-editing' : ''} ${run ? 'is-started' : ''}" data-schedule-card="${escapeHtml(entry.id)}">
+        const conflict = scheduleFindConflict(entry.day, entry.start, duration, entry.id);
+        return `<article class="p2-schedule-card ${editingScheduleId === entry.id ? 'is-editing' : ''} ${run ? 'is-started' : ''} ${conflict ? 'has-conflict' : ''}" data-schedule-card="${escapeHtml(entry.id)}">
           <div class="p2-schedule-card-time"><strong>${escapeHtml(entry.start || '—')}</strong><span>${duration} min.</span></div>
           <div class="p2-schedule-card-copy">
             ${label ? `<h4>${escapeHtml(label)}</h4>` : '<h4>Pamoka</h4>'}
             <div class="p2-schedule-card-students">${names.length ? names.map(name => `<span>${escapeHtml(name)}</span>`).join('') : '<em>Mokiniai dar nepriskirti</em>'}</div>
             ${practice ? `<p>▦ ${escapeHtml(practice)}</p>` : '<p>□ Pratybos dar nepriskirtos</p>'}
-            ${run ? `<small>✓ Šiandien atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
+            ${run ? `<small>✓ Šiandien pirmą kartą atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
+            ${conflict ? '<small class="p2-schedule-conflict">⚠ Persidengia su kita pamoka</small>' : ''}
           </div>
           <div class="p2-schedule-card-actions">
             <button type="button" class="${editingScheduleId === entry.id ? '' : 'is-primary'}" data-schedule-open-card="${escapeHtml(entry.id)}" ${editingScheduleId === entry.id ? 'disabled' : ''}>${editingScheduleId === entry.id ? 'Tvarkoma' : 'Tvarkyti'}</button>
           </div>
         </article>`;
       }).join('') : '<div class="p2-schedule-day-empty">Pamokų nėra</div>';
-      return `<section class="p2-schedule-day ${day.id === today ? 'is-today' : ''}">
-        <header><span>${escapeHtml(day.short)}</span><strong>${escapeHtml(day.label)}</strong>${day.id === today ? '<b>Šiandien</b>' : ''}</header>
+      return `<section class="p2-schedule-day ${day.id === today ? 'is-today' : ''} ${day.id === selectedDay ? 'is-selected' : ''}" data-schedule-day="${day.id}">
+        <header data-schedule-select-day="${day.id}" title="Pasirinkti ${escapeHtml(day.label)} naujai pamokai"><span>${escapeHtml(day.short)}</span><strong>${escapeHtml(day.label)}</strong>${day.id === today ? '<b>Šiandien</b>' : ''}</header>
         <div class="p2-schedule-day-list">${cards}</div>
       </section>`;
     }).join('');
@@ -2430,7 +2477,7 @@
       <div class="p2-schedule-week-grid">${dayColumns}</div>`;
 
     if (!editing) {
-      const editDay = today;
+      const editDay = selectedDay;
       const editStart = defaultScheduleTime();
       const dayOptions = SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === editDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
       editorHost.innerHTML = `
@@ -2489,8 +2536,26 @@
     }
 
     weekHost.querySelector('[data-schedule-new]')?.addEventListener('click', () => { editingScheduleId = ''; renderScheduleModal(); });
+    const selectScheduleDay = day => {
+      if (day < 1 || day > 7) return;
+      scheduleSelectedDay = day;
+      weekHost.querySelectorAll('[data-schedule-day]').forEach(column => column.classList.toggle('is-selected', Number(column.dataset.scheduleDay || 0) === day));
+      if (!editingScheduleId) {
+        const select = editorHost.querySelector('#p2ScheduleDay');
+        if (select) select.value = String(day);
+      }
+    };
+    weekHost.querySelectorAll('[data-schedule-select-day]').forEach(header => header.addEventListener('click', () => {
+      selectScheduleDay(Number(header.dataset.scheduleSelectDay || 0));
+    }));
+    weekHost.querySelectorAll('[data-schedule-day]').forEach(column => column.addEventListener('click', event => {
+      if (event.target.closest('[data-schedule-card], button, input, select, textarea')) return;
+      selectScheduleDay(Number(column.dataset.scheduleDay || 0));
+    }));
     weekHost.querySelectorAll('[data-schedule-open-card]').forEach(button => button.addEventListener('click', () => {
       editingScheduleId = String(button.dataset.scheduleOpenCard || '');
+      const entry = teacherStudentDb.scheduleEntries?.[editingScheduleId];
+      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || today);
       renderScheduleModal();
     }));
     weekHost.querySelectorAll('[data-schedule-card]').forEach(card => card.addEventListener('dblclick', event => {
@@ -2505,6 +2570,9 @@
       const durationMinutes = Number(editorHost.querySelector('#p2ScheduleDuration')?.value || 40);
       const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
       if (!start) { toast('Pasirink pamokos pradžios laiką'); return; }
+      const conflict = scheduleFindConflict(day, start, durationMinutes);
+      if (conflict) { toast(scheduleConflictText(conflict)); return; }
+      scheduleSelectedDay = day;
       const button = editorHost.querySelector('[data-schedule-create]');
       if (button) { button.disabled = true; button.textContent = 'Kuriama…'; }
       requestSchedule({ action: 'add', day, start, durationMinutes, label, studentIds: [], lessonId: '', practiceTitle: '', taskCount: 0, attemptPolicy: null });
@@ -2520,6 +2588,9 @@
       const lesson = lessonForId(lessonId);
       const studentIds = Array.from(editorHost.querySelectorAll('.p2-schedule-student-check input:checked')).map(input => input.value);
       if (!start) { toast('Pasirink pamokos pradžios laiką'); return; }
+      const conflict = scheduleFindConflict(day, start, durationMinutes, editingScheduleId);
+      if (conflict) { toast(scheduleConflictText(conflict)); return; }
+      scheduleSelectedDay = day;
       requestSchedule({
         action: 'update', scheduleId: editingScheduleId,
         day, start, durationMinutes, label, studentIds,
@@ -2561,6 +2632,9 @@
       const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
       const lessonId = String(editorHost.querySelector('#p2ScheduleLesson')?.value || '').trim();
       const lesson = lessonForId(lessonId);
+      const conflict = scheduleFindConflict(day, start, durationMinutes, editingScheduleId);
+      if (conflict) { toast(scheduleConflictText(conflict)); return; }
+      scheduleSelectedDay = day;
       const button = editorHost.querySelector('[data-schedule-open-lesson]');
       if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
       requestSchedule({
@@ -2581,6 +2655,7 @@
 
   function openSchedule() {
     if (role() !== 'teacher') return;
+    if (scheduleSelectedDay < 1 || scheduleSelectedDay > 7) scheduleSelectedDay = scheduleTodayIndex();
     ensureScheduleModal();
     scheduleModal.hidden = false;
     renderScheduleModal();
@@ -2679,7 +2754,11 @@
 
   window.addEventListener('p2:schedule-saved', event => {
     const scheduleId = String(event.detail?.scheduleId || '').trim();
-    if (scheduleId) editingScheduleId = scheduleId;
+    if (scheduleId) {
+      editingScheduleId = scheduleId;
+      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || scheduleTodayIndex());
+    }
     renderScheduleModal();
   });
 

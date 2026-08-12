@@ -6782,6 +6782,11 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-week-grid { display:grid; grid-template-columns:repeat(7,minmax(185px,1fr)); gap:10px; min-width:1360px; align-items:start; }
 .p2-schedule-day { min-height:360px; overflow:hidden; background:#fff; border:1px solid #e2e7ef; border-radius:16px; box-shadow:0 6px 18px rgba(41,53,78,.035); }
 .p2-schedule-day.is-today { border-color:#b9c7fa; box-shadow:0 7px 22px rgba(70,94,190,.08); }
+.p2-schedule-day.is-selected { border-color:#748bea; box-shadow:0 0 0 2px rgba(82,105,210,.10),0 8px 24px rgba(70,94,190,.09); }
+.p2-schedule-day > header[data-schedule-select-day] { cursor:pointer; }
+.p2-schedule-day.is-selected > header { background:#eef2ff; }
+.p2-schedule-card.has-conflict { border-color:#e7b66f; background:#fffaf1; }
+.p2-schedule-conflict { color:#a86a16 !important; font-weight:800; }
 .p2-schedule-day > header { min-height:58px; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:3px 8px; padding:10px 12px; background:#fafbfe; border-bottom:1px solid #ebeff5; }
 .p2-schedule-day.is-today > header { background:#f4f6ff; }
 .p2-schedule-day > header > span { width:28px; height:28px; display:grid; place-items:center; grid-row:1 / span 2; border-radius:9px; background:#eef2f8; color:#61708a; font-size:11px; font-weight:900; }
