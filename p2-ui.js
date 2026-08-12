@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.3';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -905,13 +905,13 @@
       studentPanel.innerHTML = `
         <div class="p2-student-hero">
           <div class="p2-student-hero-icon" aria-hidden="true">∑</div>
-          <div class="p2-student-hero-copy"><span class="p2-label">Mano pratybos</span><h3>Čia atsiras mokytojo priskirtos pamokos</h3><p>Pratybos veiks atskirai nuo bendros lentos, todėl galėsi spręsti savo tempu, o lenta liks bendra darbo erdvė.</p></div>
+          <div class="p2-student-hero-copy"><span class="p2-label">Mano pratybos</span><h3>Čia atsiras mokytojo priskirtos pratybos</h3><p>Pratybos veiks atskirai nuo bendros lentos, todėl galėsi spręsti savo tempu, o lenta liks bendra darbo erdvė.</p></div>
           <span class="p2-count-badge">0</span>
         </div>
         <div class="p2-empty-card p2-practice-empty">
           <div class="p2-empty-illustration" aria-hidden="true"><span>f(x)</span><i></i></div>
           <strong>Kol kas nėra priskirtų pratybų</strong>
-          <p>Kai mokytojas priskirs pamoką, ji atsiras čia. Tada galėsi ją atidaryti „Padalintame“ arba „Tik pratybos“ vaizde.</p>
+          <p>Kai mokytojas priskirs pratybas, jos atsiras čia. Tada galėsi jas atidaryti „Padalintame“ arba „Tik pratybos“ vaizde.</p>
         </div>
         ${studentProgressSummary(stats)}
       `;
@@ -924,7 +924,7 @@
         <article class="p2-assigned-lesson-card">
           <div class="p2-assigned-lesson-icon" aria-hidden="true">ƒ</div>
           <div class="p2-assigned-lesson-copy">
-            <span class="p2-label">Priskirta pamoka</span>
+            <span class="p2-label">Priskirtos pratybos</span>
             <h3>${escapeHtml(activeLesson().title)}</h3>
             <p>${escapeHtml(activeLesson().description)}</p>
             <div class="p2-assignment-meta"><span>${activeLesson().classCount} pamokoje</span><span>${activeLesson().selfCount} savarankiškai</span><span>${activeLesson().taskCount} užduotys</span></div>
@@ -943,9 +943,12 @@
   }
 
   function studentProgressSummary(stats) {
+    const progressBadge = assignment
+      ? `<span class="p2-soft-pill">${stats.finished} / ${activeLesson().taskCount}</span>`
+      : '';
     return `
       <section class="p2-mini-section" aria-label="Mano pažanga">
-        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div><span class="p2-soft-pill">${stats.finished} / ${activeLesson().taskCount}</span></header>
+        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div>${progressBadge}</header>
         <div class="p2-student-progress">
           <div><span>Savarankiškai</span><strong>${stats.good}</strong></div>
           <div><span>Su pagalba / taisant</span><strong>${stats.help}</strong></div>
@@ -1722,15 +1725,15 @@
     const item = assignment ? currentTaskState() : null;
     const assigned = Boolean(assignment);
     const started = assigned && state.status !== 'not_started';
-    const assignmentTitle = assigned ? activeLesson().shortTitle : 'Pamoka dar nepriskirta';
+    const assignmentTitle = assigned ? activeLesson().shortTitle : 'Pratybos dar nepriskirtos';
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${activeLesson().taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
     const currentPedagogy = started ? pedagogicalStatus(item, { taskId: task?.id, current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
-    const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? `${learnerName} dar neatidarė pratybų` : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
+    const activityTitle = !assigned ? 'Pratybos dar nepriskirtos' : !started ? `${learnerName} dar neatidarė pratybų` : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
-      ? `Priskirk pamoką Bibliotekoje. ${learnerName} ją iškart pamatys savo „Mano pratybos“ srityje.`
+      ? `Priskirk pratybas Bibliotekoje. ${learnerName} jas iškart pamatys savo „Mano pratybos“ srityje.`
       : !started
-        ? `Pamoka priskirta. Kai ${learnerName} paspaus „Atidaryti“, čia realiu laiku atsiras dabartinė užduotis, bandymai ir pagalbos būsena.`
+        ? `Pratybos priskirtos. Kai ${learnerName} paspaus „Atidaryti“, čia realiu laiku atsiras dabartinė užduotis, bandymai ir pagalbos būsena.`
         : `${task?.prompt || ''}`;
 
     teacherPanel.innerHTML = `
@@ -1741,7 +1744,7 @@
       </div>
       <div class="p2-teacher-dashboard-grid">
         <div class="p2-progress-card">
-          <div class="p2-progress-head"><div><span class="p2-label">Priskirta pamoka</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? `${statusLabel(state)} · ${policySummary(assignment)}` : 'Bibliotekoje pasirink pamoką ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.finished} / ${activeLesson().taskCount}` : '— / —'}</strong></div>
+          <div class="p2-progress-head"><div><span class="p2-label">Priskirtos pratybos</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? `${statusLabel(state)} · ${policySummary(assignment)}` : 'Bibliotekoje pasirink pratybas ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.finished} / ${activeLesson().taskCount}` : '— / —'}</strong></div>
           <div class="p2-progress-line"><span style="width:${assigned ? stats.percent : 0}%"></span></div>
           <div class="p2-metrics">
             <div><span>Dabartinė užduotis</span><strong>${started ? currentLabel : '—'}</strong></div>
