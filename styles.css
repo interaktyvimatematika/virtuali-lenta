@@ -6763,7 +6763,7 @@ body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
   .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
 }
 
-/* P2-SPLIT-P2.5-P4-P1 · savaitinis pamokų tvarkaraštis */
+/* P2-SPLIT-P2.5-P4-P1.1 · savaitinis pamokų tvarkaraštis */
 body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-modal[hidden] { display:none !important; }
 .p2-schedule-modal { position:fixed; inset:0; z-index:2150; display:grid; place-items:center; padding:18px; }
@@ -6836,3 +6836,16 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-schedule-body { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
   .p2-schedule-editor-pane { max-height:46vh; border-left:0; border-top:1px solid #e1e6ee; }
 }
+
+
+/* P2-SPLIT-P2.5-P4-P1.1 · pamoka kaip atskiras tvarkaraščio objektas */
+.p2-schedule-editor-note { margin:7px 0 0; color:#7b8799; font-size:10px; line-height:1.5; }
+.p2-schedule-form-actions-single { justify-content:flex-end; }
+.p2-schedule-open-box { display:grid; gap:11px; padding:13px; border:1px solid #dce3ef; border-radius:13px; background:#f8faff; }
+.p2-schedule-open-box.is-running { border-color:#bee1cf; background:#f7fcf9; }
+.p2-schedule-open-box > div { display:grid; gap:4px; }
+.p2-schedule-open-box strong { color:#344158; font-size:12px; }
+.p2-schedule-open-box span { color:#788498; font-size:10px; line-height:1.45; }
+.p2-schedule-open-box button { width:100%; min-height:40px; }
+.p2-schedule-run-note { margin:-4px 0 0; padding:9px 10px; border-radius:10px; background:#fff8e8; color:#8a6b2d; font-size:9px; line-height:1.5; }
+.p2-schedule-card[data-schedule-card] { cursor:default; }

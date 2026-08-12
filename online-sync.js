@@ -257,7 +257,7 @@ let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
 
-// P2-SPLIT-P2.5-P4-P1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
+// P2-SPLIT-P2.5-P4-P1.1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
 // neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
 // vienoje vietoje ir prieš perėjimą patikimai atjungiami.
 let roomGeneration = 0;
@@ -338,7 +338,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
     await liveDisconnectHandle.remove();
     if (generation === roomGeneration && presenceRoom === roomId) activePresenceRoom = presenceRoom;
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P4-P1 presence perjungimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P4-P1.1 presence perjungimo klaida', error);
   }
 }
 
@@ -721,7 +721,7 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
   } catch (error) {
     if (generation !== roomGeneration) return;
-    console.error('P2-SPLIT-P2.5-P4-P1 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
@@ -836,30 +836,36 @@ window.addEventListener('p2:schedule-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
   const detail = event.detail || {};
   try {
-    if (detail.action === 'add' || detail.action === 'update') {
-      const scheduleId = detail.action === 'update' ? safeScheduleId(detail.scheduleId) : newScheduleId();
-      if (!scheduleId) return;
+    const saveScheduleEntry = async (scheduleId, existing = {}) => {
       const studentIds = Array.isArray(detail.studentIds)
         ? Array.from(new Set(detail.studentIds.map(safeStudentId).filter(id => id && teacherProfileCache.students?.[id])))
-        : [];
-      if (!studentIds.length) throw new Error('Tvarkaraščio pamokai nepasirinktas mokinys');
-      const existing = teacherProfileCache.scheduleEntries?.[scheduleId] || {};
-      const lessonId = String(detail.lessonId || '').trim().slice(0, 80);
+        : Object.keys(existing.studentIds && typeof existing.studentIds === 'object' ? existing.studentIds : {})
+            .filter(id => existing.studentIds[id] && teacherProfileCache.students?.[id]);
+      const lessonId = String(detail.lessonId ?? existing.lessonId ?? '').trim().slice(0, 80);
       const payload = {
-        day: safeScheduleDay(detail.day),
-        start: safeScheduleTime(detail.start),
-        durationMinutes: safeScheduleDuration(detail.durationMinutes),
-        label: cleanScheduleLabel(detail.label),
+        day: safeScheduleDay(detail.day ?? existing.day),
+        start: safeScheduleTime(detail.start ?? existing.start),
+        durationMinutes: safeScheduleDuration(detail.durationMinutes ?? existing.durationMinutes),
+        label: cleanScheduleLabel(detail.label ?? existing.label),
         studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
         lessonId,
-        practiceTitle: String(detail.practiceTitle || '').trim().slice(0, 140),
-        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0))),
-        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null,
+        practiceTitle: String(detail.practiceTitle ?? existing.practiceTitle ?? '').trim().slice(0, 140),
+        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount ?? existing.taskCount) || 0))),
+        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy ?? existing.attemptPolicy) : null,
         createdAt: Number(existing.createdAt || 0) || Date.now(),
         updatedAt: Date.now()
       };
       await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/scheduleEntries/${scheduleId}`), payload);
-      bridge.showToast?.(detail.action === 'update' ? 'Tvarkaraščio pamoka atnaujinta' : 'Pamoka pridėta į tvarkaraštį');
+      return payload;
+    };
+
+    if (detail.action === 'add' || detail.action === 'update') {
+      const scheduleId = detail.action === 'update' ? safeScheduleId(detail.scheduleId) : newScheduleId();
+      if (!scheduleId) return;
+      const existing = teacherProfileCache.scheduleEntries?.[scheduleId] || {};
+      await saveScheduleEntry(scheduleId, existing);
+      bridge.showToast?.(detail.action === 'update' ? 'Pamoka atnaujinta' : 'Pamoka sukurta');
+      window.dispatchEvent(new CustomEvent('p2:schedule-saved', { detail: { scheduleId, created: detail.action === 'add' } }));
       return;
     }
 
@@ -875,6 +881,29 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
 
+    if (detail.action === 'update-and-start') {
+      const existing = teacherProfileCache.scheduleEntries?.[scheduleId];
+      if (!existing || typeof existing !== 'object') throw new Error('Tvarkaraščio įrašas nerastas');
+      await saveScheduleEntry(scheduleId, existing);
+      // Vietinį cache papildome naujausia forma, kad nereikėtų laukti Firebase
+      // round-trip prieš kuriant tos pačios pamokos mokinių Room.
+      const studentIds = Array.isArray(detail.studentIds)
+        ? Array.from(new Set(detail.studentIds.map(safeStudentId).filter(id => id && teacherProfileCache.students?.[id])))
+        : [];
+      const lessonId = String(detail.lessonId || '').trim().slice(0, 80);
+      const entry = {
+        ...existing,
+        day: safeScheduleDay(detail.day), start: safeScheduleTime(detail.start),
+        durationMinutes: safeScheduleDuration(detail.durationMinutes), label: cleanScheduleLabel(detail.label),
+        studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
+        lessonId, practiceTitle: String(detail.practiceTitle || '').trim().slice(0, 140),
+        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0))),
+        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null
+      };
+      detail.action = 'start';
+      teacherProfileCache.scheduleEntries = { ...(teacherProfileCache.scheduleEntries || {}), [scheduleId]: entry };
+    }
+
     if (detail.action === 'start') {
       const entry = teacherProfileCache.scheduleEntries?.[scheduleId];
       if (!entry || typeof entry !== 'object') throw new Error('Tvarkaraščio įrašas nerastas');
@@ -882,7 +911,7 @@ window.addEventListener('p2:schedule-request', async event => {
       const existingRun = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey];
       if (existingRun?.rooms && typeof existingRun.rooms === 'object') {
         const firstRoom = Object.values(existingRun.rooms).map(value => safeRoom(value?.roomId || value)).find(Boolean) || '';
-        bridge.showToast?.('Ši pamoka šiandien jau pradėta');
+        bridge.showToast?.('Ši pamoka šiandien jau atidaryta');
         window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, firstRoom, existing: true } }));
         return;
       }
@@ -890,7 +919,7 @@ window.addEventListener('p2:schedule-request', async event => {
       const studentIds = Object.keys(entry.studentIds && typeof entry.studentIds === 'object' ? entry.studentIds : {})
         .map(safeStudentId)
         .filter(id => id && entry.studentIds[id] && teacherProfileCache.students?.[id]);
-      if (!studentIds.length) throw new Error('Tvarkaraščio pamokoje nėra galiojančių mokinių');
+      if (!studentIds.length) throw new Error('Pamokoje dar nėra priskirtų mokinių');
 
       const classSessionId = newClassSessionId();
       const now = Date.now();
@@ -976,12 +1005,12 @@ window.addEventListener('p2:schedule-request', async event => {
       };
       await update(teacherProfileRef, updates);
       const firstRoom = Object.values(rooms)[0] || '';
-      bridge.showToast?.('Pamoka pradėta');
+      bridge.showToast?.('Pamoka atidaryta');
       window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, classSessionId, firstRoom } }));
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.1 tvarkaraščio įrašymo klaida', error);
     bridge.showToast?.('Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message: String(error?.message || error) } }));
   }
@@ -1031,9 +1060,8 @@ window.addEventListener('p2:students-request', async event => {
       }
       for (const [scheduleId, entry] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
         if (!entry?.studentIds?.[studentId]) continue;
-        const remaining = Object.keys(entry.studentIds || {}).filter(id => id !== studentId && entry.studentIds[id] && teacherProfileCache.students?.[id]);
-        if (remaining.length) updates[`scheduleEntries/${scheduleId}/studentIds/${studentId}`] = null;
-        else updates[`scheduleEntries/${scheduleId}`] = null;
+        updates[`scheduleEntries/${scheduleId}/studentIds/${studentId}`] = null;
+        updates[`scheduleEntries/${scheduleId}/updatedAt`] = Date.now();
       }
       await update(teacherProfileRef, updates);
       await Promise.all(linkedRooms.map(linkedRoom => remove(ref(db, `p772Rooms/${safeRoom(linkedRoom)}/p2/student/profile`)).catch(() => {})));
@@ -1365,7 +1393,7 @@ onValue(connectedRef, snapshot => {
   }
 }, error => {
   connectedNow = false;
-  console.error('P2-SPLIT-P2.5-P4-P1 connection klaida', error);
+  console.error('P2-SPLIT-P2.5-P4-P1.1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
