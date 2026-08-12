@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.5';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.6';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -2564,10 +2564,18 @@
       if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || today);
       renderScheduleModal();
     }));
-    weekHost.querySelectorAll('[data-schedule-card]').forEach(card => card.addEventListener('dblclick', event => {
-      if (event.target.closest('button')) return;
-      editingScheduleId = String(card.dataset.scheduleCard || '');
+    // Visa pamokos kortelė yra pagrindinis įėjimas į jos informaciją.
+    // „Tvarkyti“ lieka aiškus atskiras valdiklis, tačiau nebereikia taikyti
+    // būtent į mažą mygtuką: vienas paspaudimas bet kurioje laisvoje kortelės
+    // vietoje atveria tą pačią pamokos valdymo panelę.
+    weekHost.querySelectorAll('[data-schedule-card]').forEach(card => card.addEventListener('click', event => {
+      if (event.target.closest('button, input, select, textarea, a')) return;
+      const scheduleId = String(card.dataset.scheduleCard || '');
+      if (!scheduleId) return;
+      editingScheduleId = scheduleId;
       scheduleCreateMode = false;
+      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || today);
       renderScheduleModal();
     }));
 
