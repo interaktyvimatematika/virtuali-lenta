@@ -6408,3 +6408,95 @@ body.p2-shell .p2-paper-step.is-continuation-line math-field.p2-solution-math-fi
   border-color: transparent;
   box-shadow: none;
 }
+
+/* ============================================================
+   P2-SPLIT-P2.4.7.19 — 5 klasės kartojimo pamoka
+   Paprasti atsakymo laukeliai + keli pamokų rinkiniai Bibliotekoje.
+   ============================================================ */
+body.p2-shell .p2-simple-answer {
+  display:grid;
+  gap:7px;
+  margin-top:4px;
+}
+body.p2-shell .p2-simple-answer > label {
+  color:#65718a;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+body.p2-shell .p2-simple-answer-field {
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+body.p2-shell .p2-simple-answer-field input {
+  width:min(260px,100%);
+  min-height:48px;
+  padding:10px 13px;
+  border:1px solid #ccd5e4;
+  border-radius:12px;
+  background:#fff;
+  color:#26334b;
+  font:800 18px/1.2 inherit;
+  outline:none;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+body.p2-shell .p2-simple-answer-field input:focus {
+  border-color:#6d82dc;
+  box-shadow:0 0 0 3px rgba(83,107,208,.10);
+  background:#fdfdff;
+}
+body.p2-shell .p2-simple-answer-field input:disabled {
+  opacity:.78;
+  background:#f5f7fa;
+}
+body.p2-shell .p2-simple-answer-field > span {
+  color:#59667e;
+  font-size:13px;
+  font-weight:900;
+}
+body.p2-shell .p2-simple-input-task-card .p2-task-prompt {
+  margin-bottom:12px;
+}
+body.p2-shell .p2-library-lesson-list {
+  display:grid;
+  gap:12px;
+}
+body.p2-shell .p2-library-lesson-card [data-library-action="assign"] {
+  white-space:nowrap;
+}
+body.p2-shell .p2-teacher-simple-answer {
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+  padding:11px 12px;
+  border:1px solid #e1e6ef;
+  border-radius:11px;
+  background:#f8f9fc;
+}
+body.p2-shell .p2-teacher-simple-answer span {
+  color:#7a8497;
+  font-size:9px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+body.p2-shell .p2-teacher-simple-answer strong {
+  color:#2f3b53;
+  font-size:14px;
+  font-weight:900;
+}
+body.p2-shell .p2-teacher-simple-answer small {
+  margin-left:auto;
+  color:#4e68c7;
+  font-size:9px;
+  font-weight:900;
+}
+@media (max-width:760px) {
+  body.p2-shell .p2-simple-answer-field input { width:100%; }
+  body.p2-shell .p2-simple-answer-field { align-items:stretch; }
+  body.p2-shell .p2-library-lesson-card [data-library-action="assign"] { white-space:normal; }
+}
