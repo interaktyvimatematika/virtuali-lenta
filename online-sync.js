@@ -257,7 +257,7 @@ let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
 
-// P2-SPLIT-P2.5-P4-P1.1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
+// P2-SPLIT-P2.5-P4-P1.2: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
 // neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
 // vienoje vietoje ir prieš perėjimą patikimai atjungiami.
 let roomGeneration = 0;
@@ -338,7 +338,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
     await liveDisconnectHandle.remove();
     if (generation === roomGeneration && presenceRoom === roomId) activePresenceRoom = presenceRoom;
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P4-P1.1 presence perjungimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P4-P1.2 presence perjungimo klaida', error);
   }
 }
 
@@ -721,7 +721,7 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
   } catch (error) {
     if (generation !== roomGeneration) return;
-    console.error('P2-SPLIT-P2.5-P4-P1.1 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.2 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
@@ -832,6 +832,76 @@ function subscribeP2StudentProfile() {
   });
 }
 
+
+function scheduleRunRoomEntries(run) {
+  const raw = run?.rooms && typeof run.rooms === 'object' ? run.rooms : {};
+  return Object.entries(raw).map(([studentIdRaw, roomRaw]) => ({
+    studentId: safeStudentId(studentIdRaw),
+    roomId: safeRoom(roomRaw?.roomId || roomRaw)
+  })).filter(item => item.studentId && item.roomId && teacherProfileCache.students?.[item.studentId]);
+}
+
+async function ensureScheduleRunClassSession(scheduleId, dateKey, run, entry) {
+  const roomEntries = scheduleRunRoomEntries(run);
+  if (!roomEntries.length) return { classSessionId: '', roomEntries: [] };
+
+  let classSessionId = safeClassSessionId(run?.classSessionId);
+  if (!classSessionId) classSessionId = newClassSessionId();
+  const now = Date.now();
+  const existingSession = teacherProfileCache.classSessions?.[classSessionId] || {};
+  const updates = {};
+
+  // P2.5-P4-P1.2: tvarkaraščio paleidimas yra vienos bendros pamokos sesija.
+  // Atkuriame indeksą ir senesniems P4-P1.1 run'ams, jei Firebase listenerio
+  // lenktynė ar ankstesnė versija paliko tik scheduleRuns.rooms žemėlapį.
+  updates[`classSessions/${classSessionId}/createdAt`] = Number(existingSession.createdAt || run?.startedAt || now) || now;
+  updates[`classSessions/${classSessionId}/updatedAt`] = now;
+  updates[`classSessions/${classSessionId}/scheduleId`] = scheduleId;
+  updates[`classSessions/${classSessionId}/scheduleDate`] = dateKey;
+  updates[`classSessions/${classSessionId}/scheduledDay`] = safeScheduleDay(entry?.day);
+  updates[`classSessions/${classSessionId}/scheduledStart`] = safeScheduleTime(entry?.start);
+  updates[`classSessions/${classSessionId}/durationMinutes`] = safeScheduleDuration(entry?.durationMinutes);
+  updates[`classSessions/${classSessionId}/label`] = cleanScheduleLabel(entry?.label);
+  updates[`scheduleRuns/${scheduleId}/${dateKey}/classSessionId`] = classSessionId;
+
+  const localStudents = { ...(existingSession.students && typeof existingSession.students === 'object' ? existingSession.students : {}) };
+  const localRoomLinks = { ...(teacherProfileCache.roomLinks || {}) };
+  for (const item of roomEntries) {
+    const addedAt = Number(existingSession.students?.[item.studentId]?.addedAt || run?.startedAt || now) || now;
+    updates[`classSessions/${classSessionId}/students/${item.studentId}`] = { roomId: item.roomId, addedAt };
+    updates[`roomLinks/${item.roomId}`] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
+    localStudents[item.studentId] = { roomId: item.roomId, addedAt };
+    localRoomLinks[item.roomId] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
+  }
+
+  await update(teacherProfileRef, updates);
+  teacherProfileCache.classSessions = {
+    ...(teacherProfileCache.classSessions || {}),
+    [classSessionId]: {
+      ...existingSession,
+      createdAt: Number(existingSession.createdAt || run?.startedAt || now) || now,
+      updatedAt: now,
+      scheduleId,
+      scheduleDate: dateKey,
+      scheduledDay: safeScheduleDay(entry?.day),
+      scheduledStart: safeScheduleTime(entry?.start),
+      durationMinutes: safeScheduleDuration(entry?.durationMinutes),
+      label: cleanScheduleLabel(entry?.label),
+      students: localStudents
+    }
+  };
+  teacherProfileCache.roomLinks = localRoomLinks;
+  teacherProfileCache.scheduleRuns = {
+    ...(teacherProfileCache.scheduleRuns || {}),
+    [scheduleId]: {
+      ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}),
+      [dateKey]: { ...(run || {}), classSessionId }
+    }
+  };
+  emitTeacherProfile();
+  return { classSessionId, roomEntries };
+}
+
 window.addEventListener('p2:schedule-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
   const detail = event.detail || {};
@@ -910,9 +980,16 @@ window.addEventListener('p2:schedule-request', async event => {
       const dateKey = safeDateKey(detail.dateKey) || localDateKey();
       const existingRun = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey];
       if (existingRun?.rooms && typeof existingRun.rooms === 'object') {
-        const firstRoom = Object.values(existingRun.rooms).map(value => safeRoom(value?.roomId || value)).find(Boolean) || '';
+        const repaired = await ensureScheduleRunClassSession(scheduleId, dateKey, existingRun, entry);
+        const firstRoom = repaired.roomEntries[0]?.roomId || Object.values(existingRun.rooms).map(value => safeRoom(value?.roomId || value)).find(Boolean) || '';
         bridge.showToast?.('Ši pamoka šiandien jau atidaryta');
-        window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, firstRoom, existing: true } }));
+        window.dispatchEvent(new CustomEvent('p2:schedule-started', {
+          detail: {
+            scheduleId, dateKey, firstRoom, existing: true,
+            classSessionId: repaired.classSessionId,
+            rooms: Object.fromEntries(repaired.roomEntries.map(item => [item.studentId, item.roomId]))
+          }
+        }));
         return;
       }
 
@@ -1004,13 +1081,41 @@ window.addEventListener('p2:schedule-request', async event => {
         durationMinutes
       };
       await update(teacherProfileRef, updates);
+
+      // Firebase profilio onValue paprastai atkeliauja iš karto, bet mokinių
+      // skirtukų nerodome priklausomai nuo callback'ų eilės. Iš žinomų ką tik
+      // sukurtos pamokos duomenų iškart atnaujiname vietinį indeksą.
+      const localSessionStudents = {};
+      const localRoomLinks = { ...(teacherProfileCache.roomLinks || {}) };
+      for (const [studentId, targetRoom] of Object.entries(rooms)) {
+        localSessionStudents[studentId] = { roomId: targetRoom, addedAt: now };
+        localRoomLinks[targetRoom] = { studentId, classSessionId, scheduleId, linkedAt: now };
+      }
+      teacherProfileCache.classSessions = {
+        ...(teacherProfileCache.classSessions || {}),
+        [classSessionId]: {
+          createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey,
+          scheduledDay: safeScheduleDay(entry.day), scheduledStart: safeScheduleTime(entry.start),
+          durationMinutes, label: cleanScheduleLabel(entry.label), students: localSessionStudents
+        }
+      };
+      teacherProfileCache.roomLinks = localRoomLinks;
+      teacherProfileCache.scheduleRuns = {
+        ...(teacherProfileCache.scheduleRuns || {}),
+        [scheduleId]: {
+          ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}),
+          [dateKey]: { classSessionId, startedAt: now, rooms, scheduledStart: safeScheduleTime(entry.start), durationMinutes }
+        }
+      };
+      emitTeacherProfile();
+
       const firstRoom = Object.values(rooms)[0] || '';
       bridge.showToast?.('Pamoka atidaryta');
-      window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, classSessionId, firstRoom } }));
+      window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, classSessionId, firstRoom, rooms } }));
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.2 tvarkaraščio įrašymo klaida', error);
     bridge.showToast?.('Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message: String(error?.message || error) } }));
   }
@@ -1393,7 +1498,7 @@ onValue(connectedRef, snapshot => {
   }
 }, error => {
   connectedNow = false;
-  console.error('P2-SPLIT-P2.5-P4-P1.1 connection klaida', error);
+  console.error('P2-SPLIT-P2.5-P4-P1.2 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 

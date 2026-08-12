@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -2019,7 +2019,7 @@
     const historical = params.get('stay') === '1';
     if (!activeRoomId || activeRoomId !== state.targetRoomId) return;
 
-    // P2-SPLIT-P2.5-P4-P1.1: grįžimo juosta priklauso tik tam vaizdui,
+    // P2-SPLIT-P2.5-P4-P1.2: grįžimo juosta priklauso tik tam vaizdui,
     // kuris buvo sąmoningai atidarytas iš mokinio kortelės. Grįžus į įprastą
     // mokytojo lentą (be stay=1) senas sessionStorage įrašas nebegali jos
     // klaidingai paversti „Mokinio vaizdu“.
@@ -2291,7 +2291,7 @@
     renderStudentsModal();
   }
 
-  // P2-SPLIT-P2.5-P4-P1.1: savaitinis tvarkaraštis yra mokytojo profilio dalis,
+  // P2-SPLIT-P2.5-P4-P1.2: savaitinis tvarkaraštis yra mokytojo profilio dalis,
   // o ne vienos Room būsena. Tvarkaraščio įrašas kartojasi kas savaitę;
   // reali pamoka (classSession + atskiros mokinių Room) sukuriama tik paspaudus „Pradėti“.
   const SCHEDULE_DAYS = Object.freeze([
@@ -2409,7 +2409,7 @@
             ${run ? `<small>✓ Šiandien atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
           </div>
           <div class="p2-schedule-card-actions">
-            <button type="button" class="is-primary" data-schedule-open-card="${escapeHtml(entry.id)}">Atidaryti</button>
+            <button type="button" class="${editingScheduleId === entry.id ? '' : 'is-primary'}" data-schedule-open-card="${escapeHtml(entry.id)}" ${editingScheduleId === entry.id ? 'disabled' : ''}>${editingScheduleId === entry.id ? 'Tvarkoma' : 'Tvarkyti'}</button>
           </div>
         </article>`;
       }).join('') : '<div class="p2-schedule-day-empty">Pamokų nėra</div>';
@@ -2540,8 +2540,12 @@
       const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[todayKey] || null;
       const runRooms = scheduleRunRooms(run);
       if (runRooms.length) {
-        scheduleModal.hidden = true;
-        requestTeacherRoomSwitch(runRooms[0], false);
+        const button = editorHost.querySelector('[data-schedule-open-lesson]');
+        if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
+        // Net jau pradėtą pamoką atidarome per schedule valdiklį: jis P4-P1.2
+        // patikrina / atkuria bendrą classSession indeksą, todėl visų mokinių
+        // skirtukai atsiranda ir seniau P4-P1.1 sukurtoms šiandienos pamokoms.
+        requestSchedule({ action: 'start', scheduleId: editingScheduleId, dateKey: todayKey });
         return;
       }
       const studentIds = Array.from(editorHost.querySelectorAll('.p2-schedule-student-check input:checked')).map(input => input.value);
