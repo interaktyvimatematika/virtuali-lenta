@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.6';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -2463,9 +2463,6 @@
             ${run ? `<small>✓ Šiandien pirmą kartą atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
             ${conflict ? '<small class="p2-schedule-conflict">⚠ Persidengia su kita pamoka</small>' : ''}
           </div>
-          <div class="p2-schedule-card-actions">
-            <button type="button" class="${editingScheduleId === entry.id ? '' : 'is-primary'}" data-schedule-open-card="${escapeHtml(entry.id)}" ${editingScheduleId === entry.id ? 'disabled' : ''}>${editingScheduleId === entry.id ? 'Tvarkoma' : 'Tvarkyti'}</button>
-          </div>
         </article>`;
       }).join('') : '<div class="p2-schedule-day-empty">Pamokų nėra</div>';
       return `<section class="p2-schedule-day ${day.id === today ? 'is-today' : ''} ${day.id === selectedDay ? 'is-selected' : ''}" data-schedule-day="${day.id}">
@@ -2557,17 +2554,9 @@
       if (event.target.closest('[data-schedule-card], button, input, select, textarea')) return;
       selectScheduleDay(Number(column.dataset.scheduleDay || 0));
     }));
-    weekHost.querySelectorAll('[data-schedule-open-card]').forEach(button => button.addEventListener('click', () => {
-      editingScheduleId = String(button.dataset.scheduleOpenCard || '');
-      scheduleCreateMode = false;
-      const entry = teacherStudentDb.scheduleEntries?.[editingScheduleId];
-      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || today);
-      renderScheduleModal();
-    }));
-    // Visa pamokos kortelė yra pagrindinis įėjimas į jos informaciją.
-    // „Tvarkyti“ lieka aiškus atskiras valdiklis, tačiau nebereikia taikyti
-    // būtent į mažą mygtuką: vienas paspaudimas bet kurioje laisvoje kortelės
-    // vietoje atveria tą pačią pamokos valdymo panelę.
+    // Visa pamokos kortelė yra vienintelis pagrindinis įėjimas į jos informaciją.
+    // Atskiro „Tvarkyti“ mygtuko nebėra: vienas paspaudimas bet kurioje laisvoje
+    // kortelės vietoje atveria pamokos valdymo panelę.
     weekHost.querySelectorAll('[data-schedule-card]').forEach(card => card.addEventListener('click', event => {
       if (event.target.closest('button, input, select, textarea, a')) return;
       const scheduleId = String(card.dataset.scheduleCard || '');

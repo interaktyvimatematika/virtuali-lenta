@@ -6865,4 +6865,4 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-editor-close:hover { background:#f4f6fa; color:#2f3b52; }
 @media (max-width:1050px) { .p2-schedule-body.is-editor-closed { grid-template-rows:minmax(0,1fr); } }
 
-/* P2-SPLIT-P2.5-P4-P1.6 · pamokos kortelė atidaroma vienu paspaudimu */
+/* P2-SPLIT-P2.5-P4-P1.7 · pamokos kortelė atidaroma vienu paspaudimu */

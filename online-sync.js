@@ -1151,7 +1151,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.6 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
