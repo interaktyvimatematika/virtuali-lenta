@@ -6636,7 +6636,7 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 }
 
 
-/* P2-SPLIT-P2.5-P1 — mokinių duomenų bazė ir pamokų istorija */
+/* P2-SPLIT-P2.5-P1.1 — mokinių duomenų bazė ir pamokų istorija */
 .p2-students-modal[hidden]{display:none!important}
 .p2-students-modal{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:24px}
 .p2-students-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44);backdrop-filter:blur(3px)}
@@ -6661,3 +6661,9 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 .p2-student-assign-row{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:10px;align-items:end;margin-top:13px}.p2-student-assign-row button{height:39px}.p2-student-current-help{margin:10px 0 0;color:#7f8a9a;font-size:11px;line-height:1.45}
 .p2-student-history-list{margin-top:12px;display:grid;gap:9px}.p2-student-history-item{border:1px solid #e7ebf1;border-radius:13px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.p2-student-history-item.is-current{border-color:#cbd8e8;background:#fbfdff}.p2-student-history-title{display:flex;align-items:center;gap:8px}.p2-student-history-title strong{color:#29364a;font-size:13px}.p2-student-history-title span{font-size:9px;text-transform:uppercase;letter-spacing:.06em;background:#e8f1fc;color:#496983;border-radius:999px;padding:3px 6px}.p2-student-history-main p{margin:4px 0 7px;color:#8a95a4;font-size:10px}.p2-student-history-main code{font-size:10px}.p2-student-history-progress{display:flex;align-items:center;gap:9px;color:#657286;font-size:10px}.p2-student-history-progress i{display:block;width:120px;height:5px;border-radius:99px;background:#e8edf3;overflow:hidden}.p2-student-history-progress b{display:block;height:100%;background:#71859e;border-radius:inherit}.p2-student-history-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:290px}.p2-student-history-actions button{border:1px solid #d9e1eb;background:#fff;border-radius:9px;padding:7px 9px;color:#526176;font-size:10px;cursor:pointer}.p2-student-history-actions button:hover{background:#f5f8fb}.p2-student-history-actions button.is-muted{color:#8b6570;border-color:#eadde0}.p2-student-history-empty{padding:18px;text-align:center;color:#8a95a4;font-size:12px}
 @media(max-width:850px){.p2-students-modal{padding:10px}.p2-students-panel{width:100%;height:96vh;border-radius:18px}.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{border-right:0;border-bottom:1px solid #e8edf4;max-height:250px}.p2-student-detail-pane{padding:16px}.p2-student-edit-card{grid-template-columns:1fr}.p2-student-assign-row{grid-template-columns:1fr}.p2-student-history-item{grid-template-columns:1fr}.p2-student-history-actions{justify-content:flex-start;max-width:none}}
+
+
+/* P2-SPLIT-P2.5-P1.1 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
+.p2-history-return-button{white-space:nowrap}
+.p2-history-return-button>span:first-child{font-size:15px;line-height:1}
+@media(max-width:1100px){.p2-history-return-button>span:last-child{display:none}}

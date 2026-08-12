@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P1';
+  const BUILD = 'P2-SPLIT-P2.5-P1.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -410,7 +410,7 @@
   let progress = null;
   let selectedAnswers = {};
 
-  // P2-SPLIT-P2.5-P1: mokinys yra ilgalaikis objektas, o Room – tik vienos
+  // P2-SPLIT-P2.5-P1.1: mokinys yra ilgalaikis objektas, o Room – tik vienos
   // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
   // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
   let studentsModal = null;
@@ -1855,17 +1855,64 @@
     return url.toString();
   }
 
+  const STUDENT_HISTORY_RETURN_KEY = 'p2-student-history-return-v1';
+  const STUDENT_CARD_REOPEN_KEY = 'p2-student-card-reopen-v1';
+
+  function saveStudentHistoryReturn(studentId = selectedStudentId) {
+    if (role() !== 'teacher') return;
+    const safeStudentId = String(studentId || '').trim();
+    if (!safeStudentId) return;
+    try {
+      sessionStorage.setItem(STUDENT_HISTORY_RETURN_KEY, JSON.stringify({
+        url: location.href,
+        studentId: safeStudentId,
+        savedAt: Date.now()
+      }));
+    } catch (_) {}
+  }
+
+  function readStudentHistoryReturn() {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(STUDENT_HISTORY_RETURN_KEY) || 'null');
+      if (!value || typeof value !== 'object') return null;
+      const url = String(value.url || '');
+      const studentId = String(value.studentId || '').trim();
+      if (!url || !studentId) return null;
+      if (Number(value.savedAt || 0) && Date.now() - Number(value.savedAt) > 12 * 60 * 60 * 1000) return null;
+      return { url, studentId };
+    } catch (_) { return null; }
+  }
+
+  function installStudentHistoryReturnButton() {
+    const params = new URL(location.href).searchParams;
+    if (params.get('stay') !== '1') return;
+    const state = readStudentHistoryReturn();
+    if (!state) return;
+    const host = document.querySelector('.p2-session-actions');
+    if (!host || document.getElementById('studentHistoryReturnButton')) return;
+    const button = document.createElement('button');
+    button.className = 'ghost-button p2-top-action p2-history-return-button';
+    button.id = 'studentHistoryReturnButton';
+    button.type = 'button';
+    button.innerHTML = '<span aria-hidden="true">←</span><span>Grįžti į mokinio kortelę</span>';
+    button.title = 'Grįžti į mokinio kortelę nekurianant papildomo naršyklės skirtuko';
+    button.addEventListener('click', () => {
+      try { sessionStorage.setItem(STUDENT_CARD_REOPEN_KEY, state.studentId); } catch (_) {}
+      location.assign(state.url);
+    });
+    host.prepend(button);
+  }
+
   function openHistoricalRoom(roomId, targetRole = 'teacher') {
     const safe = String(roomId || '').trim().toUpperCase();
     if (!safe) return;
-    const link = document.createElement('a');
-    link.href = historicalRoomUrl(safe, targetRole);
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    saveStudentHistoryReturn();
+    // P2-SPLIT-P2.5-P1.1: pamokų istorijos lenta naviguojama tame pačiame
+    // skirtuke. Taip istorijos peržiūra nesukuria papildomo Firebase kliento.
+    location.assign(historicalRoomUrl(safe, targetRole));
   }
+
+  installStudentHistoryReturnButton();
 
   function requestStudentDb(detail) {
     if (role() !== 'teacher') return;
@@ -2074,6 +2121,22 @@
   window.addEventListener('p2:students-state', event => {
     teacherStudentDb = normalizeTeacherStudentDb(event.detail);
     if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
+
+    // Grįžus iš istorinės lentos tame pačiame skirtuke, atstatome būtent
+    // tą mokinio kortelę, iš kurios pamoka buvo atidaryta.
+    if (role() === 'teacher') {
+      let reopenStudentId = '';
+      try { reopenStudentId = String(sessionStorage.getItem(STUDENT_CARD_REOPEN_KEY) || '').trim(); } catch (_) {}
+      if (reopenStudentId && teacherStudentDb.students?.[reopenStudentId]) {
+        selectedStudentId = reopenStudentId;
+        try {
+          sessionStorage.removeItem(STUDENT_CARD_REOPEN_KEY);
+          sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY);
+        } catch (_) {}
+        openStudentsDatabase();
+        return;
+      }
+    }
     renderStudentsModal();
   });
 
