@@ -459,6 +459,8 @@
   let saveTimer = null;
   let toastTimer = null;
   let drawingContext = null;
+  let committedCanvas = null;
+  let committedContext = null;
   let drawingActive = false;
   let activeStroke = null;
   let remoteLiveStrokes = [];
@@ -742,10 +744,15 @@
     return true;
   }
 
-  function scheduleSave() {
+  let saveShouldNotifyShared = false;
+
+  function scheduleSave(options = {}) {
     refs.saveState.textContent = 'Saugoma…';
+    if (options.notifyShared !== false) saveShouldNotifyShared = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
+      const notifyShared = saveShouldNotifyShared;
+      saveShouldNotifyShared = false;
       try {
         state.packageData = practicePackage;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -754,8 +761,9 @@
         refs.saveState.textContent = 'Neišsaugota vietoje';
         console.error('Nepavyko išsaugoti vietinės kopijos:', error);
       }
-      // Net jei didesnė nuotrauka viršytų localStorage kvotą, online lenta vis tiek turi sinchronizuotis.
-      window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
+      // Piešimo brūkšniai online režime siunčiami tiesiogiai per p772:live-stroke/end,
+      // todėl vien dėl jų nebeskanuojame ir neserializuojame visos bendros lentos būsenos.
+      if (notifyShared) window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
     }, 180);
   }
 
@@ -8696,6 +8704,13 @@ KOKYBĖS REIKALAVIMAI:
     scheduleSave();
   }
 
+  function configureCanvasContext(context, dpr) {
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+  }
+
   function resizeCanvas() {
     const rect = getBoardWorldRect();
     const dpr = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1));
@@ -8706,9 +8721,15 @@ KOKYBĖS REIKALAVIMAI:
     refs.canvas.style.width = `${rect.width}px`;
     refs.canvas.style.height = `${rect.height}px`;
     drawingContext = refs.canvas.getContext('2d');
-    drawingContext.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawingContext.lineCap = 'round';
-    drawingContext.lineJoin = 'round';
+    configureCanvasContext(drawingContext, dpr);
+
+    if (!committedCanvas) committedCanvas = document.createElement('canvas');
+    committedCanvas.width = refs.canvas.width;
+    committedCanvas.height = refs.canvas.height;
+    committedContext = committedCanvas.getContext('2d');
+    configureCanvasContext(committedContext, dpr);
+
+    rebuildCommittedCanvas();
     redrawCanvas();
     clampWindowToBoard();
   }
@@ -8724,9 +8745,59 @@ KOKYBĖS REIKALAVIMAI:
 
   function emitLiveStroke(phase, stroke = activeStroke) {
     if (!stroke) return;
+    // CustomEvent apdorojamas sinchroniškai. Nekopijuojame viso augančio points masyvo
+    // per kiekvieną pointermove; online sluoksnis kopiją pasidaro tik realiai siųsdamas.
     window.dispatchEvent(new CustomEvent('p772:live-stroke', {
-      detail: { phase, stroke: deepClone(stroke) }
+      detail: { phase, stroke }
     }));
+  }
+
+  function drawStrokeSegment(context, stroke, fromPoint, toPoint, rect = getBoardWorldRect()) {
+    if (!context || !stroke || !fromPoint || !toPoint) return;
+    context.save();
+    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
+    context.strokeStyle = '#27364f';
+    context.lineWidth = stroke.width;
+    context.beginPath();
+    context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
+    context.lineTo(toPoint.x * rect.width, toPoint.y * rect.height);
+    context.stroke();
+    context.restore();
+  }
+
+  function drawStrokePoint(context, stroke, point, rect = getBoardWorldRect()) {
+    if (!point) return;
+    const epsilon = 0.01 / Math.max(1, rect.width);
+    drawStrokeSegment(context, stroke, point, { x: point.x + epsilon, y: point.y }, rect);
+  }
+
+  function drawStrokeToContext(context, stroke, rect = getBoardWorldRect()) {
+    if (!context || !stroke?.points?.length) return;
+    context.save();
+    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
+    context.strokeStyle = '#27364f';
+    context.lineWidth = stroke.width;
+    context.beginPath();
+    stroke.points.forEach((point, index) => {
+      const x = point.x * rect.width;
+      const y = point.y * rect.height;
+      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    });
+    if (stroke.points.length === 1) context.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
+    context.stroke();
+    context.restore();
+  }
+
+  function rebuildCommittedCanvas() {
+    if (!committedContext || !committedCanvas) return;
+    const rect = getBoardWorldRect();
+    committedContext.clearRect(0, 0, rect.width, rect.height);
+    for (const stroke of state.drawing) drawStrokeToContext(committedContext, stroke, rect);
+  }
+
+  function paintCommittedStroke(stroke) {
+    if (!committedContext) return;
+    drawStrokeToContext(committedContext, stroke, getBoardWorldRect());
   }
 
   function startDrawing(event) {
@@ -8740,15 +8811,21 @@ KOKYBĖS REIKALAVIMAI:
       width: state.activeTool === 'eraser' ? 22 : 2.6,
       points: [pointFromEvent(event)]
     };
-    redrawCanvas();
+    // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
+    drawStrokePoint(drawingContext, activeStroke, activeStroke.points[0]);
     emitLiveStroke('start');
   }
 
   function continueDrawing(event) {
     if (!drawingActive || !activeStroke) return;
     event.preventDefault();
-    activeStroke.points.push(pointFromEvent(event));
-    redrawCanvas();
+    const previousPoint = activeStroke.points[activeStroke.points.length - 1];
+    const nextPoint = pointFromEvent(event);
+    activeStroke.points.push(nextPoint);
+    // Ankstesnė versija čia kiekvienam pointermove išvalydavo canvas ir iš naujo
+    // perpiešdavo visą state.drawing. Ilgesnėje pamokoje tai tapdavo O(visos lentos)
+    // darbu kiekvienam rašiklio judesiui, todėl linija pradėdavo vytis žymeklį.
+    drawStrokeSegment(drawingContext, activeStroke, previousPoint, nextPoint);
     emitLiveStroke('update');
   }
 
@@ -8758,37 +8835,25 @@ KOKYBĖS REIKALAVIMAI:
     drawingActive = false;
     activeStroke = null;
     state.drawing.push(committedStroke);
-    redrawCanvas();
+    // Pagrindiniame canvas brūkšnys jau nupieštas segmentais. Įdedame jį tik į
+    // statinį cache, kad būsimi nuotoliniai atnaujinimai nereikalautų senų brūkšnių redraw.
+    paintCommittedStroke(committedStroke);
     emitLiveStroke('end', committedStroke);
     try { refs.canvas.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
-    scheduleSave();
+    scheduleSave({ notifyShared: !window.__p772DirectDrawingSyncReady });
   }
 
   function redrawCanvas() {
     if (!drawingContext) return;
     const rect = getBoardWorldRect();
     drawingContext.clearRect(0, 0, rect.width, rect.height);
-    for (const stroke of state.drawing) drawStroke(stroke);
-    for (const stroke of remoteLiveStrokes) drawStroke(stroke);
-    if (activeStroke) drawStroke(activeStroke);
+    if (committedCanvas) drawingContext.drawImage(committedCanvas, 0, 0, rect.width, rect.height);
+    for (const stroke of remoteLiveStrokes) drawStrokeToContext(drawingContext, stroke, rect);
+    if (activeStroke) drawStrokeToContext(drawingContext, activeStroke, rect);
   }
 
   function drawStroke(stroke) {
-    if (!drawingContext || !stroke.points.length) return;
-    const rect = getBoardWorldRect();
-    drawingContext.save();
-    drawingContext.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    drawingContext.strokeStyle = '#27364f';
-    drawingContext.lineWidth = stroke.width;
-    drawingContext.beginPath();
-    stroke.points.forEach((point, index) => {
-      const x = point.x * rect.width;
-      const y = point.y * rect.height;
-      if (index === 0) drawingContext.moveTo(x, y); else drawingContext.lineTo(x, y);
-    });
-    if (stroke.points.length === 1) drawingContext.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
-    drawingContext.stroke();
-    drawingContext.restore();
+    drawStrokeToContext(drawingContext, stroke, getBoardWorldRect());
   }
 
   function mixedEditorFromNode(node) {
@@ -11416,6 +11481,7 @@ KOKYBĖS REIKALAVIMAI:
     if (part === 'drawing') {
       state.drawing = Array.isArray(value) ? value.filter(Boolean) : [];
       ensureSharedIds();
+      rebuildCommittedCanvas();
       redrawCanvas();
       return;
     }
@@ -11589,6 +11655,7 @@ KOKYBĖS REIKALAVIMAI:
     editorDirty = false;
     refs.practiceWindow.removeAttribute('style');
     renderBoardObjects();
+    rebuildCommittedCanvas();
     redrawCanvas();
     setTool('select');
     setMode(onlineAccessRole === 'teacher' ? 'teacher' : 'student', { force: true, allowEmpty: true });

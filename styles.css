@@ -6502,7 +6502,7 @@ body.p2-shell .p2-teacher-simple-answer small {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.3 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
+/* P2-SPLIT-P2.4.7.19.4 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
 body.p2-shell math-field.p2-inline-math {
   display:inline-block;
   width:auto;
@@ -6526,7 +6526,7 @@ body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.3 · paveikslėliai bendroje lentoje */
+/* P2-SPLIT-P2.4.7.19.4 · paveikslėliai bendroje lentoje */
 .board-image-object {
   position: absolute;
   margin: 0;
@@ -6620,7 +6620,7 @@ body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
   .board-image-object.is-active-object .board-image-resize { opacity: 1; }
 }
 
-/* P2-SPLIT-P2.4.7.19.3 — Bibliotekos modalas visada slenkamas vertikaliai */
+/* P2-SPLIT-P2.4.7.19.4 — Bibliotekos modalas visada slenkamas vertikaliai */
 body.p2-shell .p2-library-panel {
   display:grid;
   grid-template-rows:auto minmax(0,1fr);

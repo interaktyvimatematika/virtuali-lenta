@@ -686,12 +686,47 @@ window.addEventListener('p772:shared-state-changed', () => {
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
 });
 
+function drawingStrokePayload(stroke) {
+  if (!stroke?.id || !Array.isArray(stroke.points) || !stroke.points.length) return null;
+  return {
+    id: String(stroke.id),
+    mode: stroke.mode === 'eraser' ? 'eraser' : 'pen',
+    width: Math.max(0.5, Number(stroke.width) || 2.6),
+    points: stroke.points.map(point => ({
+      x: Math.max(0, Math.min(1, Number(point?.x) || 0)),
+      y: Math.max(0, Math.min(1, Number(point?.y) || 0))
+    }))
+  };
+}
+
 async function writeLiveStroke(stroke) {
-  if (!stroke?.id) return;
+  const payload = drawingStrokePayload(stroke);
+  if (!payload) return;
   try {
-    await set(myLiveStrokeRef(stroke.id), { ...stroke, updatedAt: Date.now(), clientId: me });
+    // Kopiją darome tik čia (daugiausia kas ~40 ms), o ne per kiekvieną pointermove.
+    await set(myLiveStrokeRef(payload.id), { ...payload, updatedAt: Date.now(), clientId: me });
   } catch (error) {
     console.warn('P2-SPLIT-P1.7 live stroke klaida', error);
+  }
+}
+
+async function commitDrawingStroke(stroke) {
+  const payload = drawingStrokePayload(stroke);
+  if (!payload) return;
+  const safeId = payload.id.replace(/[.#$\[\]/]/g, '-');
+  const updates = {
+    [`workspace/drawing/${safeId}`]: payload,
+    'workspace/meta/updatedAt': serverTimestamp(),
+    'workspace/meta/updatedBy': me
+  };
+  try {
+    // Baigtą brūkšnį įrašome tiesiai į jo Firebase mazgą. Ankstesnė versija
+    // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
+    await update(roomRef, updates);
+  } catch (error) {
+    console.warn('P2-SPLIT-P2.4.7.19.4 brūkšnio persistavimo klaida', error);
+    // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
+    window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
   }
 }
 
@@ -702,6 +737,8 @@ async function sendLive() {
   pendingLive = null;
   await writeLiveStroke(payload);
 }
+
+window.__p772DirectDrawingSyncReady = true;
 
 window.addEventListener('p772:live-stroke', event => {
   const detail = event.detail || {};
@@ -724,10 +761,9 @@ window.addEventListener('p772:live-stroke', event => {
     }, 2500);
     pendingLiveCommits.set(stroke.id, fallbackTimer);
 
-    // Brūkšnys state.drawing jau yra, todėl nereikia laukti lokalaus 180 ms save debounce.
-    // Iš karto perduodame jį į workspace; gyva kopija bus nuimta tik gavus
-    // patvirtinimą per drawing listenerį.
-    publishLocalChanges();
+    // Brūkšnys state.drawing jau yra. Į workspace įrašome tik šį vieną brūkšnį,
+    // o ne iš naujo serializuojame visą per pamoką sukauptą piešinių masyvą.
+    commitDrawingStroke(stroke);
     return;
   }
 
