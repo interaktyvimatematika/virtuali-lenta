@@ -176,6 +176,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .toast.is-visible { opacity: 1; transform: translate(-50%,0); }
 body[data-tool="pen"] #drawingCanvas, body[data-tool="eraser"] #drawingCanvas { cursor: crosshair; z-index: 8; }
 body[data-tool="pen"] .practice-window, body[data-tool="eraser"] .practice-window { pointer-events: none; }
+body[data-tool="pan"] #drawingCanvas { cursor: grab; z-index: 8; }
+body[data-tool="pan"].is-board-panning #drawingCanvas { cursor: grabbing; }
+body[data-tool="pan"] .practice-window, body[data-tool="pan"] .objects-layer > * { pointer-events: none !important; }
 @media (max-width: 1050px) {
   .topbar { grid-template-columns: 1fr auto; gap: 10px; padding: 9px 11px; }
   .brand { display: none; }

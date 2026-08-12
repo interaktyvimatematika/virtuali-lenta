@@ -201,6 +201,7 @@ let boardImagesRef;
 let boardTasksRef;
 let boardPracticesRef;
 let windowRef;
+let boardGeometryRef;
 let liveRef;
 let myLiveRootRef;
 let presenceRef;
@@ -220,6 +221,7 @@ function bindRoomRefs(targetRoom) {
   boardTasksRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardTasks`);
   boardPracticesRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardPractices`);
   windowRef = ref(db, `p772Rooms/${targetRoom}/workspace/window`);
+  boardGeometryRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardGeometry`);
   liveRef = ref(db, `p772Rooms/${targetRoom}/liveStrokes`);
   myLiveRootRef = ref(db, `p772Rooms/${targetRoom}/liveStrokes/${me}`);
   presenceRef = ref(db, `p772Rooms/${targetRoom}/presence/${me}`);
@@ -245,7 +247,7 @@ let liveTimer = null;
 let pendingLive = null;
 const pendingLiveCommits = new Map();
 let remoteCache = {
-  drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: ''
+  drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: ''
 };
 let pendingRemoteNotes = null;
 let localNotesRevision = 0;
@@ -255,7 +257,7 @@ let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
 
-// P2-SPLIT-P2.5-P2.1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
+// P2-SPLIT-P2.5-P3-P1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
 // neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
 // vienoje vietoje ir prieš perėjimą patikimai atjungiami.
 let roomGeneration = 0;
@@ -295,7 +297,7 @@ function resetRoomRuntimeState() {
   notesLivePublishing = false;
   pendingRemoteNotes = null;
   localNotesRevision = 0;
-  remoteCache = { drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '' };
+  remoteCache = { drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: '' };
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -336,7 +338,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
     await liveDisconnectHandle.remove();
     if (generation === roomGeneration && presenceRoom === roomId) activePresenceRoom = presenceRoom;
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P2.1 presence perjungimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P3-P1 presence perjungimo klaida', error);
   }
 }
 
@@ -347,7 +349,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
 // ankstesnį. Laikome neseniai išsiųstų pilnų dalių fingerprintus ir jų echo
 // priimame tik kaip Firebase patvirtinimą, bet neperpiešiame lokalaus vaizdo.
 const pendingLocalEchoes = {
-  drawing: [], notes: [], boardImages: [], boardTasks: [], boardPractices: [], window: []
+  drawing: [], notes: [], boardImages: [], boardTasks: [], boardPractices: [], window: [], boardGeometry: []
 };
 
 function rememberLocalEcho(part, value) {
@@ -386,7 +388,8 @@ function localParts() {
     boardImages: toMap(snap.boardImages),
     boardTasks: toMap(snap.boardTasks),
     boardPractices: toMap(snap.boardPractices),
-    window: snap.window || {}
+    window: snap.window || {},
+    boardGeometry: snap.boardGeometry || {}
   };
 }
 
@@ -420,7 +423,8 @@ async function publishLocalChanges() {
     boardImages: stable(parts.boardImages) !== remoteCache.boardImages,
     boardTasks: stable(parts.boardTasks) !== remoteCache.boardTasks,
     boardPractices: stable(parts.boardPractices) !== remoteCache.boardPractices,
-    window: stable(parts.window) !== remoteCache.window
+    window: stable(parts.window) !== remoteCache.window,
+    boardGeometry: stable(parts.boardGeometry) !== remoteCache.boardGeometry
   };
 
   diffMap('workspace/drawing', parts.drawing, currentRemote.drawing, updates);
@@ -429,6 +433,7 @@ async function publishLocalChanges() {
   diffMap('workspace/boardTasks', parts.boardTasks, currentRemote.boardTasks, updates);
   diffMap('workspace/boardPractices', parts.boardPractices, currentRemote.boardPractices, updates);
   if (changed.window) updates['workspace/window'] = parts.window;
+  if (changed.boardGeometry) updates['workspace/boardGeometry'] = parts.boardGeometry;
 
   if (!Object.keys(updates).length) return;
 
@@ -445,7 +450,7 @@ async function publishLocalChanges() {
   }
 
   const echoes = {};
-  for (const part of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices', 'window']) {
+  for (const part of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices', 'window', 'boardGeometry']) {
     if (changed[part]) echoes[part] = rememberLocalEcho(part, parts[part]);
   }
 
@@ -594,11 +599,13 @@ function cacheWorkspace(data) {
   remoteCache.boardTasks = stable(workspace.boardTasks || {});
   remoteCache.boardPractices = stable(workspace.boardPractices || {});
   remoteCache.window = stable(workspace.window || {});
+  remoteCache.boardGeometry = stable(workspace.boardGeometry || {});
 }
 
 function applyInitialWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   cacheWorkspace(workspace);
+  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 });
   bridge.applySharedPart('drawing', mapToArray(workspace.drawing || {}));
   bridge.applySharedPart('notes', mapToArray(workspace.notes || {}));
   bridge.applySharedPart('boardImages', mapToArray(workspace.boardImages || {}));
@@ -608,6 +615,14 @@ function applyInitialWorkspace(data) {
 }
 
 function subscribeWorkspaceParts() {
+  roomOnValue(boardGeometryRef, snapshot => {
+    const value = snapshot.val() || {};
+    const fp = stable(value);
+    const ownEcho = consumeLocalEcho('boardGeometry', fp);
+    remoteCache.boardGeometry = fp;
+    if (ownEcho) return;
+    if (stable(bridge.getSharedSnapshot().boardGeometry || {}) !== fp) bridge.applySharedPart('boardGeometry', value);
+  });
   roomOnValue(drawingRef, snapshot => applyMapPart('drawing', snapshot.val()));
   // Notes skaitome kartu su jų meta žyma viename atominiame workspace snapshot'e.
   roomOnValue(workspaceRef, snapshot => {
@@ -634,7 +649,8 @@ function emptyWorkspace() {
     boardImages: {},
     boardTasks: {},
     boardPractices: {},
-    window: {}
+    window: {},
+    boardGeometry: { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 }
   };
 }
 
@@ -645,6 +661,7 @@ function clearLocalSharedWorkspace() {
   bridge.applySharedPart('boardTasks', []);
   bridge.applySharedPart('boardPractices', []);
   bridge.applySharedPart('window', {});
+  bridge.applySharedPart('boardGeometry', { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 });
   bridge.setRemoteLiveStrokes([]);
 }
 
@@ -704,7 +721,7 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
   } catch (error) {
     if (generation !== roomGeneration) return;
-    console.error('P2-SPLIT-P2.5-P2.1 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P2.5-P3-P1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
@@ -1153,7 +1170,7 @@ onValue(connectedRef, snapshot => {
   }
 }, error => {
   connectedNow = false;
-  console.error('P2-SPLIT-P2.5-P2.1 connection klaida', error);
+  console.error('P2-SPLIT-P2.5-P3-P1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
