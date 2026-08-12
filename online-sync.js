@@ -90,6 +90,10 @@ function urlForRoom(targetRoom, role) {
   url.searchParams.set('role', role === 'student' ? 'student' : 'teacher');
   url.searchParams.delete('student');
   url.searchParams.delete('new');
+  // P2-SPLIT-P2.4.7.19.4.1: stay=1 yra tik rankiniu būdu įjungiamas
+  // mokytojo istorinis / diagnostinis režimas. Jo negalima paveldėti į
+  // mokinio nuorodą ar automatinį perėjimą į kitą sesiją.
+  url.searchParams.delete('stay');
   return url;
 }
 
@@ -142,13 +146,25 @@ function stable(value) {
 const roomInfo = resolveRoom();
 const roomId = roomInfo.room;
 const onlineRole = resolveAccessRole();
+// P2-SPLIT-P2.4.7.19.4.1: mokytojas gali tyčia atidaryti seną Room
+// su &stay=1 ir apžiūrėti jo realią išsaugotą būseną, net jei tame Room
+// jau yra control/transition į naujesnę sesiją. Mokinio režime šis
+// parametras ignoruojamas, kad mokinys neliktų senoje pamokoje.
+const stayOnRoom = onlineRole === 'teacher'
+  && new URL(window.location.href).searchParams.get('stay') === '1';
 const me = clientId();
 if (roomEl) roomEl.textContent = roomId;
 if (roleBadge) roleBadge.textContent = onlineRole === 'teacher' ? 'Mokytojas' : 'Mokinys';
 bridge.setOnlineRole?.(onlineRole);
 if (copyButton) copyButton.hidden = onlineRole !== 'teacher';
 if (previewButton) previewButton.hidden = onlineRole !== 'teacher';
-if (newButton) newButton.hidden = onlineRole !== 'teacher';
+if (newButton) {
+  newButton.hidden = onlineRole !== 'teacher';
+  if (stayOnRoom) {
+    newButton.disabled = true;
+    newButton.title = 'Istoriniame stay=1 režime nauja sesija nekuriama';
+  }
+}
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -645,6 +661,12 @@ onValue(transitionRef, snapshot => {
   const data = snapshot.val();
   const nextRoom = safeRoom(data?.toRoom);
   if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
+  // P2-SPLIT-P2.4.7.19.4.1: &stay=1 leidžia mokytojui likti būtent
+  // šiame istoriniame Room diagnostikai. Transition duomenų neliečiame.
+  if (stayOnRoom) {
+    console.info(`Istorinis Room ${roomId}: automatinis perėjimas į ${nextRoom} praleistas dėl stay=1.`);
+    return;
+  }
   transitionInProgress = true;
   const target = urlForRoom(nextRoom, onlineRole);
   bridge.showToast?.('Mokytojas pradėjo naują sesiją');
@@ -724,7 +746,7 @@ async function commitDrawingStroke(stroke) {
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
   } catch (error) {
-    console.warn('P2-SPLIT-P2.4.7.19.4 brūkšnio persistavimo klaida', error);
+    console.warn('P2-SPLIT-P2.4.7.19.4.1 brūkšnio persistavimo klaida', error);
     // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
     window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
   }
@@ -808,7 +830,7 @@ if (copyButton) {
 
 if (newButton) {
   newButton.addEventListener('click', async () => {
-    if (onlineRole !== 'teacher' || transitionInProgress) return;
+    if (onlineRole !== 'teacher' || stayOnRoom || transitionInProgress) return;
     if (!window.confirm('Pradėti naują tuščią sesiją ir perkelti į ją visus prie šios lentos prisijungusius dalyvius?')) return;
 
     newButton.disabled = true;
