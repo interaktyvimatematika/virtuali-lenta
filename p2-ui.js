@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P2';
+  const BUILD = 'P2-SPLIT-P2.5-P2.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -419,6 +419,7 @@
   let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {} };
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
+  let roomSwitching = false;
 
   function lessonForId(lessonId) {
     const id = String(lessonId || '').trim();
@@ -1908,15 +1909,22 @@
     }).join('')}</div>`;
     bar.querySelectorAll('[data-lesson-student-room]').forEach(button => button.addEventListener('click', () => {
       const targetRoom = String(button.dataset.lessonStudentRoom || '').trim().toUpperCase();
-      if (!targetRoom || targetRoom === activeRoom) return;
-      const url = new URL(location.href);
-      url.searchParams.set('room', targetRoom);
-      url.searchParams.set('role', 'teacher');
-      url.searchParams.delete('stay');
-      url.searchParams.delete('new');
-      location.href = url.toString();
+      if (!targetRoom || targetRoom === activeRoom || roomSwitching) return;
+      requestTeacherRoomSwitch(targetRoom);
     }));
     body.classList.add('p2-lesson-student-tabs-active');
+  }
+
+  function requestTeacherRoomSwitch(targetRoom) {
+    const safe = String(targetRoom || '').trim().toUpperCase();
+    if (role() !== 'teacher' || !/^[A-Z0-9_-]{4,24}$/.test(safe) || safe === currentRoomId() || roomSwitching) return;
+    roomSwitching = true;
+    clearTimeout(studentDbSnapshotTimer);
+    studentDbSnapshotTimer = null;
+    renderLessonStudentTabs();
+    window.dispatchEvent(new CustomEvent('p2:room-switch-request', {
+      detail: { roomId: safe, preserveStay: true }
+    }));
   }
 
   function updateStudentIdentityLabels() {
@@ -2238,12 +2246,7 @@
       const targetRoom = String(event.currentTarget?.dataset.studentSwitchClassRoom || '').trim().toUpperCase();
       if (!targetRoom) return;
       if (studentsModal) studentsModal.hidden = true;
-      const url = new URL(location.href);
-      url.searchParams.set('room', targetRoom);
-      url.searchParams.set('role', 'teacher');
-      url.searchParams.delete('stay');
-      url.searchParams.delete('new');
-      location.href = url.toString();
+      requestTeacherRoomSwitch(targetRoom);
     });
     host.querySelectorAll('[data-student-open-room]').forEach(button => button.addEventListener('click', () => {
       openHistoricalRoom(button.dataset.studentOpenRoom, button.dataset.roomRole || 'teacher');
@@ -2266,10 +2269,12 @@
   if (originalStudentsButton) originalStudentsButton.addEventListener('click', openStudentsDatabase);
 
   function queueCurrentStudentLessonSnapshot() {
-    if (role() !== 'teacher') return;
+    if (role() !== 'teacher' || roomSwitching) return;
     clearTimeout(studentDbSnapshotTimer);
+    const scheduledRoomId = currentRoomId();
     studentDbSnapshotTimer = setTimeout(() => {
-      const roomId = currentRoomId();
+      if (roomSwitching || currentRoomId() !== scheduledRoomId) return;
+      const roomId = scheduledRoomId;
       const studentId = linkedStudentIdForRoom(roomId);
       if (!roomId || !studentId) return;
       const state = progress ? normalizedProgress(progress) : null;
@@ -2292,6 +2297,36 @@
     renderPanels();
     renderTeacherPreview();
     renderStudentsModal();
+  });
+
+  window.addEventListener('p2:room-switch-start', () => {
+    roomSwitching = true;
+    clearTimeout(studentDbSnapshotTimer);
+    studentDbSnapshotTimer = null;
+    // Senos Room pedagoginę būseną atjungiame lokaliai, bet sąmoningai
+    // neuždarome mokytojo pratybų peržiūros režimo. Naujo mokinio assignment
+    // ir progress netrukus ateis iš jo Firebase Room.
+    roomStudentProfile = null;
+    assignment = null;
+    progress = null;
+    selectedAnswers = {};
+  });
+
+  window.addEventListener('p2:room-switch-complete', () => {
+    roomSwitching = false;
+    updateStudentIdentityLabels();
+    renderLessonStudentTabs();
+    renderPanels();
+    renderTeacherPreview();
+    renderStudentsModal();
+    queueCurrentStudentLessonSnapshot();
+  });
+
+  window.addEventListener('p2:room-switch-error', () => {
+    roomSwitching = false;
+    renderLessonStudentTabs();
+    renderStudentsModal();
+    toast('Nepavyko perjungti mokinio lentos');
   });
 
   window.addEventListener('p2:students-state', event => {

@@ -144,13 +144,13 @@ function stable(value) {
 }
 
 const roomInfo = resolveRoom();
-const roomId = roomInfo.room;
+let roomId = roomInfo.room;
 const onlineRole = resolveAccessRole();
 // P2-SPLIT-P2.4.7.19.4.5: &stay=1 yra aiškiai rankiniu būdu įjungiamas
 // istorinis / diagnostinis režimas. Jis veikia tiek mokytojo, tiek mokinio
 // rolei, kad būtų galima apžiūrėti abi seno Room puses nepaisant transition.
 // Įprastai generuojamos nuorodos stay parametro nepaveldi.
-const stayOnRoom = new URL(window.location.href).searchParams.get('stay') === '1';
+let stayOnRoom = new URL(window.location.href).searchParams.get('stay') === '1';
 const me = clientId();
 if (roomEl) roomEl.textContent = roomId;
 if (roleBadge) roleBadge.textContent = onlineRole === 'teacher' ? 'Mokytojas' : 'Mokinys';
@@ -193,31 +193,52 @@ const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
 let teacherProfileCache = { students: {}, roomLinks: {}, classSessions: {} };
 
-const roomRef = ref(db, `p772Rooms/${roomId}`);
-const workspaceRef = ref(db, `p772Rooms/${roomId}/workspace`);
-const drawingRef = ref(db, `p772Rooms/${roomId}/workspace/drawing`);
-const notesRef = ref(db, `p772Rooms/${roomId}/workspace/notes`);
-const boardImagesRef = ref(db, `p772Rooms/${roomId}/workspace/boardImages`);
-const boardTasksRef = ref(db, `p772Rooms/${roomId}/workspace/boardTasks`);
-const boardPracticesRef = ref(db, `p772Rooms/${roomId}/workspace/boardPractices`);
-const windowRef = ref(db, `p772Rooms/${roomId}/workspace/window`);
-const liveRef = ref(db, `p772Rooms/${roomId}/liveStrokes`);
-const myLiveRootRef = ref(db, `p772Rooms/${roomId}/liveStrokes/${me}`);
+let roomRef;
+let workspaceRef;
+let drawingRef;
+let notesRef;
+let boardImagesRef;
+let boardTasksRef;
+let boardPracticesRef;
+let windowRef;
+let liveRef;
+let myLiveRootRef;
+let presenceRef;
+let presenceListRef;
+let transitionRef;
+let p2AssignmentRef;
+let p2ProgressRef;
+let p2StudentProfileRef;
+const connectedRef = ref(db, '.info/connected');
+
+function bindRoomRefs(targetRoom) {
+  roomRef = ref(db, `p772Rooms/${targetRoom}`);
+  workspaceRef = ref(db, `p772Rooms/${targetRoom}/workspace`);
+  drawingRef = ref(db, `p772Rooms/${targetRoom}/workspace/drawing`);
+  notesRef = ref(db, `p772Rooms/${targetRoom}/workspace/notes`);
+  boardImagesRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardImages`);
+  boardTasksRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardTasks`);
+  boardPracticesRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardPractices`);
+  windowRef = ref(db, `p772Rooms/${targetRoom}/workspace/window`);
+  liveRef = ref(db, `p772Rooms/${targetRoom}/liveStrokes`);
+  myLiveRootRef = ref(db, `p772Rooms/${targetRoom}/liveStrokes/${me}`);
+  presenceRef = ref(db, `p772Rooms/${targetRoom}/presence/${me}`);
+  presenceListRef = ref(db, `p772Rooms/${targetRoom}/presence`);
+  transitionRef = ref(db, `p772Rooms/${targetRoom}/control/transition`);
+  p2AssignmentRef = ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`);
+  p2ProgressRef = ref(db, `p772Rooms/${targetRoom}/p2/student/progress`);
+  p2StudentProfileRef = ref(db, `p772Rooms/${targetRoom}/p2/student/profile`);
+}
+bindRoomRefs(roomId);
+
 function myLiveStrokeRef(strokeId) {
   const safeId = String(strokeId || 'stroke').replace(/[.#$\[\]/]/g, '-');
   return ref(db, `p772Rooms/${roomId}/liveStrokes/${me}/${safeId}`);
 }
-const presenceRef = ref(db, `p772Rooms/${roomId}/presence/${me}`);
-const presenceListRef = ref(db, `p772Rooms/${roomId}/presence`);
-const transitionRef = ref(db, `p772Rooms/${roomId}/control/transition`);
-const connectedRef = ref(db, '.info/connected');
 
 // P2-SPLIT-P1.7: individualios pratybos nėra canvas objektas. Vienai dabartinio
 // prototipo mokinio vietai kambaryje saugome tik priskyrimą ir pedagogiškai
 // svarbią eigą. Langų dydžiai, split santykis ir scroll pozicijos čia nepatenka.
-const p2AssignmentRef = ref(db, `p772Rooms/${roomId}/p2/student/assignment`);
-const p2ProgressRef = ref(db, `p772Rooms/${roomId}/p2/student/progress`);
-const p2StudentProfileRef = ref(db, `p772Rooms/${roomId}/p2/student/profile`);
 
 let bootstrapped = false;
 let liveTimer = null;
@@ -233,6 +254,91 @@ let notesLiveQueued = false;
 let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
+
+// P2-SPLIT-P2.5-P2.1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
+// neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
+// vienoje vietoje ir prieš perėjimą patikimai atjungiami.
+let roomGeneration = 0;
+let roomSubscriptions = [];
+let connectedNow = false;
+let presenceDisconnectHandle = null;
+let liveDisconnectHandle = null;
+let activePresenceRoom = '';
+
+function roomOnValue(targetRef, callback, errorCallback) {
+  const generation = roomGeneration;
+  const unsubscribe = onValue(targetRef, snapshot => {
+    if (generation !== roomGeneration) return;
+    callback(snapshot);
+  }, error => {
+    if (generation !== roomGeneration) return;
+    if (errorCallback) errorCallback(error);
+  });
+  roomSubscriptions.push(unsubscribe);
+  return unsubscribe;
+}
+
+function clearRoomSubscriptions() {
+  for (const unsubscribe of roomSubscriptions.splice(0)) {
+    try { unsubscribe?.(); } catch (_) {}
+  }
+}
+
+function resetRoomRuntimeState() {
+  bootstrapped = false;
+  pendingLive = null;
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+  if (notesLiveTimer) { clearTimeout(notesLiveTimer); notesLiveTimer = null; }
+  clearTimeout(window.__p772OnlinePublishTimer);
+  window.__p772OnlinePublishTimer = null;
+  notesLiveQueued = false;
+  notesLivePublishing = false;
+  pendingRemoteNotes = null;
+  localNotesRevision = 0;
+  remoteCache = { drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '' };
+  for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
+  for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
+  pendingLiveCommits.clear();
+  bridge.setRemoteLiveStrokes([]);
+}
+
+async function leaveCurrentRoomPresence() {
+  const oldPresenceDisconnect = presenceDisconnectHandle;
+  const oldLiveDisconnect = liveDisconnectHandle;
+  const oldLiveRootRef = myLiveRootRef;
+  const oldPresenceRef = presenceRef;
+  presenceDisconnectHandle = null;
+  liveDisconnectHandle = null;
+  activePresenceRoom = '';
+  await Promise.allSettled([
+    oldPresenceDisconnect?.cancel?.(),
+    oldLiveDisconnect?.cancel?.(),
+    remove(oldLiveRootRef),
+    remove(oldPresenceRef)
+  ].filter(Boolean));
+}
+
+async function activateCurrentRoomPresence(generation = roomGeneration) {
+  if (!connectedNow || generation !== roomGeneration) return;
+  if (activePresenceRoom === roomId && presenceDisconnectHandle && liveDisconnectHandle) return;
+  const presenceRoom = roomId;
+  const localPresenceRef = presenceRef;
+  const localLiveRootRef = myLiveRootRef;
+  try {
+    await set(localPresenceRef, { online: true, joinedAt: Date.now(), updatedAt: serverTimestamp() });
+    if (generation !== roomGeneration) {
+      remove(localPresenceRef).catch(() => {});
+      return;
+    }
+    presenceDisconnectHandle = onDisconnect(localPresenceRef);
+    liveDisconnectHandle = onDisconnect(localLiveRootRef);
+    await presenceDisconnectHandle.remove();
+    await liveDisconnectHandle.remove();
+    if (generation === roomGeneration && presenceRoom === roomId) activePresenceRoom = presenceRoom;
+  } catch (error) {
+    console.warn('P2-SPLIT-P2.5-P2.1 presence perjungimo klaida', error);
+  }
+}
 
 // P2-SPLIT-P1.1: Firebase gali grąžinti mūsų pačių ankstesnę būseną tuo metu,
 // kai vartotojas jau įvedė kitą raidę / formulės simbolį. Jei tokią senesnę
@@ -419,7 +525,10 @@ function settleCommittedLiveStrokes(normalizedDrawing) {
     pendingLiveCommits.delete(strokeId);
     // Persistent brūkšnys jau atkeliavo į workspace. Gyvą kopiją pašaliname tik
     // po trumpo dažymo ciklo, kad kitame ekrane nebūtų tuščio kadro / mirktelėjimo.
-    setTimeout(() => remove(myLiveStrokeRef(strokeId)).catch(() => {}), 70);
+    // Ref užfiksuojame dabar, kad perjungus mokinio Room vėluojantis timeris
+    // negalėtų paliesti naujos lentos liveStrokes mazgo.
+    const committedLiveRef = myLiveStrokeRef(strokeId);
+    setTimeout(() => remove(committedLiveRef).catch(() => {}), 70);
   }
 }
 
@@ -499,16 +608,16 @@ function applyInitialWorkspace(data) {
 }
 
 function subscribeWorkspaceParts() {
-  onValue(drawingRef, snapshot => applyMapPart('drawing', snapshot.val()));
+  roomOnValue(drawingRef, snapshot => applyMapPart('drawing', snapshot.val()));
   // Notes skaitome kartu su jų meta žyma viename atominiame workspace snapshot'e.
-  onValue(workspaceRef, snapshot => {
+  roomOnValue(workspaceRef, snapshot => {
     const workspace = snapshot.val() || {};
     applyNotesPart(workspace.notes || {}, workspace.meta || {});
   });
-  onValue(boardImagesRef, snapshot => applyMapPart('boardImages', snapshot.val()));
-  onValue(boardTasksRef, snapshot => applyMapPart('boardTasks', snapshot.val()));
-  onValue(boardPracticesRef, snapshot => applyMapPart('boardPractices', snapshot.val()));
-  onValue(windowRef, snapshot => {
+  roomOnValue(boardImagesRef, snapshot => applyMapPart('boardImages', snapshot.val()));
+  roomOnValue(boardTasksRef, snapshot => applyMapPart('boardTasks', snapshot.val()));
+  roomOnValue(boardPracticesRef, snapshot => applyMapPart('boardPractices', snapshot.val()));
+  roomOnValue(windowRef, snapshot => {
     const value = snapshot.val() || {};
     const fp = stable(value);
     const ownEcho = consumeLocalEcho('window', fp);
@@ -545,47 +654,63 @@ function clearLocalSharedWorkspace() {
 // vizualiai nieko nepakeisdavo.
 if (roomInfo.startsBlank) clearLocalSharedWorkspace();
 
-async function initializeWorkspace() {
-  try {
-    const snapshot = await get(workspaceRef);
+function subscribeLiveStrokes() {
+  roomOnValue(liveRef, snapshot => {
+    const raw = snapshot.val() || {};
+    const now = Date.now();
+    const strokes = [];
+    for (const [client, value] of Object.entries(raw)) {
+      if (client === me || !value || typeof value !== 'object') continue;
+      // Suderinamumas su ONLINE-P1: ten vienam klientui buvo saugomas vienas brūkšnys.
+      const candidates = Array.isArray(value.points) ? [value] : Object.values(value);
+      for (const item of candidates) {
+        if (!item || !Array.isArray(item.points) || !item.points.length) continue;
+        if (item.updatedAt && now - Number(item.updatedAt) >= 30000) continue;
+        strokes.push(item);
+      }
+    }
+    bridge.setRemoteLiveStrokes(strokes);
+  });
+}
 
-    if (roomInfo.startsBlank || !snapshot.exists()) {
+async function initializeWorkspace({ startsBlank = false, generation = roomGeneration, switched = false } = {}) {
+  const localWorkspaceRef = workspaceRef;
+  const targetRoom = roomId;
+  try {
+    const snapshot = await get(localWorkspaceRef);
+    if (generation !== roomGeneration || targetRoom !== roomId) return;
+
+    if (startsBlank || !snapshot.exists()) {
       const blank = emptyWorkspace();
-      await set(workspaceRef, {
+      await set(localWorkspaceRef, {
         ...blank,
         meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
       });
+      if (generation !== roomGeneration || targetRoom !== roomId) return;
       applyInitialWorkspace(blank);
     } else {
       applyInitialWorkspace(snapshot.val());
     }
 
     bootstrapped = true;
-    subscribeWorkspaceParts();
+    subscribeRoomRealtimeListeners(generation);
+    // Presence užregistruojame fone; mokinio skirtuko UI neturi laukti dar
+    // kelių Firebase round-trip vien tam, kad galėtų parodyti jau užkrautą lentą.
+    activateCurrentRoomPresence(generation);
+    if (generation !== roomGeneration || targetRoom !== roomId) return;
+    setUi('online', location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta');
+    if (switched) {
+      window.dispatchEvent(new CustomEvent('p2:room-switch-complete', { detail: { roomId: targetRoom } }));
+    }
   } catch (error) {
-    console.error('P2-SPLIT-P1.7 workspace inicijavimo klaida', error);
+    if (generation !== roomGeneration) return;
+    console.error('P2-SPLIT-P2.5-P2.1 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
+    if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
 }
 
-initializeWorkspace();
-
-onValue(liveRef, snapshot => {
-  const raw = snapshot.val() || {};
-  const now = Date.now();
-  const strokes = [];
-  for (const [client, value] of Object.entries(raw)) {
-    if (client === me || !value || typeof value !== 'object') continue;
-    // Suderinamumas su ONLINE-P1: ten vienam klientui buvo saugomas vienas brūkšnys.
-    const candidates = Array.isArray(value.points) ? [value] : Object.values(value);
-    for (const item of candidates) {
-      if (!item || !Array.isArray(item.points) || !item.points.length) continue;
-      if (item.updatedAt && now - Number(item.updatedAt) >= 30000) continue;
-      strokes.push(item);
-    }
-  }
-  bridge.setRemoteLiveStrokes(strokes);
-});
+initializeWorkspace({ startsBlank: roomInfo.startsBlank, generation: roomGeneration });
 
 
 // P2-SPLIT-P2.5-P2: ilgalaikė mokinių bazė / pamokų indeksas.
@@ -647,12 +772,14 @@ function cleanLessonSummary(value) {
   };
 }
 
-onValue(p2StudentProfileRef, snapshot => {
-  const value = snapshot.val();
-  window.dispatchEvent(new CustomEvent('p2:room-student-state', {
-    detail: value && typeof value === 'object' ? value : null
-  }));
-});
+function subscribeP2StudentProfile() {
+  roomOnValue(p2StudentProfileRef, snapshot => {
+    const value = snapshot.val();
+    window.dispatchEvent(new CustomEvent('p2:room-student-state', {
+      detail: value && typeof value === 'object' ? value : null
+    }));
+  });
+}
 
 window.addEventListener('p2:students-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
@@ -881,21 +1008,23 @@ window.addEventListener('p2:students-request', async event => {
 
 // P2 priskyrimo / eigos kanalas. UI yra klasikiniame p2-ui.js, todėl
 // Firebase modulis su juo kalbasi per CustomEvent ir neturi valdyti DOM.
-onValue(p2AssignmentRef, snapshot => {
-  window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: snapshot.val() || null }));
-});
-onValue(p2ProgressRef, snapshot => {
-  const value = snapshot.val() || null;
+function subscribeP2AssignmentAndProgress() {
+  roomOnValue(p2AssignmentRef, snapshot => {
+    window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: snapshot.val() || null }));
+  });
+  roomOnValue(p2ProgressRef, snapshot => {
+    const value = snapshot.val() || null;
 
-  // P2-SPLIT-P2.1.1: mokinio paties Firebase įrašo echo negrąžiname atgal į jo UI.
-  // Sprendimo MathLive laukas jau turi naujausią vietinę būseną. Greitai rašant
-  // ankstesnio simbolio echo galėdavo atkeliauti po kito simbolio, sukelti viso
-  // pratybų skydelio perrenderinimą ir pakeisti aktyvų lauką nauju DOM elementu.
-  // Mokytojas ir toliau gauna kiekvieną mokinio atnaujinimą realiu laiku.
-  if (onlineRole === 'student' && value?.updatedBy === me) return;
+    // P2-SPLIT-P2.1.1: mokinio paties Firebase įrašo echo negrąžiname atgal į jo UI.
+    // Sprendimo MathLive laukas jau turi naujausią vietinę būseną. Greitai rašant
+    // ankstesnio simbolio echo galėdavo atkeliauti po kito simbolio, sukelti viso
+    // pratybų skydelio perrenderinimą ir pakeisti aktyvų lauką nauju DOM elementu.
+    // Mokytojas ir toliau gauna kiekvieną mokinio atnaujinimą realiu laiku.
+    if (onlineRole === 'student' && value?.updatedBy === me) return;
 
-  window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: value }));
-});
+    window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: value }));
+  });
+}
 
 function sanitizeAttemptPolicy(value) {
   const source = value && typeof value === 'object' ? value : {};
@@ -975,45 +1104,114 @@ window.addEventListener('p2:practice-progress-request', persistP2PracticeProgres
 window.addEventListener('p2:practice-progress-live-request', persistP2PracticeProgress);
 
 let transitionInProgress = false;
-onValue(transitionRef, snapshot => {
-  const data = snapshot.val();
-  const nextRoom = safeRoom(data?.toRoom);
-  if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
-  // P2-SPLIT-P2.4.7.19.4.5: &stay=1 leidžia sąmoningai likti būtent
-  // šiame istoriniame Room tiek mokytojo, tiek mokinio vaizde. Transition duomenų neliečiame.
-  if (stayOnRoom) {
-    console.info(`Istorinis Room ${roomId}: automatinis perėjimas į ${nextRoom} praleistas dėl stay=1.`);
-    return;
-  }
-  transitionInProgress = true;
-  const target = urlForRoom(nextRoom, onlineRole);
-  bridge.showToast?.('Mokytojas pradėjo naują sesiją');
-  // replace() nepalieka seno kambario kaip tarpinio Back istorijos žingsnio.
-  setTimeout(() => window.location.replace(target.toString()), 80);
-});
+
+function subscribeTransition() {
+  roomOnValue(transitionRef, snapshot => {
+    const data = snapshot.val();
+    const nextRoom = safeRoom(data?.toRoom);
+    if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
+    // &stay=1 leidžia sąmoningai likti būtent šiame istoriniame Room.
+    if (stayOnRoom) {
+      console.info(`Istorinis Room ${roomId}: automatinis perėjimas į ${nextRoom} praleistas dėl stay=1.`);
+      return;
+    }
+    transitionInProgress = true;
+    const target = urlForRoom(nextRoom, onlineRole);
+    bridge.showToast?.('Mokytojas pradėjo naują sesiją');
+    setTimeout(() => window.location.replace(target.toString()), 80);
+  });
+}
+
+function subscribePresenceList() {
+  roomOnValue(presenceListRef, snapshot => {
+    const count = Object.values(snapshot.val() || {}).filter(Boolean).length;
+    if (usersEl) {
+      usersEl.textContent = String(count);
+      usersEl.title = `Prisijungę langai: ${count}`;
+    }
+  });
+}
+
+function subscribeRoomRealtimeListeners(generation = roomGeneration) {
+  if (generation !== roomGeneration) return;
+  subscribeWorkspaceParts();
+  subscribeLiveStrokes();
+  subscribeP2StudentProfile();
+  subscribeP2AssignmentAndProgress();
+  subscribeTransition();
+  subscribePresenceList();
+}
 
 onValue(connectedRef, snapshot => {
-  if (snapshot.val() === true) {
-    set(presenceRef, { online: true, joinedAt: Date.now(), updatedAt: serverTimestamp() });
-    onDisconnect(presenceRef).remove();
-    onDisconnect(myLiveRootRef).remove();
+  connectedNow = snapshot.val() === true;
+  if (connectedNow) {
+    if (bootstrapped) activateCurrentRoomPresence(roomGeneration);
     const localNote = location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta';
     setUi('online', localNote);
   } else {
     setUi('offline', 'Nėra ryšio');
   }
 }, error => {
-  console.error('P2-SPLIT-P1.7 connection klaida', error);
+  connectedNow = false;
+  console.error('P2-SPLIT-P2.5-P2.1 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 
-onValue(presenceListRef, snapshot => {
-  const count = Object.values(snapshot.val() || {}).filter(Boolean).length;
+async function switchActiveTeacherRoom(targetRoom, { preserveStay = true } = {}) {
+  const nextRoom = safeRoom(targetRoom);
+  if (onlineRole !== 'teacher' || !nextRoom || nextRoom === roomId || transitionInProgress) return;
+
+  const previousRoom = roomId;
+  const previousStay = stayOnRoom;
+  window.dispatchEvent(new CustomEvent('p2:room-switch-start', { detail: { fromRoom: previousRoom, roomId: nextRoom } }));
+  setUi('online', 'Perjungiama lenta…');
+
+  // Prieš atjungdami seną Room įrašome paskutinę vietinę teksto / objektų būseną.
+  try { await publishLocalChanges(); } catch (_) {}
+
+  clearRoomSubscriptions();
+  // Generaciją pakeičiame dar prieš asinchroninį presence atjungimą, kad net
+  // jau eilėje esantis seno Room callback'as nebegalėtų pritaikyti jo būsenos.
+  roomGeneration += 1;
+  // Seno Room presence/live cleanup vyksta fone ir neblokuoja skirtuko perėjimo.
+  leaveCurrentRoomPresence();
+  resetRoomRuntimeState();
+  clearLocalSharedWorkspace();
+
+  roomId = nextRoom;
+  stayOnRoom = preserveStay ? previousStay : false;
+  transitionInProgress = false;
+  bindRoomRefs(roomId);
+
+  if (roomEl) roomEl.textContent = roomId;
   if (usersEl) {
-    usersEl.textContent = String(count);
-    usersEl.title = `Prisijungę langai: ${count}`;
+    usersEl.textContent = '0';
+    usersEl.title = 'Jungiama prie mokinio lentos';
   }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', roomId);
+  url.searchParams.set('role', 'teacher');
+  url.searchParams.delete('new');
+  url.searchParams.delete('student');
+  if (stayOnRoom) url.searchParams.set('stay', '1');
+  else url.searchParams.delete('stay');
+  try { history.replaceState(null, '', url); } catch (_) {}
+
+  if (newButton) {
+    newButton.disabled = stayOnRoom;
+    newButton.title = stayOnRoom ? 'Istoriniame stay=1 režime nauja sesija nekuriama' : '';
+  }
+
+  emitTeacherProfile();
+  await initializeWorkspace({ startsBlank: false, generation: roomGeneration, switched: true });
+}
+
+window.addEventListener('p2:room-switch-request', event => {
+  const detail = event.detail || {};
+  switchActiveTeacherRoom(detail.roomId, { preserveStay: detail.preserveStay !== false });
 });
+
 
 window.addEventListener('p772:shared-notes-live', () => {
   // Throttle, ne debounce: net jei mokinys rašo be jokios pauzės kelias sekundes,
