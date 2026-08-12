@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P3-P1.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -414,9 +414,11 @@
   // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
   // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
   let studentsModal = null;
+  let scheduleModal = null;
+  let editingScheduleId = '';
   let selectedStudentId = null;
   let studentDbSnapshotTimer = null;
-  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {} };
+  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
   let roomSwitching = false;
@@ -1789,7 +1791,10 @@
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
     const p2StudentsButton = document.getElementById('studentsButton');
     if (p2StudentsButton) p2StudentsButton.hidden = !isTeacher;
+    const p2ScheduleButton = document.getElementById('scheduleButton');
+    if (p2ScheduleButton) p2ScheduleButton.hidden = !isTeacher;
     if (!isTeacher && studentsModal) studentsModal.hidden = true;
+    if (!isTeacher && scheduleModal) scheduleModal.hidden = true;
     if (!isTeacher && teacherPreviewMode !== 'closed') {
       teacherPreviewMode = 'closed';
       if (teacherPreviewWindow) teacherPreviewWindow.hidden = true;
@@ -1829,7 +1834,9 @@
       profileId: String(source.profileId || ''),
       students: source.students && typeof source.students === 'object' ? source.students : {},
       roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {},
-      classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {}
+      classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {},
+      scheduleEntries: source.scheduleEntries && typeof source.scheduleEntries === 'object' ? source.scheduleEntries : {},
+      scheduleRuns: source.scheduleRuns && typeof source.scheduleRuns === 'object' ? source.scheduleRuns : {}
     };
   }
 
@@ -1915,7 +1922,7 @@
     body.classList.add('p2-lesson-student-tabs-active');
   }
 
-  function requestTeacherRoomSwitch(targetRoom) {
+  function requestTeacherRoomSwitch(targetRoom, preserveStay = true) {
     const safe = String(targetRoom || '').trim().toUpperCase();
     if (role() !== 'teacher' || !/^[A-Z0-9_-]{4,24}$/.test(safe) || safe === currentRoomId() || roomSwitching) return;
     roomSwitching = true;
@@ -1923,7 +1930,7 @@
     studentDbSnapshotTimer = null;
     renderLessonStudentTabs();
     window.dispatchEvent(new CustomEvent('p2:room-switch-request', {
-      detail: { roomId: safe, preserveStay: true }
+      detail: { roomId: safe, preserveStay: preserveStay !== false }
     }));
   }
 
@@ -2012,7 +2019,7 @@
     const historical = params.get('stay') === '1';
     if (!activeRoomId || activeRoomId !== state.targetRoomId) return;
 
-    // P2-SPLIT-P2.5-P3-P1.2: grįžimo juosta priklauso tik tam vaizdui,
+    // P2-SPLIT-P2.5-P4-P1: grįžimo juosta priklauso tik tam vaizdui,
     // kuris buvo sąmoningai atidarytas iš mokinio kortelės. Grįžus į įprastą
     // mokytojo lentą (be stay=1) senas sessionStorage įrašas nebegali jos
     // klaidingai paversti „Mokinio vaizdu“.
@@ -2284,8 +2291,225 @@
     renderStudentsModal();
   }
 
+  // P2-SPLIT-P2.5-P4-P1: savaitinis tvarkaraštis yra mokytojo profilio dalis,
+  // o ne vienos Room būsena. Tvarkaraščio įrašas kartojasi kas savaitę;
+  // reali pamoka (classSession + atskiros mokinių Room) sukuriama tik paspaudus „Pradėti“.
+  const SCHEDULE_DAYS = Object.freeze([
+    { id: 1, short: 'Pr', label: 'Pirmadienis' },
+    { id: 2, short: 'An', label: 'Antradienis' },
+    { id: 3, short: 'Tr', label: 'Trečiadienis' },
+    { id: 4, short: 'Kt', label: 'Ketvirtadienis' },
+    { id: 5, short: 'Pn', label: 'Penktadienis' },
+    { id: 6, short: 'Št', label: 'Šeštadienis' },
+    { id: 7, short: 'Sk', label: 'Sekmadienis' }
+  ]);
+
+  function scheduleTodayIndex(date = new Date()) {
+    const day = Number(date.getDay());
+    return day === 0 ? 7 : day;
+  }
+
+  function localDateKey(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function formatScheduleClock(value) {
+    const stamp = Number(value);
+    if (!Number.isFinite(stamp) || stamp <= 0) return '';
+    try { return new Intl.DateTimeFormat('lt-LT', { hour: '2-digit', minute: '2-digit' }).format(new Date(stamp)); }
+    catch (_) { return new Date(stamp).toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' }); }
+  }
+
+  function defaultScheduleTime() {
+    const date = new Date();
+    let minutes = date.getMinutes();
+    minutes = Math.ceil(minutes / 15) * 15;
+    if (minutes >= 60) { date.setHours(date.getHours() + 1); minutes = 0; }
+    return `${String(date.getHours()).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  function scheduleEntriesList() {
+    return Object.entries(teacherStudentDb.scheduleEntries || {})
+      .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
+      .sort((a, b) => Number(a.day || 0) - Number(b.day || 0) || String(a.start || '').localeCompare(String(b.start || '')) || Number(a.createdAt || 0) - Number(b.createdAt || 0));
+  }
+
+  function scheduleStudentIds(entry) {
+    const raw = entry?.studentIds;
+    if (Array.isArray(raw)) return raw.map(String).filter(id => teacherStudentDb.students?.[id]);
+    if (raw && typeof raw === 'object') return Object.keys(raw).filter(id => raw[id] && teacherStudentDb.students?.[id]);
+    return [];
+  }
+
+  function scheduleStudentNames(entry) {
+    return scheduleStudentIds(entry).map(id => String(teacherStudentDb.students?.[id]?.name || 'Mokinys').trim() || 'Mokinys');
+  }
+
+  function scheduleRunRooms(run) {
+    const rooms = run?.rooms && typeof run.rooms === 'object' ? run.rooms : {};
+    return Object.values(rooms).map(value => String(value?.roomId || value || '').trim().toUpperCase()).filter(Boolean);
+  }
+
+  function requestSchedule(detail) {
+    if (role() !== 'teacher') return;
+    window.dispatchEvent(new CustomEvent('p2:schedule-request', { detail }));
+  }
+
+  function ensureScheduleModal() {
+    if (scheduleModal) return scheduleModal;
+    scheduleModal = document.createElement('div');
+    scheduleModal.className = 'p2-schedule-modal';
+    scheduleModal.hidden = true;
+    scheduleModal.innerHTML = `
+      <div class="p2-schedule-backdrop" data-schedule-close></div>
+      <section class="p2-schedule-panel" role="dialog" aria-modal="true" aria-label="Pamokų tvarkaraštis">
+        <header class="p2-schedule-header">
+          <div><span class="p2-side-kicker">SAVAITINIS PLANAS</span><h2>Tvarkaraštis</h2><p>Ta pati pamoka kartojasi pasirinktą savaitės dieną ir valandą. Pradėjus pamoką kiekvienam mokiniui sukuriama atskira lenta.</p></div>
+          <button type="button" data-schedule-close aria-label="Uždaryti">×</button>
+        </header>
+        <div class="p2-schedule-body">
+          <main class="p2-schedule-week-pane" id="p2ScheduleWeekPane"></main>
+          <aside class="p2-schedule-editor-pane" id="p2ScheduleEditorPane"></aside>
+        </div>
+      </section>`;
+    document.body.appendChild(scheduleModal);
+    scheduleModal.querySelectorAll('[data-schedule-close]').forEach(el => el.addEventListener('click', () => { scheduleModal.hidden = true; editingScheduleId = ''; }));
+    return scheduleModal;
+  }
+
+  function renderScheduleModal() {
+    if (!scheduleModal || scheduleModal.hidden) return;
+    const weekHost = scheduleModal.querySelector('#p2ScheduleWeekPane');
+    const editorHost = scheduleModal.querySelector('#p2ScheduleEditorPane');
+    if (!weekHost || !editorHost) return;
+
+    const entries = scheduleEntriesList();
+    const today = scheduleTodayIndex();
+    const todayKey = localDateKey();
+    const students = studentList();
+    const editing = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] || null : null;
+
+    const dayColumns = SCHEDULE_DAYS.map(day => {
+      const dayEntries = entries.filter(item => Number(item.day) === day.id);
+      const cards = dayEntries.length ? dayEntries.map(entry => {
+        const names = scheduleStudentNames(entry);
+        const run = teacherStudentDb.scheduleRuns?.[entry.id]?.[todayKey] || null;
+        const runRooms = scheduleRunRooms(run);
+        const practice = entry.lessonId ? (entry.practiceTitle || lessonForId(entry.lessonId)?.shortTitle || 'Pratybos') : '';
+        const duration = Math.max(15, Number(entry.durationMinutes || 40));
+        const label = String(entry.label || '').trim();
+        return `<article class="p2-schedule-card ${editingScheduleId === entry.id ? 'is-editing' : ''} ${run ? 'is-started' : ''}">
+          <div class="p2-schedule-card-time"><strong>${escapeHtml(entry.start || '—')}</strong><span>${duration} min.</span></div>
+          <div class="p2-schedule-card-copy">
+            ${label ? `<h4>${escapeHtml(label)}</h4>` : ''}
+            <div class="p2-schedule-card-students">${names.length ? names.map(name => `<span>${escapeHtml(name)}</span>`).join('') : '<em>Mokiniai nepasirinkti</em>'}</div>
+            ${practice ? `<p>▦ ${escapeHtml(practice)}</p>` : '<p>□ Tik lenta</p>'}
+            ${run ? `<small>✓ Šiandien pradėta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
+          </div>
+          <div class="p2-schedule-card-actions">
+            ${run && runRooms.length
+              ? `<button type="button" class="is-primary" data-schedule-open-run="${escapeHtml(runRooms[0])}">Atidaryti</button>`
+              : `<button type="button" class="is-primary" data-schedule-start="${escapeHtml(entry.id)}" ${names.length ? '' : 'disabled'}>Pradėti</button>`}
+            <button type="button" data-schedule-edit="${escapeHtml(entry.id)}">Redaguoti</button>
+          </div>
+        </article>`;
+      }).join('') : '<div class="p2-schedule-day-empty">Pamokų nėra</div>';
+      return `<section class="p2-schedule-day ${day.id === today ? 'is-today' : ''}">
+        <header><span>${escapeHtml(day.short)}</span><strong>${escapeHtml(day.label)}</strong>${day.id === today ? '<b>Šiandien</b>' : ''}</header>
+        <div class="p2-schedule-day-list">${cards}</div>
+      </section>`;
+    }).join('');
+
+    weekHost.innerHTML = `
+      <div class="p2-schedule-week-toolbar">
+        <div><span class="p2-label">Savaitė</span><strong>${entries.length} ${entries.length === 1 ? 'pamoka' : 'pamokos'}</strong></div>
+        <button type="button" class="p2-secondary" data-schedule-new>＋ Nauja pamoka</button>
+      </div>
+      <div class="p2-schedule-week-grid">${dayColumns}</div>`;
+
+    const editDay = Number(editing?.day || today);
+    const editStart = String(editing?.start || defaultScheduleTime());
+    const editDuration = Math.max(15, Math.min(180, Number(editing?.durationMinutes || 40)));
+    const editLabel = String(editing?.label || '');
+    const editLessonId = String(editing?.lessonId || '');
+    const selectedIds = new Set(editing ? scheduleStudentIds(editing) : []);
+    const dayOptions = SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === editDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
+    const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === editLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
+    const studentChecks = students.length ? students.map(student => `<label class="p2-schedule-student-check"><input type="checkbox" value="${escapeHtml(student.id)}" ${selectedIds.has(student.id) ? 'checked' : ''}><span class="p2-student-avatar">${escapeHtml(String(student.name || 'M').trim().slice(0,1).toUpperCase() || 'M')}</span><strong>${escapeHtml(student.name || 'Mokinys')}</strong></label>`).join('') : '<div class="p2-schedule-no-students">Pirmiausia sukurk mokinius skiltyje „Mokiniai“.</div>';
+
+    editorHost.innerHTML = `
+      <div class="p2-schedule-editor-head"><span class="p2-label">${editing ? 'Redaguoti' : 'Nauja pamoka'}</span><h3>${editing ? 'Tvarkaraščio įrašas' : 'Pridėti į savaitę'}</h3></div>
+      <div class="p2-schedule-form">
+        <div class="p2-schedule-form-row two">
+          <label><span>Savaitės diena</span><select id="p2ScheduleDay">${dayOptions}</select></label>
+          <label><span>Pradžia</span><input id="p2ScheduleStart" type="time" value="${escapeHtml(editStart)}" step="300"></label>
+        </div>
+        <label><span>Trukmė (min.)</span><input id="p2ScheduleDuration" type="number" min="15" max="180" step="5" value="${editDuration}"></label>
+        <label><span>Pavadinimas <small>nebūtina</small></span><input id="p2ScheduleLabel" maxlength="80" value="${escapeHtml(editLabel)}" placeholder="Pvz. VBE pasiruošimas"></label>
+        <label><span>Pratybos <small>nebūtina</small></span><select id="p2ScheduleLesson"><option value="">Tik lenta / pratybas priskirsiu vėliau</option>${lessonOptions}</select></label>
+        <fieldset class="p2-schedule-students-field"><legend>Mokiniai</legend><div>${studentChecks}</div></fieldset>
+        <div class="p2-schedule-form-actions">
+          ${editing ? '<button type="button" class="p2-student-danger" data-schedule-delete>Pašalinti</button>' : '<span></span>'}
+          <button type="button" class="p2-primary" data-schedule-save ${students.length ? '' : 'disabled'}>${editing ? 'Išsaugoti' : 'Pridėti į tvarkaraštį'}</button>
+        </div>
+      </div>`;
+
+    weekHost.querySelector('[data-schedule-new]')?.addEventListener('click', () => { editingScheduleId = ''; renderScheduleModal(); });
+    weekHost.querySelectorAll('[data-schedule-edit]').forEach(button => button.addEventListener('click', () => { editingScheduleId = String(button.dataset.scheduleEdit || ''); renderScheduleModal(); }));
+    weekHost.querySelectorAll('[data-schedule-start]').forEach(button => button.addEventListener('click', () => {
+      const scheduleId = String(button.dataset.scheduleStart || '');
+      if (!scheduleId) return;
+      button.disabled = true;
+      button.textContent = 'Kuriama…';
+      requestSchedule({ action: 'start', scheduleId, dateKey: todayKey });
+    }));
+    weekHost.querySelectorAll('[data-schedule-open-run]').forEach(button => button.addEventListener('click', () => {
+      const targetRoom = String(button.dataset.scheduleOpenRun || '').trim().toUpperCase();
+      if (!targetRoom) return;
+      scheduleModal.hidden = true;
+      requestTeacherRoomSwitch(targetRoom, false);
+    }));
+
+    editorHost.querySelector('[data-schedule-save]')?.addEventListener('click', () => {
+      const day = Number(editorHost.querySelector('#p2ScheduleDay')?.value || 0);
+      const start = String(editorHost.querySelector('#p2ScheduleStart')?.value || '').trim();
+      const durationMinutes = Number(editorHost.querySelector('#p2ScheduleDuration')?.value || 40);
+      const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
+      const lessonId = String(editorHost.querySelector('#p2ScheduleLesson')?.value || '').trim();
+      const lesson = lessonForId(lessonId);
+      const studentIds = Array.from(editorHost.querySelectorAll('.p2-schedule-student-check input:checked')).map(input => input.value);
+      if (!studentIds.length) { toast('Pasirink bent vieną mokinį'); return; }
+      if (!start) { toast('Pasirink pamokos pradžios laiką'); return; }
+      requestSchedule({
+        action: editingScheduleId ? 'update' : 'add', scheduleId: editingScheduleId || undefined,
+        day, start, durationMinutes, label, studentIds,
+        lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0,
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+      });
+      if (!editingScheduleId) editingScheduleId = '';
+    });
+    editorHost.querySelector('[data-schedule-delete]')?.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      if (!window.confirm('Pašalinti šią pamoką iš savaitinio tvarkaraščio? Jau įvykusių pamokų istorija liks.')) return;
+      requestSchedule({ action: 'delete', scheduleId: editingScheduleId });
+      editingScheduleId = '';
+    });
+  }
+
+  function openSchedule() {
+    if (role() !== 'teacher') return;
+    ensureScheduleModal();
+    scheduleModal.hidden = false;
+    renderScheduleModal();
+  }
+
   const originalStudentsButton = document.getElementById('studentsButton');
   if (originalStudentsButton) originalStudentsButton.addEventListener('click', openStudentsDatabase);
+  const originalScheduleButton = document.getElementById('scheduleButton');
+  if (originalScheduleButton) originalScheduleButton.addEventListener('click', openSchedule);
 
   function queueCurrentStudentLessonSnapshot() {
     if (role() !== 'teacher' || roomSwitching) return;
@@ -2370,6 +2594,18 @@
       }
     }
     renderStudentsModal();
+    renderScheduleModal();
+  });
+
+  window.addEventListener('p2:schedule-started', event => {
+    const firstRoom = String(event.detail?.firstRoom || '').trim().toUpperCase();
+    if (scheduleModal) scheduleModal.hidden = true;
+    editingScheduleId = '';
+    if (firstRoom && firstRoom !== currentRoomId()) requestTeacherRoomSwitch(firstRoom, false);
+  });
+
+  window.addEventListener('p2:schedule-error', () => {
+    renderScheduleModal();
   });
 
   const originalLibraryButton = document.getElementById('libraryButton');

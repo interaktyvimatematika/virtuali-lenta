@@ -6762,3 +6762,77 @@ body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
 @media(max-width:760px){
   .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
 }
+
+/* P2-SPLIT-P2.5-P4-P1 · savaitinis pamokų tvarkaraštis */
+body[data-online-role="student"] #scheduleButton { display:none !important; }
+.p2-schedule-modal[hidden] { display:none !important; }
+.p2-schedule-modal { position:fixed; inset:0; z-index:2150; display:grid; place-items:center; padding:18px; }
+.p2-schedule-backdrop { position:absolute; inset:0; background:rgba(24,32,52,.48); backdrop-filter:blur(3px); }
+.p2-schedule-panel { position:relative; width:min(1580px, calc(100vw - 36px)); height:min(900px, calc(100vh - 36px)); display:grid; grid-template-rows:auto minmax(0,1fr); overflow:hidden; background:#f7f9fc; border:1px solid #dfe5ef; border-radius:24px; box-shadow:0 30px 90px rgba(22,31,52,.22); }
+.p2-schedule-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:20px 22px 18px; background:#fff; border-bottom:1px solid #e5e9f1; }
+.p2-schedule-header h2 { margin:4px 0 4px; font-size:25px; letter-spacing:-.025em; }
+.p2-schedule-header p { max-width:840px; margin:0; color:#727d90; font-size:12px; line-height:1.55; }
+.p2-schedule-header > button { width:38px; height:38px; flex:0 0 auto; border:1px solid #dfe5ef; border-radius:12px; background:#fff; color:#687488; font-size:24px; line-height:1; cursor:pointer; }
+.p2-schedule-header > button:hover { background:#f4f6fa; color:#2f3b52; }
+.p2-schedule-body { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 340px; }
+.p2-schedule-week-pane { min-width:0; min-height:0; overflow:auto; padding:18px; }
+.p2-schedule-week-toolbar { position:sticky; top:-18px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:-18px -18px 16px; padding:14px 18px; background:rgba(247,249,252,.96); border-bottom:1px solid #e6eaf1; backdrop-filter:blur(8px); }
+.p2-schedule-week-toolbar > div { display:grid; gap:2px; }
+.p2-schedule-week-toolbar strong { font-size:15px; }
+.p2-schedule-week-grid { display:grid; grid-template-columns:repeat(7,minmax(185px,1fr)); gap:10px; min-width:1360px; align-items:start; }
+.p2-schedule-day { min-height:360px; overflow:hidden; background:#fff; border:1px solid #e2e7ef; border-radius:16px; box-shadow:0 6px 18px rgba(41,53,78,.035); }
+.p2-schedule-day.is-today { border-color:#b9c7fa; box-shadow:0 7px 22px rgba(70,94,190,.08); }
+.p2-schedule-day > header { min-height:58px; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:3px 8px; padding:10px 12px; background:#fafbfe; border-bottom:1px solid #ebeff5; }
+.p2-schedule-day.is-today > header { background:#f4f6ff; }
+.p2-schedule-day > header > span { width:28px; height:28px; display:grid; place-items:center; grid-row:1 / span 2; border-radius:9px; background:#eef2f8; color:#61708a; font-size:11px; font-weight:900; }
+.p2-schedule-day.is-today > header > span { background:#dfe6ff; color:#4561c5; }
+.p2-schedule-day > header strong { min-width:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.p2-schedule-day > header b { justify-self:start; color:#536bd0; font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+.p2-schedule-day-list { display:grid; align-content:start; gap:8px; padding:9px; }
+.p2-schedule-day-empty { display:grid; place-items:center; min-height:90px; padding:14px; color:#a0a8b6; font-size:11px; text-align:center; }
+.p2-schedule-card { display:grid; gap:8px; padding:10px; border:1px solid #e4e8f0; border-radius:13px; background:#fff; transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.p2-schedule-card:hover { border-color:#cad3e5; box-shadow:0 7px 18px rgba(37,52,81,.07); }
+.p2-schedule-card.is-editing { border-color:#8598e7; box-shadow:0 0 0 2px rgba(83,107,208,.1); }
+.p2-schedule-card.is-started { border-color:#b9dfcc; background:#fbfefc; }
+.p2-schedule-card-time { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.p2-schedule-card-time strong { color:#25314a; font-size:17px; letter-spacing:-.02em; }
+.p2-schedule-card-time span { color:#8b95a6; font-size:9px; font-weight:700; }
+.p2-schedule-card-copy { display:grid; gap:6px; min-width:0; }
+.p2-schedule-card-copy h4 { margin:0; color:#2e3850; font-size:11px; line-height:1.35; }
+.p2-schedule-card-copy p { margin:0; color:#778295; font-size:9px; line-height:1.35; }
+.p2-schedule-card-copy small { color:#36835f; font-size:9px; font-weight:800; }
+.p2-schedule-card-students { display:flex; flex-wrap:wrap; gap:4px; }
+.p2-schedule-card-students span { max-width:100%; padding:4px 7px; overflow:hidden; border-radius:999px; background:#eef2ff; color:#4f63bd; font-size:9px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.p2-schedule-card-students em { color:#a0a8b6; font-size:9px; font-style:normal; }
+.p2-schedule-card-actions { display:flex; gap:5px; }
+.p2-schedule-card-actions button { min-width:0; flex:1 1 0; padding:7px 8px; border:1px solid #dce2eb; border-radius:9px; background:#fff; color:#5c687d; font:inherit; font-size:9px; font-weight:800; cursor:pointer; }
+.p2-schedule-card-actions button:hover:not(:disabled) { background:#f5f7fb; }
+.p2-schedule-card-actions button.is-primary { border-color:#667cd7; background:#667cd7; color:#fff; }
+.p2-schedule-card-actions button.is-primary:hover:not(:disabled) { background:#536bd0; }
+.p2-schedule-card-actions button:disabled { opacity:.45; cursor:not-allowed; }
+.p2-schedule-editor-pane { min-width:0; min-height:0; overflow:auto; padding:20px; background:#fff; border-left:1px solid #e1e6ee; }
+.p2-schedule-editor-head { margin-bottom:16px; }
+.p2-schedule-editor-head h3 { margin:4px 0 0; font-size:18px; letter-spacing:-.02em; }
+.p2-schedule-form { display:grid; gap:13px; }
+.p2-schedule-form label { display:grid; gap:6px; min-width:0; }
+.p2-schedule-form label > span, .p2-schedule-students-field legend { color:#647086; font-size:10px; font-weight:800; }
+.p2-schedule-form label small { color:#a0a8b5; font-size:9px; font-weight:600; }
+.p2-schedule-form input, .p2-schedule-form select { width:100%; min-width:0; height:39px; box-sizing:border-box; padding:0 11px; border:1px solid #dce2eb; border-radius:10px; background:#fff; color:#25314a; font:inherit; font-size:12px; outline:none; }
+.p2-schedule-form input:focus, .p2-schedule-form select:focus { border-color:#8ea0e9; box-shadow:0 0 0 3px rgba(83,107,208,.09); }
+.p2-schedule-form-row.two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.p2-schedule-students-field { min-width:0; margin:2px 0 0; padding:0; border:0; }
+.p2-schedule-students-field > div { display:grid; gap:6px; max-height:240px; margin-top:7px; overflow:auto; }
+.p2-schedule-student-check { grid-template-columns:auto auto minmax(0,1fr) !important; align-items:center; gap:8px !important; padding:8px 9px; border:1px solid #e2e7ef; border-radius:11px; cursor:pointer; }
+.p2-schedule-student-check:hover { background:#f8f9fc; }
+.p2-schedule-student-check input { width:16px; height:16px; margin:0; accent-color:#5b72d2; }
+.p2-schedule-student-check .p2-student-avatar { width:26px; height:26px; font-size:10px; }
+.p2-schedule-student-check strong { min-width:0; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.p2-schedule-no-students { padding:12px; border:1px dashed #d8dee9; border-radius:11px; color:#8b95a5; font-size:10px; line-height:1.5; }
+.p2-schedule-form-actions { display:flex; align-items:center; justify-content:space-between; gap:9px; padding-top:4px; }
+.p2-schedule-form-actions button { min-height:38px; }
+
+@media (max-width: 1050px) {
+  .p2-schedule-panel { width:calc(100vw - 20px); height:calc(100vh - 20px); border-radius:18px; }
+  .p2-schedule-body { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
+  .p2-schedule-editor-pane { max-height:46vh; border-left:0; border-top:1px solid #e1e6ee; }
+}
