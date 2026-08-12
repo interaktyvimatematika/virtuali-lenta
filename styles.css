@@ -6502,7 +6502,7 @@ body.p2-shell .p2-teacher-simple-answer small {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.2 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
+/* P2-SPLIT-P2.4.7.19.3 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
 body.p2-shell math-field.p2-inline-math {
   display:inline-block;
   width:auto;
@@ -6526,7 +6526,7 @@ body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.2 · paveikslėliai bendroje lentoje */
+/* P2-SPLIT-P2.4.7.19.3 · paveikslėliai bendroje lentoje */
 .board-image-object {
   position: absolute;
   margin: 0;
@@ -6618,4 +6618,23 @@ body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
   .board-image-object.is-active-object .board-image-handle,
   .board-image-object.is-active-object .board-image-remove,
   .board-image-object.is-active-object .board-image-resize { opacity: 1; }
+}
+
+/* P2-SPLIT-P2.4.7.19.3 — Bibliotekos modalas visada slenkamas vertikaliai */
+body.p2-shell .p2-library-panel {
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+}
+body.p2-shell .p2-library-panel > .p2-library-body {
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable;
+}
+@media (max-height:720px) {
+  body.p2-shell .p2-library-modal { padding:10px; }
+  body.p2-shell .p2-library-panel { max-height:calc(100dvh - 20px); }
+  body.p2-shell .p2-library-body { padding-top:22px; padding-bottom:22px; }
 }
