@@ -257,7 +257,7 @@ let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
 
-// P2-SPLIT-P2.5-P3-P1.1: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
+// P2-SPLIT-P2.5-P3-P1.2: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
 // neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
 // vienoje vietoje ir prieš perėjimą patikimai atjungiami.
 let roomGeneration = 0;
@@ -338,7 +338,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
     await liveDisconnectHandle.remove();
     if (generation === roomGeneration && presenceRoom === roomId) activePresenceRoom = presenceRoom;
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P3-P1.1 presence perjungimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P3-P1.2 presence perjungimo klaida', error);
   }
 }
 
@@ -721,7 +721,7 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
   } catch (error) {
     if (generation !== roomGeneration) return;
-    console.error('P2-SPLIT-P2.5-P3-P1.1 workspace inicijavimo klaida', error);
+    console.error('P2-SPLIT-P2.5-P3-P1.2 workspace inicijavimo klaida', error);
     setUi('error', 'Firebase Rules klaida');
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
@@ -1170,7 +1170,7 @@ onValue(connectedRef, snapshot => {
   }
 }, error => {
   connectedNow = false;
-  console.error('P2-SPLIT-P2.5-P3-P1.1 connection klaida', error);
+  console.error('P2-SPLIT-P2.5-P3-P1.2 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
 

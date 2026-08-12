@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P3-P1.1';
+  const BUILD = 'P2-SPLIT-P2.5-P3-P1.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -1972,16 +1972,18 @@
   const STUDENT_HISTORY_RETURN_KEY = 'p2-student-history-return-v1';
   const STUDENT_CARD_REOPEN_KEY = 'p2-student-card-reopen-v1';
 
-  function saveStudentHistoryReturn(studentId = selectedStudentId, targetRoomId = '') {
+  function saveStudentHistoryReturn(studentId = selectedStudentId, targetRoomId = '', targetRole = 'teacher') {
     if (role() !== 'teacher') return;
     const safeStudentId = String(studentId || '').trim();
     const safeTargetRoomId = String(targetRoomId || '').trim().toUpperCase();
+    const safeTargetRole = targetRole === 'student' ? 'student' : 'teacher';
     if (!safeStudentId || !safeTargetRoomId) return;
     try {
       sessionStorage.setItem(STUDENT_HISTORY_RETURN_KEY, JSON.stringify({
         url: location.href,
         studentId: safeStudentId,
         targetRoomId: safeTargetRoomId,
+        targetRole: safeTargetRole,
         savedAt: Date.now()
       }));
     } catch (_) {}
@@ -1994,9 +1996,10 @@
       const url = String(value.url || '');
       const studentId = String(value.studentId || '').trim();
       const targetRoomId = String(value.targetRoomId || '').trim().toUpperCase();
+      const targetRole = value.targetRole === 'student' ? 'student' : 'teacher';
       if (!url || !studentId || !targetRoomId) return null;
       if (Number(value.savedAt || 0) && Date.now() - Number(value.savedAt) > 12 * 60 * 60 * 1000) return null;
-      return { url, studentId, targetRoomId };
+      return { url, studentId, targetRoomId, targetRole };
     } catch (_) { return null; }
   }
 
@@ -2005,12 +2008,23 @@
     if (!state) return;
     const params = new URL(location.href).searchParams;
     const activeRoomId = String(params.get('room') || '').trim().toUpperCase();
+    const activeRole = params.get('role') === 'student' ? 'student' : 'teacher';
+    const historical = params.get('stay') === '1';
     if (!activeRoomId || activeRoomId !== state.targetRoomId) return;
+
+    // P2-SPLIT-P2.5-P3-P1.2: grįžimo juosta priklauso tik tam vaizdui,
+    // kuris buvo sąmoningai atidarytas iš mokinio kortelės. Grįžus į įprastą
+    // mokytojo lentą (be stay=1) senas sessionStorage įrašas nebegali jos
+    // klaidingai paversti „Mokinio vaizdu“.
+    if (!historical && activeRole !== state.targetRole) {
+      try { sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY); } catch (_) {}
+      return;
+    }
+
     const app = document.getElementById('app');
     const workspace = document.getElementById('p2Workspace');
     if (!app || !workspace || document.getElementById('studentHistoryReturnBar')) return;
 
-    const historical = params.get('stay') === '1';
     const bar = document.createElement('div');
     bar.className = 'p2-history-return-bar';
     bar.id = 'studentHistoryReturnBar';
@@ -2025,7 +2039,12 @@
     button.innerHTML = '<span aria-hidden="true">←</span><span>Grįžti į mokinio kortelę</span>';
     button.title = 'Grįžti į mokinio kortelę tame pačiame naršyklės skirtuke';
     button.addEventListener('click', () => {
-      try { sessionStorage.setItem(STUDENT_CARD_REOPEN_KEY, state.studentId); } catch (_) {}
+      try {
+        sessionStorage.setItem(STUDENT_CARD_REOPEN_KEY, state.studentId);
+        // Grįžimo tikslas jau perduotas per STUDENT_CARD_REOPEN_KEY, todėl
+        // seno vaizdo navigacijos įrašą išvalome dar prieš grįždami.
+        sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY);
+      } catch (_) {}
       location.assign(state.url);
     });
     bar.appendChild(button);
@@ -2047,7 +2066,7 @@
       return;
     }
 
-    saveStudentHistoryReturn(selectedStudentId, safe);
+    saveStudentHistoryReturn(selectedStudentId, safe, target);
     const isHistoricalRoom = safe !== activeRoomId;
     // Kitai (senesnei) Room pridedame stay=1, kad transition nenukreiptų į
     // naujesnę sesiją. Tos pačios aktyvios Room mokinio vaizdui stay nereikia.
