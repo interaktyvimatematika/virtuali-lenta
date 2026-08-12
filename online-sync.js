@@ -168,7 +168,7 @@ if (newButton) {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// P2-SPLIT-P2.5-P1.1: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
+// P2-SPLIT-P2.5-P1.2: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
 // naršyklė gauna ilgalaikį atsitiktinį profilio ID; jis niekada nepridedamas
 // prie mokinio nuorodos. Tai dar nėra paskyrų/autentifikacijos sistema, bet
 // neleidžia skirtingų mokytojų sąrašams susimaišyti viename bendrame mazge.
@@ -587,7 +587,7 @@ onValue(liveRef, snapshot => {
 });
 
 
-// P2-SPLIT-P2.5-P1.1: ilgalaikė mokinių bazė / pamokų indeksas.
+// P2-SPLIT-P2.5-P1.2: ilgalaikė mokinių bazė / pamokų indeksas.
 function safeStudentId(value) {
   const id = String(value || '').trim();
   return /^[a-z0-9_-]{6,48}$/i.test(id) ? id : '';
@@ -617,7 +617,7 @@ if (teacherProfileRef) {
     };
     emitTeacherProfile();
   }, error => {
-    console.error('P2-SPLIT-P2.5-P1.1 mokinių bazės skaitymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P1.2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
     emitTeacherProfile();
   });
@@ -753,7 +753,7 @@ window.addEventListener('p2:students-request', async event => {
       await update(teacherProfileRef, updates);
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P1.1 mokinių bazės įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P1.2 mokinių bazės įrašymo klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti mokinio duomenų');
   }
 });
@@ -943,7 +943,7 @@ async function commitDrawingStroke(stroke) {
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
   } catch (error) {
-    console.warn('P2-SPLIT-P2.5-P1.1 brūkšnio persistavimo klaida', error);
+    console.warn('P2-SPLIT-P2.5-P1.2 brūkšnio persistavimo klaida', error);
     // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
     window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
   }

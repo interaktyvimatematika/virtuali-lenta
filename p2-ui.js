@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P1.1';
+  const BUILD = 'P2-SPLIT-P2.5-P1.2';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -410,7 +410,7 @@
   let progress = null;
   let selectedAnswers = {};
 
-  // P2-SPLIT-P2.5-P1.1: mokinys yra ilgalaikis objektas, o Room – tik vienos
+  // P2-SPLIT-P2.5-P1.2: mokinys yra ilgalaikis objektas, o Room – tik vienos
   // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
   // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
   let studentsModal = null;
@@ -1846,11 +1846,12 @@
     } catch (_) { return new Date(stamp).toLocaleString('lt-LT'); }
   }
 
-  function historicalRoomUrl(roomId, targetRole = 'teacher') {
+  function historicalRoomUrl(roomId, targetRole = 'teacher', useStay = true) {
     const url = new URL(location.href);
     url.searchParams.set('room', roomId);
     url.searchParams.set('role', targetRole === 'student' ? 'student' : 'teacher');
-    url.searchParams.set('stay', '1');
+    if (useStay) url.searchParams.set('stay', '1');
+    else url.searchParams.delete('stay');
     url.searchParams.delete('blank');
     return url.toString();
   }
@@ -1858,14 +1859,16 @@
   const STUDENT_HISTORY_RETURN_KEY = 'p2-student-history-return-v1';
   const STUDENT_CARD_REOPEN_KEY = 'p2-student-card-reopen-v1';
 
-  function saveStudentHistoryReturn(studentId = selectedStudentId) {
+  function saveStudentHistoryReturn(studentId = selectedStudentId, targetRoomId = '') {
     if (role() !== 'teacher') return;
     const safeStudentId = String(studentId || '').trim();
-    if (!safeStudentId) return;
+    const safeTargetRoomId = String(targetRoomId || '').trim().toUpperCase();
+    if (!safeStudentId || !safeTargetRoomId) return;
     try {
       sessionStorage.setItem(STUDENT_HISTORY_RETURN_KEY, JSON.stringify({
         url: location.href,
         studentId: safeStudentId,
+        targetRoomId: safeTargetRoomId,
         savedAt: Date.now()
       }));
     } catch (_) {}
@@ -1877,39 +1880,65 @@
       if (!value || typeof value !== 'object') return null;
       const url = String(value.url || '');
       const studentId = String(value.studentId || '').trim();
-      if (!url || !studentId) return null;
+      const targetRoomId = String(value.targetRoomId || '').trim().toUpperCase();
+      if (!url || !studentId || !targetRoomId) return null;
       if (Number(value.savedAt || 0) && Date.now() - Number(value.savedAt) > 12 * 60 * 60 * 1000) return null;
-      return { url, studentId };
+      return { url, studentId, targetRoomId };
     } catch (_) { return null; }
   }
 
   function installStudentHistoryReturnButton() {
-    const params = new URL(location.href).searchParams;
-    if (params.get('stay') !== '1') return;
     const state = readStudentHistoryReturn();
     if (!state) return;
-    const host = document.querySelector('.p2-session-actions');
-    if (!host || document.getElementById('studentHistoryReturnButton')) return;
+    const params = new URL(location.href).searchParams;
+    const activeRoomId = String(params.get('room') || '').trim().toUpperCase();
+    if (!activeRoomId || activeRoomId !== state.targetRoomId) return;
+    const app = document.getElementById('app');
+    const workspace = document.getElementById('p2Workspace');
+    if (!app || !workspace || document.getElementById('studentHistoryReturnBar')) return;
+
+    const historical = params.get('stay') === '1';
+    const bar = document.createElement('div');
+    bar.className = 'p2-history-return-bar';
+    bar.id = 'studentHistoryReturnBar';
+    bar.setAttribute('role', 'navigation');
+    bar.setAttribute('aria-label', 'Grįžimas į mokinio kortelę');
+    bar.innerHTML = `<div class="p2-history-return-context"><span aria-hidden="true">${historical ? '◷' : '◉'}</span><strong>${historical ? 'Istorinė pamoka' : 'Mokinio vaizdas'}</strong><code>${escapeHtml(activeRoomId)}</code></div>`;
+
     const button = document.createElement('button');
-    button.className = 'ghost-button p2-top-action p2-history-return-button';
+    button.className = 'p2-history-return-button';
     button.id = 'studentHistoryReturnButton';
     button.type = 'button';
     button.innerHTML = '<span aria-hidden="true">←</span><span>Grįžti į mokinio kortelę</span>';
-    button.title = 'Grįžti į mokinio kortelę nekurianant papildomo naršyklės skirtuko';
+    button.title = 'Grįžti į mokinio kortelę tame pačiame naršyklės skirtuke';
     button.addEventListener('click', () => {
       try { sessionStorage.setItem(STUDENT_CARD_REOPEN_KEY, state.studentId); } catch (_) {}
       location.assign(state.url);
     });
-    host.prepend(button);
+    bar.appendChild(button);
+    app.insertBefore(bar, workspace);
+    document.body.classList.add('p2-student-history-nav-active');
   }
 
   function openHistoricalRoom(roomId, targetRole = 'teacher') {
     const safe = String(roomId || '').trim().toUpperCase();
     if (!safe) return;
-    saveStudentHistoryReturn();
-    // P2-SPLIT-P2.5-P1.1: pamokų istorijos lenta naviguojama tame pačiame
-    // skirtuke. Taip istorijos peržiūra nesukuria papildomo Firebase kliento.
-    location.assign(historicalRoomUrl(safe, targetRole));
+    const target = targetRole === 'student' ? 'student' : 'teacher';
+    const activeRoomId = currentRoomId();
+
+    // P2-SPLIT-P2.5-P1.2: jei mokytojas iš kortelės atidaro būtent tą pačią
+    // aktyvią lentą, jokios istorinės navigacijos nereikia. Tiesiog uždarome
+    // kortelę, todėl URL lieka be stay=1 ir aktyvios sesijos funkcijos išlieka.
+    if (safe === activeRoomId && target === role()) {
+      if (studentsModal) studentsModal.hidden = true;
+      return;
+    }
+
+    saveStudentHistoryReturn(selectedStudentId, safe);
+    const isHistoricalRoom = safe !== activeRoomId;
+    // Kitai (senesnei) Room pridedame stay=1, kad transition nenukreiptų į
+    // naujesnę sesiją. Tos pačios aktyvios Room mokinio vaizdui stay nereikia.
+    location.assign(historicalRoomUrl(safe, target, isHistoricalRoom));
   }
 
   installStudentHistoryReturnButton();

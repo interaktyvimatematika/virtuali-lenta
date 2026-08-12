@@ -6636,7 +6636,7 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 }
 
 
-/* P2-SPLIT-P2.5-P1.1 — mokinių duomenų bazė ir pamokų istorija */
+/* P2-SPLIT-P2.5-P1.2 — mokinių duomenų bazė ir pamokų istorija */
 .p2-students-modal[hidden]{display:none!important}
 .p2-students-modal{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:24px}
 .p2-students-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44);backdrop-filter:blur(3px)}
@@ -6663,7 +6663,72 @@ body.p2-shell .p2-library-panel > .p2-library-body {
 @media(max-width:850px){.p2-students-modal{padding:10px}.p2-students-panel{width:100%;height:96vh;border-radius:18px}.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{border-right:0;border-bottom:1px solid #e8edf4;max-height:250px}.p2-student-detail-pane{padding:16px}.p2-student-edit-card{grid-template-columns:1fr}.p2-student-assign-row{grid-template-columns:1fr}.p2-student-history-item{grid-template-columns:1fr}.p2-student-history-actions{justify-content:flex-start;max-width:none}}
 
 
-/* P2-SPLIT-P2.5-P1.1 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
+/* P2-SPLIT-P2.5-P1.2 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
 .p2-history-return-button{white-space:nowrap}
 .p2-history-return-button>span:first-child{font-size:15px;line-height:1}
 @media(max-width:1100px){.p2-history-return-button>span:last-child{display:none}}
+
+
+/* P2-SPLIT-P2.5-P1.2 — mokinio istorijos navigacija nebeardo pagrindinio topbar */
+body.p2-shell.p2-student-history-nav-active .app{
+  grid-template-rows:var(--p2-topbar-height) 38px minmax(0,1fr);
+}
+.p2-history-return-bar{
+  min-width:0;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:4px 14px;
+  border-bottom:1px solid #e3e8f0;
+  background:#f8fafc;
+  color:#536174;
+  z-index:19;
+}
+.p2-history-return-context{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+}
+.p2-history-return-context>span{color:#63758c;font-size:13px;line-height:1}
+.p2-history-return-context strong{color:#46566b;font-size:11px}
+.p2-history-return-context code{
+  max-width:110px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  padding:3px 6px;
+  border-radius:7px;
+  background:#edf2f7;
+  color:#52647b;
+  font-size:10px;
+}
+.p2-history-return-button{
+  flex:0 0 auto;
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:0 10px;
+  border:1px solid #d7dfe9;
+  border-radius:9px;
+  background:#fff;
+  color:#40526a;
+  font:inherit;
+  font-size:11px;
+  font-weight:750;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.p2-history-return-button:hover{background:#f3f6fa}
+.p2-history-return-button>span:first-child{font-size:14px;line-height:1}
+@media(max-width:700px){
+  .p2-history-return-bar{padding-inline:8px}
+  .p2-history-return-context strong{display:none}
+  .p2-history-return-button>span:last-child{display:none}
+  .p2-history-return-button{width:30px;padding:0;justify-content:center}
+}
