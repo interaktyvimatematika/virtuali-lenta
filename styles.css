@@ -6500,3 +6500,27 @@ body.p2-shell .p2-teacher-simple-answer small {
   body.p2-shell .p2-simple-answer-field { align-items:stretch; }
   body.p2-shell .p2-library-lesson-card [data-library-action="assign"] { white-space:normal; }
 }
+
+
+/* P2-SPLIT-P2.4.7.19.1 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
+body.p2-shell math-field.p2-inline-math {
+  display:inline-block;
+  width:auto;
+  min-width:0;
+  min-height:0;
+  margin:0 .06em;
+  padding:0;
+  border:0;
+  background:transparent;
+  vertical-align:-0.14em;
+  font-size:1.08em;
+  line-height:1;
+  white-space:nowrap;
+}
+body.p2-shell .p2-choice math-field.p2-inline-math {
+  font-size:1.14em;
+}
+body.p2-shell .p2-preview-choice math-field.p2-inline-math,
+body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
+  font-size:1.12em;
+}

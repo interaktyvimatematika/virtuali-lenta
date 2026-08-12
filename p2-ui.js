@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.19';
+  const BUILD = 'P2-SPLIT-P2.4.7.19.1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -207,7 +207,7 @@
     ]
   });
 
-  // P2-SPLIT-P2.4.7.19: pirmasis pilnas jaunesnių klasių diagnostinis rinkinys.
+  // P2-SPLIT-P2.4.7.19.1: 5 klasės rinkinio sąlygose ir pasirinkimuose rodomos tikros LaTeX formulės.
   // Sąmoningai naudojami tik testiniai klausimai ir paprasti vienos eilutės
   // atsakymo laukeliai, kad penktokei nereikėtų sudėtingo formulės įvedimo.
   const GRADE5_REVIEW_LESSON = Object.freeze({
@@ -227,19 +227,19 @@
       },
       {
         id: 'g5-02', type: 'input', section: 'class', label: 'Skaičiai',
-        title: 'Apvalinimas', prompt: 'Suapvalink 68 742 iki tūkstančių.',
+        title: 'Apvalinimas', prompt: 'Suapvalink 68 742 iki tūkstančių.', promptDisplay: 'Suapvalink \\(68\\,742\\) iki tūkstančių.',
         answer: '69000', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
         hint: 'Pažiūrėk į šimtų skaitmenį.'
       },
       {
         id: 'g5-03', type: 'input', section: 'class', label: 'Veiksmai',
-        title: 'Veiksmų tvarka', prompt: 'Apskaičiuok: 900 − 24 · 15 + 120 : 6',
+        title: 'Veiksmų tvarka', prompt: 'Apskaičiuok: 900 − 24 · 15 + 120 : 6', promptDisplay: 'Apskaičiuok: \\(900-24\\cdot15+120:6\\)',
         answer: '560', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
         hint: 'Pirmiausia atlik daugybą ir dalybą.'
       },
       {
         id: 'g5-04', type: 'input', section: 'class', label: 'Veiksmai',
-        title: 'Dalyba', prompt: 'Apskaičiuok: 936 : 26',
+        title: 'Dalyba', prompt: 'Apskaičiuok: 936 : 26', promptDisplay: 'Apskaičiuok: \\(936:26\\)',
         answer: '36', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
         hint: 'Patikrink, iš kokio skaičiaus reikia padauginti 26, kad gautum 936.'
       },
@@ -263,55 +263,55 @@
       },
       {
         id: 'g5-08', type: 'choice', section: 'class', label: 'Trupmenos',
-        title: 'Lygiavertės trupmenos', prompt: 'Kuri trupmena lygi 3/4?',
-        choices: ['4/6', '6/8', '5/9', '7/10'], answer: '6/8',
+        title: 'Lygiavertės trupmenos', prompt: 'Kuri trupmena lygi 3/4?', promptDisplay: 'Kuri trupmena lygi \\(\\frac{3}{4}\\)?',
+        choices: ['4/6', '6/8', '5/9', '7/10'], choicesDisplay: ['\\(\\frac{4}{6}\\)', '\\(\\frac{6}{8}\\)', '\\(\\frac{5}{9}\\)', '\\(\\frac{7}{10}\\)'], answer: '6/8',
         hint: 'Skaitiklį ir vardiklį galima padauginti iš to paties skaičiaus.'
       },
       {
         id: 'g5-09', type: 'choice', section: 'class', label: 'Trupmenos',
-        title: 'Mišrusis skaičius', prompt: 'Kuris mišrusis skaičius lygus 11/4?',
-        choices: ['2 1/4', '2 2/4', '2 3/4', '3 1/4'], answer: '2 3/4',
+        title: 'Mišrusis skaičius', prompt: 'Kuris mišrusis skaičius lygus 11/4?', promptDisplay: 'Kuris mišrusis skaičius lygus \\(\\frac{11}{4}\\)?',
+        choices: ['2 1/4', '2 2/4', '2 3/4', '3 1/4'], choicesDisplay: ['\\(2\\frac{1}{4}\\)', '\\(2\\frac{2}{4}\\)', '\\(2\\frac{3}{4}\\)', '\\(3\\frac{1}{4}\\)'], answer: '2 3/4',
         hint: '11 : 4 = 2 ir lieka 3.'
       },
       {
         id: 'g5-10', type: 'choice', section: 'class', label: 'Trupmenos',
         title: 'Trupmenų palyginimas', prompt: 'Kuris teiginys teisingas?',
-        choices: ['5/6 < 4/5', '5/6 = 4/5', '5/6 > 4/5'], answer: '5/6 > 4/5',
+        choices: ['5/6 < 4/5', '5/6 = 4/5', '5/6 > 4/5'], choicesDisplay: ['\\(\\frac{5}{6}<\\frac{4}{5}\\)', '\\(\\frac{5}{6}=\\frac{4}{5}\\)', '\\(\\frac{5}{6}>\\frac{4}{5}\\)'], answer: '5/6 > 4/5',
         hint: 'Gali trupmenas palyginti suvienodinęs vardiklius.'
       },
       {
         id: 'g5-11', type: 'choice', section: 'class', label: 'Trupmenos',
-        title: 'Trupmenų sudėtis', prompt: 'Apskaičiuok: 2/7 + 3/7',
-        choices: ['3/7', '4/7', '5/7', '5/14'], answer: '5/7',
+        title: 'Trupmenų sudėtis', prompt: 'Apskaičiuok: 2/7 + 3/7', promptDisplay: 'Apskaičiuok: \\(\\frac{2}{7}+\\frac{3}{7}\\)',
+        choices: ['3/7', '4/7', '5/7', '5/14'], choicesDisplay: ['\\(\\frac{3}{7}\\)', '\\(\\frac{4}{7}\\)', '\\(\\frac{5}{7}\\)', '\\(\\frac{5}{14}\\)'], answer: '5/7',
         hint: 'Kai vardikliai vienodi, sudėk skaitiklius.'
       },
       {
         id: 'g5-12', type: 'input', section: 'class', label: 'Trupmenos',
-        title: 'Trupmena ir natūralusis skaičius', prompt: 'Apskaičiuok: 3/5 · 10',
+        title: 'Trupmena ir natūralusis skaičius', prompt: 'Apskaičiuok: 3/5 · 10', promptDisplay: 'Apskaičiuok: \\(\\frac{3}{5}\\cdot10\\)',
         answer: '6', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
         hint: '10 padalink į 5 lygias dalis ir paimk 3 dalis.'
       },
       {
         id: 'g5-13', type: 'input', section: 'class', label: 'Dešimtainiai skaičiai',
-        title: 'Trupmena ir dešimtainis skaičius', prompt: 'Kaip dešimtainiu skaičiumi užrašyti 75/100?',
+        title: 'Trupmena ir dešimtainis skaičius', prompt: 'Kaip dešimtainiu skaičiumi užrašyti 75/100?', promptDisplay: 'Kaip dešimtainiu skaičiumi užrašyti \\(\\frac{75}{100}\\)?',
         answer: '0,75', acceptedAnswers: ['0,75', '0.75'], answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Pvz., 0,5',
         hint: 'Šimtosios rašomos dviem skaitmenimis po kablelio.'
       },
       {
         id: 'g5-14', type: 'input', section: 'class', label: 'Dešimtainiai skaičiai',
-        title: 'Veiksmai su dešimtainiais skaičiais', prompt: 'Apskaičiuok: 7,4 + 2,85 − 1,25',
+        title: 'Veiksmai su dešimtainiais skaičiais', prompt: 'Apskaičiuok: 7,4 + 2,85 − 1,25', promptDisplay: 'Apskaičiuok: \\(7{,}4+2{,}85-1{,}25\\)',
         answer: '9', acceptedAnswers: ['9', '9,0', '9,00', '9.0', '9.00'], answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
         hint: 'Rašydama stulpeliu sulygiuok kablelius.'
       },
       {
         id: 'g5-15', type: 'choice', section: 'class', label: 'Procentai',
-        title: 'Nuolaida', prompt: 'Kuprinė kainavo 80 Eur. Jai pritaikyta 25 % nuolaida. Kiek dabar kainuoja kuprinė?',
+        title: 'Nuolaida', prompt: 'Kuprinė kainavo 80 Eur. Jai pritaikyta 25 % nuolaida. Kiek dabar kainuoja kuprinė?', promptDisplay: 'Kuprinė kainavo \\(80\\text{ Eur}\\). Jai pritaikyta \\(25\\%\\) nuolaida. Kiek dabar kainuoja kuprinė?',
         choices: ['20 Eur', '55 Eur', '60 Eur', '65 Eur'], answer: '60 Eur',
         hint: '25 % yra ketvirtadalis. Rask ketvirtadalį 80 Eur ir jį atimk.'
       },
       {
         id: 'g5-16', type: 'input', section: 'class', label: 'Dėsningumai',
-        title: 'Skaičių seka', prompt: 'Rask kitą sekos narį: 4, 9, 14, 19, …',
+        title: 'Skaičių seka', prompt: 'Rask kitą sekos narį: 4, 9, 14, 19, …', promptDisplay: 'Rask kitą sekos narį: \\(4,\\ 9,\\ 14,\\ 19,\\ \\ldots\\)',
         answer: '24', answerType: 'number', inputLabel: 'Kitas skaičius', placeholder: 'Įrašyk skaičių',
         hint: 'Pažiūrėk, kiek kiekvieną kartą padidėja skaičius.'
       },
@@ -323,62 +323,62 @@
       },
       {
         id: 'g5-18', type: 'input', section: 'class', label: 'Lygtys',
-        title: 'Paprasta lygtis', prompt: 'Rask x: x + 17 = 42. Įrašyk tik x reikšmę.',
+        title: 'Paprasta lygtis', prompt: 'Rask x: x + 17 = 42. Įrašyk tik x reikšmę.', promptDisplay: 'Rask \\(x\\): \\(x+17=42\\). Įrašyk tik \\(x\\) reikšmę.',
         answer: '25', answerType: 'number', inputLabel: 'x =', placeholder: 'Įrašyk skaičių',
         hint: 'Kokį skaičių pridėjus prie 17 gausi 42?'
       },
       {
         id: 'g5-19', type: 'input', section: 'class', label: 'Lygtys',
-        title: 'Lygtis su daugyba', prompt: 'Rask x: 3x + 6 = 27. Įrašyk tik x reikšmę.',
+        title: 'Lygtis su daugyba', prompt: 'Rask x: 3x + 6 = 27. Įrašyk tik x reikšmę.', promptDisplay: 'Rask \\(x\\): \\(3x+6=27\\). Įrašyk tik \\(x\\) reikšmę.',
         answer: '7', answerType: 'number', inputLabel: 'x =', placeholder: 'Įrašyk skaičių',
         hint: 'Pirmiausia iš abiejų pusių atimk 6.'
       },
       {
         id: 'g5-20', type: 'choice', section: 'class', label: 'Raidiniai reiškiniai',
-        title: 'Panašieji nariai', prompt: 'Kuris reiškinys lygus 4a + 3a?',
-        choices: ['7', '7a', '12a', '12a²'], answer: '7a',
+        title: 'Panašieji nariai', prompt: 'Kuris reiškinys lygus 4a + 3a?', promptDisplay: 'Kuris reiškinys lygus \\(4a+3a\\)?',
+        choices: ['7', '7a', '12a', '12a²'], choicesDisplay: ['\\(7\\)', '\\(7a\\)', '\\(12a\\)', '\\(12a^2\\)'], answer: '7a',
         hint: 'Sudedi keturias ir tris tokias pačias a dalis.'
       },
       {
         id: 'g5-21', type: 'choice', section: 'self', label: 'Geometrija',
-        title: 'Kampai', prompt: 'Koks yra 125° kampas?',
+        title: 'Kampai', prompt: 'Koks yra 125° kampas?', promptDisplay: 'Koks yra \\(125^\\circ\\) kampas?',
         choices: ['Smailusis', 'Statusis', 'Bukasis', 'Ištiestinis'], answer: 'Bukasis',
         hint: 'Bukasis kampas yra didesnis už 90°, bet mažesnis už 180°.'
       },
       {
         id: 'g5-22', type: 'input', section: 'self', label: 'Geometrija',
-        title: 'Trikampio kampai', prompt: 'Du trikampio kampai yra 70° ir 55°. Koks trečiasis kampas?',
+        title: 'Trikampio kampai', prompt: 'Du trikampio kampai yra 70° ir 55°. Koks trečiasis kampas?', promptDisplay: 'Du trikampio kampai yra \\(70^\\circ\\) ir \\(55^\\circ\\). Koks trečiasis kampas?',
         answer: '55', answerType: 'number', inputLabel: 'Kampas', inputSuffix: '°', placeholder: 'Įrašyk skaičių',
         hint: 'Visų trikampio kampų suma yra 180°.'
       },
       {
         id: 'g5-23', type: 'choice', section: 'self', label: 'Geometrija',
-        title: 'Perimetras ir plotas', prompt: 'Stačiakampio ilgis 8 cm, plotis 5 cm. Kuri pora teisinga?',
-        choices: ['P = 13 cm, S = 40 cm²', 'P = 26 cm, S = 40 cm²', 'P = 40 cm, S = 26 cm²', 'P = 26 cm, S = 13 cm²'],
+        title: 'Perimetras ir plotas', prompt: 'Stačiakampio ilgis 8 cm, plotis 5 cm. Kuri pora teisinga?', promptDisplay: 'Stačiakampio ilgis \\(8\\text{ cm}\\), plotis \\(5\\text{ cm}\\). Kuri pora teisinga?',
+        choices: ['P = 13 cm, S = 40 cm²', 'P = 26 cm, S = 40 cm²', 'P = 40 cm, S = 26 cm²', 'P = 26 cm, S = 13 cm²'], choicesDisplay: ['\\(P=13\\text{ cm},\\ S=40\\text{ cm}^2\\)', '\\(P=26\\text{ cm},\\ S=40\\text{ cm}^2\\)', '\\(P=40\\text{ cm},\\ S=26\\text{ cm}^2\\)', '\\(P=26\\text{ cm},\\ S=13\\text{ cm}^2\\)'],
         answer: 'P = 26 cm, S = 40 cm²',
         hint: 'Perimetrui sudėk visų kraštinių ilgius, plotui daugink ilgį iš pločio.'
       },
       {
         id: 'g5-24', type: 'input', section: 'self', label: 'Geometrija',
-        title: 'Stačiojo trikampio plotas', prompt: 'Stačiojo trikampio statinių ilgiai yra 8 cm ir 5 cm. Koks trikampio plotas?',
+        title: 'Stačiojo trikampio plotas', prompt: 'Stačiojo trikampio statinių ilgiai yra 8 cm ir 5 cm. Koks trikampio plotas?', promptDisplay: 'Stačiojo trikampio statinių ilgiai yra \\(8\\text{ cm}\\) ir \\(5\\text{ cm}\\). Koks trikampio plotas?',
         answer: '20', answerType: 'number', inputLabel: 'Plotas', inputSuffix: 'cm²', placeholder: 'Įrašyk skaičių',
         hint: 'Stačiojo trikampio plotas yra pusė 8 · 5.'
       },
       {
         id: 'g5-25', type: 'input', section: 'self', label: 'Geometrija',
-        title: 'Tūris', prompt: 'Stačiakampio gretasienio matmenys: 4 cm × 3 cm × 2 cm. Koks jo tūris?',
+        title: 'Tūris', prompt: 'Stačiakampio gretasienio matmenys: 4 cm × 3 cm × 2 cm. Koks jo tūris?', promptDisplay: 'Stačiakampio gretasienio matmenys: \\(4\\text{ cm}\\times3\\text{ cm}\\times2\\text{ cm}\\). Koks jo tūris?',
         answer: '24', answerType: 'number', inputLabel: 'Tūris', inputSuffix: 'cm³', placeholder: 'Įrašyk skaičių',
         hint: 'Tūrį gausi sudauginusi visus tris matmenis.'
       },
       {
         id: 'g5-26', type: 'input', section: 'self', label: 'Matavimai',
-        title: 'Matavimo vienetai', prompt: '2,4 m = kiek centimetrų?',
+        title: 'Matavimo vienetai', prompt: '2,4 m = kiek centimetrų?', promptDisplay: '\\(2{,}4\\text{ m}\\) = kiek centimetrų?',
         answer: '240', answerType: 'number', inputLabel: 'Atsakymas', inputSuffix: 'cm', placeholder: 'Įrašyk skaičių',
         hint: '1 m = 100 cm.'
       },
       {
         id: 'g5-27', type: 'input', section: 'self', label: 'Judėjimas',
-        title: 'Kelias, greitis ir laikas', prompt: 'Automobilis nuvažiavo 180 km, važiuodamas 60 km/h greičiu. Kiek valandų truko kelionė?',
+        title: 'Kelias, greitis ir laikas', prompt: 'Automobilis nuvažiavo 180 km, važiuodamas 60 km/h greičiu. Kiek valandų truko kelionė?', promptDisplay: 'Automobilis nuvažiavo \\(180\\text{ km}\\), važiuodamas \\(60\\text{ km/h}\\) greičiu. Kiek valandų truko kelionė?',
         answer: '3', answerType: 'number', inputLabel: 'Laikas', inputSuffix: 'val.', placeholder: 'Įrašyk skaičių',
         hint: 'Laikas = kelias : greitis.'
       },
@@ -397,7 +397,7 @@
       {
         id: 'g5-30', type: 'choice', section: 'self', label: 'Tikimybė',
         title: 'Paprasta tikimybė', prompt: 'Maišelyje yra 3 raudoni, 2 mėlyni ir 1 žalias rutuliukas. Kokia tikimybė ištraukti mėlyną?',
-        choices: ['1/6', '1/3', '1/2', '2/3'], answer: '1/3',
+        choices: ['1/6', '1/3', '1/2', '2/3'], choicesDisplay: ['\\(\\frac{1}{6}\\)', '\\(\\frac{1}{3}\\)', '\\(\\frac{1}{2}\\)', '\\(\\frac{2}{3}\\)'], answer: '1/3',
         hint: 'Iš viso yra 6 rutuliukai, iš jų 2 mėlyni.'
       }
     ]
@@ -460,6 +460,32 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[char]));
+  }
+
+  // Leidžia paprastame sąlygos tekste naudoti LaTeX fragmentus tarp \( ... \).
+  // Tekstas visada escapinamas, o formulė pateikiama read-only MathLive lauku.
+  function renderRichMathText(value) {
+    const source = String(value ?? '');
+    const re = /\\\(([\s\S]*?)\\\)/g;
+    let html = '';
+    let cursor = 0;
+    let match;
+    while ((match = re.exec(source))) {
+      html += escapeHtml(source.slice(cursor, match.index));
+      html += `<math-field class="p2-static-math p2-inline-math" read-only tabindex="-1">${escapeHtml(match[1])}</math-field>`;
+      cursor = match.index + match[0].length;
+    }
+    html += escapeHtml(source.slice(cursor));
+    return html;
+  }
+
+  function taskDisplayPrompt(task) {
+    return task?.promptDisplay || task?.prompt || '';
+  }
+
+  function taskDisplayChoice(task, index, fallback) {
+    const displays = Array.isArray(task?.choicesDisplay) ? task.choicesDisplay : [];
+    return displays[index] ?? fallback ?? '';
   }
 
   const practiceEngine = window.P772PracticeEngine || null;
@@ -1105,7 +1131,7 @@
             </div>`
           : `<div class="p2-choice-list">${(Array.isArray(task.choices) ? task.choices : []).map((choice, index) => {
               const active = selected === choice ? ' is-selected' : '';
-              return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></button>`;
+              return `<button type="button" class="p2-choice${active}" data-choice="${escapeHtml(choice)}" ${(item.solved || exhausted) ? 'disabled' : ''}><span>${String.fromCharCode(65 + index)}</span><b>${renderRichMathText(taskDisplayChoice(task, index, choice))}</b></button>`;
             }).join('')}</div>`;
 
     const conditionMarkup = (solutionTask || expressionTask)
@@ -1114,7 +1140,7 @@
           <math-field class="p2-static-math p2-task-equation" read-only tabindex="-1">${escapeHtml(task.prompt)}</math-field>
           ${expressionTask && task.response?.options?.domain ? `<p class="p2-expression-domain">Apibrėžimo sąlyga: ${escapeHtml(task.response.options.domain)}</p>` : ''}
         </div>`
-      : `<p class="p2-task-prompt">${escapeHtml(task.prompt)}</p>`;
+      : `<p class="p2-task-prompt">${renderRichMathText(taskDisplayPrompt(task))}</p>`;
 
     const dots = activeLesson().tasks.map((candidate, index) => {
       const cstate = taskState(candidate.id);
@@ -2131,19 +2157,19 @@
       answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
       responseMarkup = teacherExpressionMarkup(previewTask, item);
     } else if (simpleInputTask) {
-      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction">${escapeHtml(previewTask.prompt)}</p>`;
+      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction">${renderRichMathText(taskDisplayPrompt(previewTask))}</p>`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${escapeHtml(previewTask.answer)}${previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong></div>`;
       responseMarkup = `<div class="p2-teacher-simple-answer"><span>Mokinio įrašas</span><strong>${liveAnswer ? escapeHtml(liveAnswer) : '—'}${liveAnswer && previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong><small>● gyvai</small></div>`;
     } else {
       const choices = Array.isArray(previewTask.choices) ? previewTask.choices : [];
       const correctIndex = Math.max(0, choices.findIndex(choice => choice === previewTask.answer));
       const correctLetter = String.fromCharCode(65 + correctIndex);
-      conditionMarkup = `<h3>${escapeHtml(previewTask.prompt)}</h3>`;
-      answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${escapeHtml(previewTask.answer)}</strong></div>`;
+      conditionMarkup = `<h3>${renderRichMathText(taskDisplayPrompt(previewTask))}</h3>`;
+      answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${renderRichMathText(taskDisplayChoice(previewTask, correctIndex, previewTask.answer))}</strong></div>`;
       const choiceMarkup = choices.map((choice, index) => {
         const isSelected = liveAnswer === choice;
         const classes = ['p2-preview-choice', isSelected ? 'is-student-selected' : ''].filter(Boolean).join(' ');
-        return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${escapeHtml(choice)}</b></div>`;
+        return `<div class="${classes}"><span class="p2-preview-choice-letter">${String.fromCharCode(65 + index)}</span><b>${renderRichMathText(taskDisplayChoice(previewTask, index, choice))}</b></div>`;
       }).join('');
       responseMarkup = `<div class="p2-preview-choice-list">${choiceMarkup}</div>`;
     }
