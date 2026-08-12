@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.19.4.5';
+  const BUILD = 'P2-SPLIT-P2.5-P1';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -409,6 +409,14 @@
   let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
   let progress = null;
   let selectedAnswers = {};
+
+  // P2-SPLIT-P2.5-P1: mokinys yra ilgalaikis objektas, o Room – tik vienos
+  // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
+  // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
+  let studentsModal = null;
+  let selectedStudentId = null;
+  let studentDbSnapshotTimer = null;
+  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {} };
 
   function lessonForId(lessonId) {
     const id = String(lessonId || '').trim();
@@ -1774,6 +1782,9 @@
     document.querySelectorAll('.p2-teacher-only').forEach(el => el.hidden = !isTeacher);
     const p2LibraryButton = document.getElementById('libraryButton');
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
+    const p2StudentsButton = document.getElementById('studentsButton');
+    if (p2StudentsButton) p2StudentsButton.hidden = !isTeacher;
+    if (!isTeacher && studentsModal) studentsModal.hidden = true;
     if (!isTeacher && teacherPreviewMode !== 'closed') {
       teacherPreviewMode = 'closed';
       if (teacherPreviewWindow) teacherPreviewWindow.hidden = true;
@@ -1796,6 +1807,275 @@
   }
 
   if (userCount) new MutationObserver(updatePresence).observe(userCount, { childList: true, subtree: true, characterData: true });
+
+
+  function currentRoomId() {
+    const visible = String(document.getElementById('onlineRoomCode')?.textContent || '').trim().toUpperCase();
+    if (/^[A-Z0-9_-]{4,24}$/.test(visible) && visible !== '—') return visible;
+    const fromUrl = String(new URL(location.href).searchParams.get('room') || '').trim().toUpperCase();
+    return /^[A-Z0-9_-]{4,24}$/.test(fromUrl) ? fromUrl : '';
+  }
+
+  function normalizeTeacherStudentDb(value) {
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+      profileId: String(source.profileId || ''),
+      students: source.students && typeof source.students === 'object' ? source.students : {},
+      roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {}
+    };
+  }
+
+  function studentList() {
+    return Object.entries(teacherStudentDb.students || {})
+      .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'lt'));
+  }
+
+  function linkedStudentIdForRoom(roomId = currentRoomId()) {
+    return String(teacherStudentDb.roomLinks?.[roomId]?.studentId || '');
+  }
+
+  function formatStudentDate(value, compact = false) {
+    const stamp = Number(value);
+    if (!Number.isFinite(stamp) || stamp <= 0) return '—';
+    try {
+      return new Intl.DateTimeFormat('lt-LT', compact
+        ? { year: 'numeric', month: '2-digit', day: '2-digit' }
+        : { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+      ).format(new Date(stamp));
+    } catch (_) { return new Date(stamp).toLocaleString('lt-LT'); }
+  }
+
+  function historicalRoomUrl(roomId, targetRole = 'teacher') {
+    const url = new URL(location.href);
+    url.searchParams.set('room', roomId);
+    url.searchParams.set('role', targetRole === 'student' ? 'student' : 'teacher');
+    url.searchParams.set('stay', '1');
+    url.searchParams.delete('blank');
+    return url.toString();
+  }
+
+  function openHistoricalRoom(roomId, targetRole = 'teacher') {
+    const safe = String(roomId || '').trim().toUpperCase();
+    if (!safe) return;
+    const link = document.createElement('a');
+    link.href = historicalRoomUrl(safe, targetRole);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function requestStudentDb(detail) {
+    if (role() !== 'teacher') return;
+    window.dispatchEvent(new CustomEvent('p2:students-request', { detail }));
+  }
+
+  function ensureStudentsModal() {
+    if (studentsModal) return studentsModal;
+    studentsModal = document.createElement('div');
+    studentsModal.className = 'p2-students-modal';
+    studentsModal.hidden = true;
+    studentsModal.innerHTML = `
+      <div class="p2-students-backdrop" data-students-close></div>
+      <section class="p2-students-panel" role="dialog" aria-modal="true" aria-label="Mokiniai">
+        <header class="p2-students-header">
+          <div><span class="p2-side-kicker">MOKINIŲ DUOMENŲ BAZĖ</span><h2>Mokiniai</h2><p>Pamokų istorija, progresas ir konkrečių pamokų lentos.</p></div>
+          <button type="button" data-students-close aria-label="Uždaryti">×</button>
+        </header>
+        <div class="p2-students-body" id="p2StudentsBody"></div>
+      </section>`;
+    document.body.appendChild(studentsModal);
+    studentsModal.querySelectorAll('[data-students-close]').forEach(el => el.addEventListener('click', () => { studentsModal.hidden = true; }));
+    return studentsModal;
+  }
+
+  function lessonHistoryForStudent(student) {
+    return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
+      .map(([roomId, item]) => ({ roomId, ...(item && typeof item === 'object' ? item : {}) }))
+      .sort((a, b) => Number(b.createdAt || b.linkedAt || 0) - Number(a.createdAt || a.linkedAt || 0));
+  }
+
+  function studentProgressLabel(lesson) {
+    const summary = lesson?.summary && typeof lesson.summary === 'object' ? lesson.summary : {};
+    const taskCount = Math.max(0, Number(lesson?.taskCount || summary.taskCount || 0));
+    const finished = Math.max(0, Number(summary.finished || 0));
+    if (!lesson?.lessonId) return 'Lenta be pratybų';
+    if (!taskCount) return summary.status === 'completed' ? 'Baigta' : 'Pratybos priskirtos';
+    return `${finished} / ${taskCount}${summary.status === 'completed' ? ' · baigta' : ''}`;
+  }
+
+  function renderStudentsModal() {
+    if (!studentsModal || studentsModal.hidden) return;
+    const host = studentsModal.querySelector('#p2StudentsBody');
+    if (!host) return;
+    const students = studentList();
+    const roomId = currentRoomId();
+    const linkedStudentId = linkedStudentIdForRoom(roomId);
+    if (!selectedStudentId || !teacherStudentDb.students?.[selectedStudentId]) {
+      selectedStudentId = linkedStudentId && teacherStudentDb.students?.[linkedStudentId]
+        ? linkedStudentId
+        : students[0]?.id || null;
+    }
+    const selected = selectedStudentId ? teacherStudentDb.students[selectedStudentId] : null;
+    const history = selected ? lessonHistoryForStudent(selected) : [];
+    const currentLesson = selected?.lessons?.[roomId] || null;
+    const defaultLessonId = currentLesson?.lessonId || assignment?.lessonId || '';
+    const linkedToOther = linkedStudentId && linkedStudentId !== selectedStudentId;
+
+    const listMarkup = students.length ? students.map(student => {
+      const count = lessonHistoryForStudent(student).length;
+      const current = linkedStudentId === student.id;
+      return `<button class="p2-student-list-item ${student.id === selectedStudentId ? 'is-active' : ''}" type="button" data-student-select="${escapeHtml(student.id)}">
+        <span class="p2-student-avatar" aria-hidden="true">${escapeHtml(String(student.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</span>
+        <span><strong>${escapeHtml(student.name || 'Mokinys')}</strong><small>${count} ${count === 1 ? 'pamoka' : 'pamokos'}${current ? ' · dabartinė sesija' : ''}</small></span>
+      </button>`;
+    }).join('') : `<div class="p2-students-empty"><strong>Dar nėra mokinių</strong><span>Įrašyk vardą žemiau ir sukurk pirmą mokinio kortelę.</span></div>`;
+
+    let detailMarkup = `<div class="p2-student-detail-empty"><span aria-hidden="true">♟</span><h3>Pasirink mokinį</h3><p>Sukūrus mokinį čia atsiras jo pamokų istorija ir senų lentų nuorodos.</p></div>`;
+    if (selected) {
+      const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === defaultLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
+      const historyMarkup = history.length ? history.map(item => {
+        const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
+        const summary = item.summary || {};
+        const percent = Math.max(0, Math.min(100, Number(summary.percent || 0)));
+        return `<article class="p2-student-history-item ${item.roomId === roomId ? 'is-current' : ''}">
+          <div class="p2-student-history-main">
+            <div class="p2-student-history-title"><strong>${escapeHtml(title)}</strong>${item.roomId === roomId ? '<span>Dabartinė</span>' : ''}</div>
+            <p>${formatStudentDate(item.createdAt || item.linkedAt)} · Room <code>${escapeHtml(item.roomId)}</code></p>
+            <div class="p2-student-history-progress"><i><b style="width:${percent}%"></b></i><span>${escapeHtml(studentProgressLabel(item))}</span></div>
+          </div>
+          <div class="p2-student-history-actions">
+            <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="teacher">Atidaryti lentą</button>
+            <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="student">Mokinio vaizdas</button>
+            <button class="is-muted" type="button" data-student-unlink-room="${escapeHtml(item.roomId)}">Pašalinti iš istorijos</button>
+          </div>
+        </article>`;
+      }).join('') : `<div class="p2-student-history-empty">Šiam mokiniui dar nepriskirta nė viena pamoka.</div>`;
+
+      detailMarkup = `
+        <div class="p2-student-card-head">
+          <div class="p2-student-avatar is-large" aria-hidden="true">${escapeHtml(String(selected.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</div>
+          <div><span class="p2-label">Mokinio kortelė</span><h3>${escapeHtml(selected.name || 'Mokinys')}</h3><p>Sukurta ${formatStudentDate(selected.createdAt, true)}</p></div>
+          <button class="p2-student-danger" type="button" data-student-delete>Pašalinti mokinį</button>
+        </div>
+        <section class="p2-student-edit-card">
+          <label><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
+          <label><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
+          <button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button>
+        </section>
+        <section class="p2-student-current-session ${currentLesson ? 'is-linked' : ''}">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė sesija</span><h3>Room ${escapeHtml(roomId || '—')}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Susieta</span>' : ''}</div>
+          ${linkedToOther ? `<div class="p2-student-link-warning">Ši Room šiuo metu susieta su kitu mokiniu. Susiejus čia, ji bus perkelta į pasirinktą kortelę.</div>` : ''}
+          <div class="p2-student-assign-row">
+            <label><span>Pratybos šiai pamokai</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
+            <button type="button" class="p2-primary" data-student-link-current>${currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką'}</button>
+          </div>
+          <p class="p2-student-current-help">Pamokos įraše išsaugomas Room kodas. Todėl šią lentą galėsi atidaryti vėliau net pradėjęs naują sesiją.</p>
+        </section>
+        <section class="p2-student-history">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Pamokų istorija</span><h3>${history.length} ${history.length === 1 ? 'pamoka' : 'pamokos'}</h3></div></div>
+          <div class="p2-student-history-list">${historyMarkup}</div>
+        </section>`;
+    }
+
+    host.innerHTML = `
+      <aside class="p2-students-list-pane">
+        <div class="p2-student-create"><label for="p2NewStudentName">Naujas mokinys</label><div><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"><button type="button" data-student-add>＋</button></div></div>
+        <div class="p2-students-list">${listMarkup}</div>
+        <div class="p2-student-db-id"><span>Šios naršyklės mokytojo bazė</span><code title="Techninis bazės identifikatorius">${escapeHtml(teacherStudentDb.profileId || 'jungiama…')}</code></div>
+      </aside>
+      <main class="p2-student-detail-pane">${detailMarkup}</main>`;
+
+    host.querySelectorAll('[data-student-select]').forEach(button => button.addEventListener('click', () => {
+      selectedStudentId = button.dataset.studentSelect;
+      renderStudentsModal();
+    }));
+    const addInput = host.querySelector('#p2NewStudentName');
+    const addStudent = () => {
+      const name = String(addInput?.value || '').trim();
+      if (!name) { addInput?.focus(); return; }
+      requestStudentDb({ action: 'add', name });
+      if (addInput) addInput.value = '';
+    };
+    host.querySelector('[data-student-add]')?.addEventListener('click', addStudent);
+    addInput?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addStudent(); } });
+
+    host.querySelector('[data-student-save]')?.addEventListener('click', () => {
+      if (!selectedStudentId) return;
+      requestStudentDb({
+        action: 'update', studentId: selectedStudentId,
+        name: host.querySelector('#p2StudentNameEdit')?.value || selected.name || '',
+        notes: host.querySelector('#p2StudentNotesEdit')?.value || ''
+      });
+    });
+    host.querySelector('[data-student-delete]')?.addEventListener('click', () => {
+      if (!selectedStudentId) return;
+      if (!window.confirm(`Pašalinti mokinį „${selected.name || 'Mokinys'}“ iš mokinių bazės? Senos Room lentos nebus ištrintos.`)) return;
+      requestStudentDb({ action: 'delete', studentId: selectedStudentId });
+      selectedStudentId = null;
+    });
+    host.querySelector('[data-student-link-current]')?.addEventListener('click', () => {
+      if (!selectedStudentId || !roomId) return;
+      if (linkedToOther && !window.confirm('Ši sesija jau susieta su kitu mokiniu. Perkelti ją į pasirinktą mokinio kortelę?')) return;
+      const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
+      const lesson = lessonForId(selectedLessonId);
+      requestStudentDb({
+        action: 'link-room',
+        studentId: selectedStudentId,
+        roomId,
+        lessonId: lesson?.id || '',
+        title: lesson?.shortTitle || '',
+        taskCount: lesson?.taskCount || 0,
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+      });
+    });
+    host.querySelectorAll('[data-student-open-room]').forEach(button => button.addEventListener('click', () => {
+      openHistoricalRoom(button.dataset.studentOpenRoom, button.dataset.roomRole || 'teacher');
+    }));
+    host.querySelectorAll('[data-student-unlink-room]').forEach(button => button.addEventListener('click', () => {
+      const oldRoom = button.dataset.studentUnlinkRoom;
+      if (!window.confirm(`Pašalinti Room ${oldRoom} iš šio mokinio pamokų istorijos? Pati lenta Firebase liks nepaliesta.`)) return;
+      requestStudentDb({ action: 'unlink-room', studentId: selectedStudentId, roomId: oldRoom });
+    }));
+  }
+
+  function openStudentsDatabase() {
+    if (role() !== 'teacher') return;
+    ensureStudentsModal();
+    studentsModal.hidden = false;
+    renderStudentsModal();
+  }
+
+  const originalStudentsButton = document.getElementById('studentsButton');
+  if (originalStudentsButton) originalStudentsButton.addEventListener('click', openStudentsDatabase);
+
+  function queueCurrentStudentLessonSnapshot() {
+    if (role() !== 'teacher') return;
+    clearTimeout(studentDbSnapshotTimer);
+    studentDbSnapshotTimer = setTimeout(() => {
+      const roomId = currentRoomId();
+      const studentId = linkedStudentIdForRoom(roomId);
+      if (!roomId || !studentId) return;
+      const state = progress ? normalizedProgress(progress) : null;
+      let summary = { status: state?.status || 'not_started', finished: 0, solved: 0, good: 0, help: 0, repeat: 0, percent: 0, taskCount: assignment?.taskCount || 0, currentTaskId: state?.currentTaskId || null };
+      if (assignment && state) summary = { ...summary, ...progressStats(), status: state.status, taskCount: activeLesson().taskCount, currentTaskId: state.currentTaskId };
+      requestStudentDb({
+        action: 'snapshot', studentId, roomId,
+        lessonId: assignment?.lessonId || '',
+        title: assignment ? activeLesson().shortTitle : '',
+        taskCount: assignment ? activeLesson().taskCount : 0,
+        summary
+      });
+    }, 450);
+  }
+
+  window.addEventListener('p2:students-state', event => {
+    teacherStudentDb = normalizeTeacherStudentDb(event.detail);
+    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
+    renderStudentsModal();
+  });
 
   const originalLibraryButton = document.getElementById('libraryButton');
   if (originalLibraryButton) {
@@ -2323,6 +2603,8 @@
     renderPanels();
     renderLibraryContent();
     renderTeacherPreview();
+    queueCurrentStudentLessonSnapshot();
+    renderStudentsModal();
   });
 
   window.addEventListener('p2:progress-state', event => {
@@ -2334,9 +2616,11 @@
       && comparableProgress(incoming) === comparableProgress(progress);
     progress = incoming;
     if (teacherFollowStudent && progress) teacherPreviewTaskId = currentTask().id;
-    if (ownLiveEcho) return;
+    if (ownLiveEcho) { queueCurrentStudentLessonSnapshot(); return; }
     renderPanels();
     renderTeacherPreview();
+    queueCurrentStudentLessonSnapshot();
+    renderStudentsModal();
   });
 
   const roleObserver = new MutationObserver(() => applyRole());
