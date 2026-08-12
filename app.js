@@ -464,7 +464,8 @@
   let drawingActive = false;
   let activeStroke = null;
   let remoteLiveStrokes = [];
-  let lastCanvasSize = { width: 0, height: 0 };
+  let canvasViewport = null;
+  let canvasViewportRaf = 0;
   let editorDirty = false;
   let editorLoading = false;
   let pendingAiImport = null;
@@ -522,13 +523,17 @@
 
   const BOARD_WORLD_MIN_WIDTH = 2400;
   const BOARD_WORLD_MIN_HEIGHT = 1700;
-  // P3-P1: DOM pasaulis plečiamas dalimis. 30 000 px riba yra tik techninė vieno
+  // P3-P1.1: DOM pasaulis plečiamas dalimis. 30 000 px riba yra tik techninė vieno
   // pasaulio segmento apsauga nuo naršyklės milžiniško elemento / canvas limito;
   // vartotojui erdvė plečiasi automatiškai tik priartėjus prie krašto.
   const BOARD_WORLD_MAX_WIDTH = 30000;
   const BOARD_WORLD_MAX_HEIGHT = 30000;
   const BOARD_WORLD_EDGE_SCREEN_MARGIN = 150;
-  const BOARD_CANVAS_PIXEL_BUDGET = 16_000_000;
+  // P3-P1.1: piešimo bitmapas apima tik matomą lentos sritį su nedideliu
+  // rezervu aplink ją. Taip jo raiška nepriklauso nuo viso virtualaus pasaulio dydžio.
+  const BOARD_CANVAS_OVERSCAN_SCREEN = 320;
+  const BOARD_CANVAS_REPOSITION_GUARD_SCREEN = 110;
+  const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
 
   function clampCameraZoom(value) {
     return Math.max(0.2, Math.min(1.8, Number(value) || 0.72));
@@ -663,7 +668,7 @@
     state.camera.scrollTop = oldScrollTop + top * zoom;
 
     applyBoardCamera({ restoreScroll: true });
-    resizeCanvas();
+    resizeCanvas({ force: true });
     layoutBoardObjects();
     initializePracticeWindow();
     if (options.save !== false) scheduleSave();
@@ -733,7 +738,7 @@
     state.camera.scrollLeft = Math.max(0, oldScrollLeft + deltaOriginX * currentBoardZoom());
     state.camera.scrollTop = Math.max(0, oldScrollTop + deltaOriginY * currentBoardZoom());
     applyBoardCamera({ restoreScroll: true });
-    resizeCanvas();
+    resizeCanvas({ force: true });
     layoutBoardObjects();
     initializePracticeWindow();
   }
@@ -8732,6 +8737,7 @@ KOKYBĖS REIKALAVIMAI:
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
       cameraApplying = false;
+      resizeCanvas({ force: true });
       layoutBoardObjects();
       refreshMathFieldRendering(refs.boardWorld);
       if (state.practiceOnly?.active) refreshMathFieldRendering(refs.practiceOnlyHost);
@@ -8898,6 +8904,7 @@ KOKYBĖS REIKALAVIMAI:
       if (cameraApplying) return;
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
+      scheduleCanvasViewportRefresh();
       clearTimeout(cameraScrollTimer);
       cameraScrollTimer = window.setTimeout(scheduleSave, 140);
       scheduleBoardEdgeExpansion();
@@ -9015,42 +9022,119 @@ KOKYBĖS REIKALAVIMAI:
     scheduleSave();
   }
 
-  function configureCanvasContext(context, dpr) {
-    if (!context) return;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function configureCanvasContext(context, backingScale, viewport = canvasViewport) {
+    if (!context || !viewport) return;
+    context.setTransform(
+      backingScale, 0, 0, backingScale,
+      -viewport.left * backingScale, -viewport.top * backingScale
+    );
     context.lineCap = 'round';
     context.lineJoin = 'round';
   }
 
-  function resizeCanvas() {
-    const rect = getBoardWorldRect();
-    const nativeDpr = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1));
-    const budgetDpr = Math.sqrt(BOARD_CANVAS_PIXEL_BUDGET / Math.max(1, rect.width * rect.height));
-    const dpr = Math.max(0.14, Math.min(nativeDpr, budgetDpr));
-    const dprKey = Math.round(dpr * 1000);
-    if (Math.round(rect.width) === lastCanvasSize.width && Math.round(rect.height) === lastCanvasSize.height && lastCanvasSize.dprKey === dprKey) return;
-    lastCanvasSize = { width: Math.round(rect.width), height: Math.round(rect.height), dprKey };
-    refs.canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    refs.canvas.height = Math.max(1, Math.round(rect.height * dpr));
-    refs.canvas.style.width = `${rect.width}px`;
-    refs.canvas.style.height = `${rect.height}px`;
+  function clearPhysicalCanvas(context, canvas) {
+    if (!context || !canvas) return;
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+  }
+
+  function visibleBoardWorldRect() {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const left = Math.max(0, refs.board.scrollLeft / zoom);
+    const top = Math.max(0, refs.board.scrollTop / zoom);
+    const width = Math.max(1, refs.board.clientWidth / zoom);
+    const height = Math.max(1, refs.board.clientHeight / zoom);
+    return {
+      left, top, width, height,
+      right: Math.min(world.width, left + width),
+      bottom: Math.min(world.height, top + height)
+    };
+  }
+
+  function desiredCanvasViewport() {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const visible = visibleBoardWorldRect();
+    const overscan = BOARD_CANVAS_OVERSCAN_SCREEN / zoom;
+    const left = Math.max(0, visible.left - overscan);
+    const top = Math.max(0, visible.top - overscan);
+    const right = Math.min(world.width, visible.right + overscan);
+    const bottom = Math.min(world.height, visible.bottom + overscan);
+    return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top), right, bottom };
+  }
+
+  function canvasViewportStillCoversVisible() {
+    if (!canvasViewport) return false;
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const visible = visibleBoardWorldRect();
+    const guard = BOARD_CANVAS_REPOSITION_GUARD_SCREEN / zoom;
+    const leftOk = canvasViewport.left <= 0.01 || canvasViewport.left <= visible.left - guard;
+    const topOk = canvasViewport.top <= 0.01 || canvasViewport.top <= visible.top - guard;
+    const rightOk = canvasViewport.right >= world.width - 0.01 || canvasViewport.right >= visible.right + guard;
+    const bottomOk = canvasViewport.bottom >= world.height - 0.01 || canvasViewport.bottom >= visible.bottom + guard;
+    return leftOk && topOk && rightOk && bottomOk && Math.abs((canvasViewport.zoom || 0) - zoom) < 0.0001;
+  }
+
+  function resizeCanvas(options = {}) {
+    if (!refs.canvas || !refs.board) return;
+    const force = options === true || Boolean(options?.force);
+    if (!force && canvasViewportStillCoversVisible()) return;
+
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const viewport = desiredCanvasViewport();
+    const deviceDpr = Math.max(1, Math.min(BOARD_CANVAS_MAX_DEVICE_DPR, window.devicePixelRatio || 1));
+    // Kadangi visas boardWorld mastelis keičiamas CSS zoom/transform būdu, bitmapui
+    // reikia deviceDpr * zoom pikselių vienam pasaulio vienetui. Taip fizinis bitmapo
+    // dydis išlieka maždaug ekrano dydžio, net kai virtualus pasaulis yra milžiniškas.
+    const backingScale = Math.max(0.2, deviceDpr * zoom);
+    viewport.zoom = zoom;
+    viewport.backingScale = backingScale;
+    canvasViewport = viewport;
+
+    refs.canvas.style.left = `${viewport.left}px`;
+    refs.canvas.style.top = `${viewport.top}px`;
+    refs.canvas.style.width = `${viewport.width}px`;
+    refs.canvas.style.height = `${viewport.height}px`;
+    refs.canvas.width = Math.max(1, Math.round(viewport.width * backingScale));
+    refs.canvas.height = Math.max(1, Math.round(viewport.height * backingScale));
     drawingContext = refs.canvas.getContext('2d');
-    configureCanvasContext(drawingContext, dpr);
+    configureCanvasContext(drawingContext, backingScale, viewport);
 
     if (!committedCanvas) committedCanvas = document.createElement('canvas');
     committedCanvas.width = refs.canvas.width;
     committedCanvas.height = refs.canvas.height;
     committedContext = committedCanvas.getContext('2d');
-    configureCanvasContext(committedContext, dpr);
+    configureCanvasContext(committedContext, backingScale, viewport);
 
     rebuildCommittedCanvas();
     redrawCanvas();
     clampWindowToBoard();
   }
 
+  function scheduleCanvasViewportRefresh(options = {}) {
+    if (canvasViewportRaf) return;
+    canvasViewportRaf = requestAnimationFrame(() => {
+      canvasViewportRaf = 0;
+      resizeCanvas(options);
+    });
+  }
+
   function pointFromEvent(event) {
+    const world = getBoardWorldRect();
     const rect = refs.canvas.getBoundingClientRect();
-    return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
+    const viewport = canvasViewport || { left: 0, top: 0, width: world.width, height: world.height };
+    const localX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const localY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0;
+    const worldX = viewport.left + localX * viewport.width;
+    const worldY = viewport.top + localY * viewport.height;
+    return {
+      x: Math.max(0, Math.min(1, worldX / Math.max(1, world.width))),
+      y: Math.max(0, Math.min(1, worldY / Math.max(1, world.height)))
+    };
   }
 
   function createStrokeId() {
@@ -9105,7 +9189,7 @@ KOKYBĖS REIKALAVIMAI:
   function rebuildCommittedCanvas() {
     if (!committedContext || !committedCanvas) return;
     const rect = getBoardWorldRect();
-    committedContext.clearRect(0, 0, rect.width, rect.height);
+    clearPhysicalCanvas(committedContext, committedCanvas);
     for (const stroke of state.drawing) drawStrokeToContext(committedContext, stroke, rect);
   }
 
@@ -9158,10 +9242,15 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function redrawCanvas() {
-    if (!drawingContext) return;
+    if (!drawingContext || !refs.canvas) return;
     const rect = getBoardWorldRect();
-    drawingContext.clearRect(0, 0, rect.width, rect.height);
-    if (committedCanvas) drawingContext.drawImage(committedCanvas, 0, 0, rect.width, rect.height);
+    clearPhysicalCanvas(drawingContext, refs.canvas);
+    if (committedCanvas) {
+      drawingContext.save();
+      drawingContext.setTransform(1, 0, 0, 1, 0, 0);
+      drawingContext.drawImage(committedCanvas, 0, 0);
+      drawingContext.restore();
+    }
     for (const stroke of remoteLiveStrokes) drawStrokeToContext(drawingContext, stroke, rect);
     if (activeStroke) drawStrokeToContext(drawingContext, activeStroke, rect);
   }
@@ -11992,7 +12081,7 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointerup', stopDrawing);
   refs.canvas.addEventListener('pointercancel', stopDrawing);
 
-  new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas(); layoutBoardObjects(); }).observe(refs.board);
+  new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas({ force: true }); layoutBoardObjects(); }).observe(refs.board);
   window.addEventListener('beforeunload', () => {
     try {
       state.packageData = practicePackage;
