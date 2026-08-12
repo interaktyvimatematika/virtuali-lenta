@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.19.4.4';
+  const BUILD = 'P2-SPLIT-P2.4.7.19.4.5';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -463,7 +463,9 @@
   }
 
   // Leidžia paprastame sąlygos tekste naudoti LaTeX fragmentus tarp \( ... \).
-  // Tekstas visada escapinamas, o formulė pateikiama read-only MathLive lauku.
+  // Sąlygose matematika yra tik rodoma, todėl naudojame MathLive statinį
+  // <math-span>, o ne redagavimui skirtą <math-field>. Taip formulė tampa
+  // natūralia tos pačios teksto eilutės dalimi ir neatsineša įvedimo lauko geometrijos.
   function renderRichMathText(value) {
     const source = String(value ?? '');
     const re = /\\\(([\s\S]*?)\\\)/g;
@@ -475,12 +477,10 @@
 
       const mathEnd = match.index + match[0].length;
       const afterMath = source.slice(mathEnd);
-      // Skyrybos ženklas turi jungtis prie prieš jį esančios formulės taip pat,
-      // kaip jungiasi prie paprasto teksto. Kartu toleruojame AI / autoriaus
-      // netyčia paliktus tarpus tarp \(...\) ir . , : ; ? !
+      // Skyrybos ženklas turi jungtis prie formulės kaip prie paprasto teksto.
+      // Toleruojame ir netyčia tarp \(...\) bei skyrybos paliktus tarpus.
       const punctuation = afterMath.match(/^(\s*)([.,:;?!…])/u);
-      const punctuationClass = punctuation ? ' p2-inline-math-before-punctuation' : '';
-      html += `<math-field class="p2-static-math p2-inline-math${punctuationClass}" read-only tabindex="-1">${escapeHtml(match[1])}</math-field>`;
+      html += `<math-span class="p2-inline-math" mode="textstyle">${escapeHtml(match[1])}</math-span>`;
 
       cursor = mathEnd + (punctuation ? punctuation[1].length : 0);
     }
