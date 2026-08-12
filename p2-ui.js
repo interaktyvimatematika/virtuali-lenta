@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.4.7.19.4.3';
+  const BUILD = 'P2-SPLIT-P2.4.7.19.4.4';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -472,8 +472,17 @@
     let match;
     while ((match = re.exec(source))) {
       html += escapeHtml(source.slice(cursor, match.index));
-      html += `<math-field class="p2-static-math p2-inline-math" read-only tabindex="-1">${escapeHtml(match[1])}</math-field>`;
-      cursor = match.index + match[0].length;
+
+      const mathEnd = match.index + match[0].length;
+      const afterMath = source.slice(mathEnd);
+      // Skyrybos ženklas turi jungtis prie prieš jį esančios formulės taip pat,
+      // kaip jungiasi prie paprasto teksto. Kartu toleruojame AI / autoriaus
+      // netyčia paliktus tarpus tarp \(...\) ir . , : ; ? !
+      const punctuation = afterMath.match(/^(\s*)([.,:;?!…])/u);
+      const punctuationClass = punctuation ? ' p2-inline-math-before-punctuation' : '';
+      html += `<math-field class="p2-static-math p2-inline-math${punctuationClass}" read-only tabindex="-1">${escapeHtml(match[1])}</math-field>`;
+
+      cursor = mathEnd + (punctuation ? punctuation[1].length : 0);
     }
     html += escapeHtml(source.slice(cursor));
     return html;

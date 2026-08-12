@@ -6502,7 +6502,7 @@ body.p2-shell .p2-teacher-simple-answer small {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.4.3 — inline LaTeX kaip natūrali tos pačios teksto eilutės dalis */
+/* P2-SPLIT-P2.4.7.19.4.4 — inline LaTeX kaip natūrali tos pačios teksto eilutės dalis */
 body.p2-shell math-field.p2-inline-math {
   display:inline-block;
   width:auto;
@@ -6521,6 +6521,12 @@ body.p2-shell .p2-choice math-field.p2-inline-math,
 body.p2-shell .p2-preview-choice math-field.p2-inline-math,
 body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
   font-size:1em;
+}
+
+/* 19.4.4 — MathLive inline laukas turi mažą optinį dešinį rezervą.
+   Prie skyrybos jį kompensuojame, kad būtų „x:“ ir „reiškinys?“, ne „x :“. */
+body.p2-shell math-field.p2-inline-math-before-punctuation {
+  margin-right:-0.10em;
 }
 
 

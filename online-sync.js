@@ -90,7 +90,7 @@ function urlForRoom(targetRoom, role) {
   url.searchParams.set('role', role === 'student' ? 'student' : 'teacher');
   url.searchParams.delete('student');
   url.searchParams.delete('new');
-  // P2-SPLIT-P2.4.7.19.4.3: stay=1 yra tik rankiniu būdu įjungiamas
+  // P2-SPLIT-P2.4.7.19.4.4: stay=1 yra tik rankiniu būdu įjungiamas
   // mokytojo istorinis / diagnostinis režimas. Jo negalima paveldėti į
   // mokinio nuorodą ar automatinį perėjimą į kitą sesiją.
   url.searchParams.delete('stay');
@@ -146,7 +146,7 @@ function stable(value) {
 const roomInfo = resolveRoom();
 const roomId = roomInfo.room;
 const onlineRole = resolveAccessRole();
-// P2-SPLIT-P2.4.7.19.4.3: &stay=1 yra aiškiai rankiniu būdu įjungiamas
+// P2-SPLIT-P2.4.7.19.4.4: &stay=1 yra aiškiai rankiniu būdu įjungiamas
 // istorinis / diagnostinis režimas. Jis veikia tiek mokytojo, tiek mokinio
 // rolei, kad būtų galima apžiūrėti abi seno Room puses nepaisant transition.
 // Įprastai generuojamos nuorodos stay parametro nepaveldi.
@@ -660,7 +660,7 @@ onValue(transitionRef, snapshot => {
   const data = snapshot.val();
   const nextRoom = safeRoom(data?.toRoom);
   if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
-  // P2-SPLIT-P2.4.7.19.4.3: &stay=1 leidžia sąmoningai likti būtent
+  // P2-SPLIT-P2.4.7.19.4.4: &stay=1 leidžia sąmoningai likti būtent
   // šiame istoriniame Room tiek mokytojo, tiek mokinio vaizde. Transition duomenų neliečiame.
   if (stayOnRoom) {
     console.info(`Istorinis Room ${roomId}: automatinis perėjimas į ${nextRoom} praleistas dėl stay=1.`);
@@ -745,7 +745,7 @@ async function commitDrawingStroke(stroke) {
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
   } catch (error) {
-    console.warn('P2-SPLIT-P2.4.7.19.4.3 brūkšnio persistavimo klaida', error);
+    console.warn('P2-SPLIT-P2.4.7.19.4.4 brūkšnio persistavimo klaida', error);
     // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
     window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
   }
