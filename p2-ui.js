@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4.3';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2607,11 +2607,11 @@
           </div>
           <div class="p2-student-create-card">
             <div class="p2-student-create-page-grid">
-              <label><span>Vardas</span><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"></label>
-              <label><span>Klasė</span><select id="p2NewStudentGrade">${gradeOptions(0)}</select></label>
-              <label><span>Tėtis / mama / kita</span><select id="p2NewStudentGuardianRelation">${guardianRelationOptions('')}</select></label>
-              <label data-new-guardian-custom-field hidden><span>Pavadinimas</span><input id="p2NewStudentGuardianCustom" maxlength="40" placeholder="Pvz. globėja"></label>
-              <label><span>Tėčio / mamos / globėjo vardas</span><input id="p2NewStudentGuardianName" maxlength="80" placeholder="Nebūtina"></label>
+              <label class="p2-create-student-name"><span>Vardas</span><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"></label>
+              <label class="p2-create-grade"><span>Klasė</span><select id="p2NewStudentGrade">${gradeOptions(0)}</select></label>
+              <label class="p2-create-relation"><span>Ryšys</span><select id="p2NewStudentGuardianRelation">${guardianRelationOptions('')}</select></label>
+              <label class="p2-create-guardian-name"><span>Vardas</span><input id="p2NewStudentGuardianName" maxlength="80" placeholder="Tėčio, mamos ar globėjo vardas"></label>
+              <label class="p2-create-guardian-custom" data-new-guardian-custom-field hidden><span>Kas tai?</span><input id="p2NewStudentGuardianCustom" maxlength="40" placeholder="Pvz. globėja, močiutė"></label>
             </div>
             <div class="p2-student-create-page-footer"><button type="button" class="p2-secondary" data-student-overview>Atšaukti</button><button type="button" class="p2-primary" data-student-add>Sukurti mokinį</button></div>
           </div>
@@ -2649,11 +2649,11 @@
         </div>
         <section class="p2-student-edit-card">
           <div class="p2-student-edit-grid">
-            <label><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
-            <label class="p2-student-grade-field"><span>Klasė</span><select id="p2StudentGradeEdit">${gradeOptions(selectedGrade)}</select></label>
-            <label><span>Tėtis / mama / kita</span><select id="p2StudentGuardianRelationEdit">${guardianRelationOptions(selectedRelation)}</select></label>
-            <label data-guardian-custom-field ${selectedRelation === 'kita' ? '' : 'hidden'}><span>Pavadinimas</span><input id="p2StudentGuardianCustomEdit" value="${escapeHtml(selected.guardianCustomRelation || '')}" maxlength="40" placeholder="Pvz. globėja"></label>
-            <label><span>Tėčio / mamos / globėjo vardas</span><input id="p2StudentGuardianNameEdit" value="${escapeHtml(selected.guardianName || '')}" maxlength="80" placeholder="Nebūtina"></label>
+            <label class="p2-edit-student-name"><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
+            <label class="p2-student-grade-field p2-edit-grade"><span>Klasė</span><select id="p2StudentGradeEdit">${gradeOptions(selectedGrade)}</select></label>
+            <label class="p2-edit-relation"><span>Ryšys</span><select id="p2StudentGuardianRelationEdit">${guardianRelationOptions(selectedRelation)}</select></label>
+            <label class="p2-edit-guardian-name"><span>Vardas</span><input id="p2StudentGuardianNameEdit" value="${escapeHtml(selected.guardianName || '')}" maxlength="80" placeholder="Tėčio, mamos ar globėjo vardas"></label>
+            <label class="p2-edit-guardian-custom" data-guardian-custom-field ${selectedRelation === 'kita' ? '' : 'hidden'}><span>Kas tai?</span><input id="p2StudentGuardianCustomEdit" value="${escapeHtml(selected.guardianCustomRelation || '')}" maxlength="40" placeholder="Pvz. globėja, močiutė"></label>
             <label class="p2-student-notes-field"><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
           </div>
           <div class="p2-student-edit-footer"><span>Tėčio / mamos / globėjo duomenys saugomi tik mokytojo mokinių bazėje ir į mokinio Room nekopijuojami.</span><button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button></div>
@@ -2737,11 +2737,11 @@
       const name = String(addInput?.value || '').trim();
       const grade = studentGradeValue(host.querySelector('#p2NewStudentGrade')?.value);
       const guardianRelation = studentGuardianRelation(host.querySelector('#p2NewStudentGuardianRelation')?.value);
-      const guardianCustomRelation = String(host.querySelector('#p2NewStudentGuardianCustom')?.value || '').trim();
+      const guardianCustomRelation = guardianRelation === 'kita' ? String(host.querySelector('#p2NewStudentGuardianCustom')?.value || '').trim() : '';
       const guardianName = String(host.querySelector('#p2NewStudentGuardianName')?.value || '').trim();
       if (!name) { addInput?.focus(); return; }
       if (guardianRelation && !guardianName) { toast('Įrašyk tėčio, mamos arba globėjo vardą'); host.querySelector('#p2NewStudentGuardianName')?.focus(); return; }
-      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk ryšio pavadinimą'); host.querySelector('#p2NewStudentGuardianCustom')?.focus(); return; }
+      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk, kas tai yra'); host.querySelector('#p2NewStudentGuardianCustom')?.focus(); return; }
       requestStudentDb({ action: 'add', name, grade, guardianRelation, guardianCustomRelation, guardianName });
       studentCreateOpen = false;
       selectedStudentId = null;
@@ -2761,10 +2761,10 @@
     host.querySelector('[data-student-save]')?.addEventListener('click', () => {
       if (!selectedStudentId || !selected) return;
       const guardianRelation = studentGuardianRelation(editRelation?.value);
-      const guardianCustomRelation = String(host.querySelector('#p2StudentGuardianCustomEdit')?.value || '').trim();
+      const guardianCustomRelation = guardianRelation === 'kita' ? String(host.querySelector('#p2StudentGuardianCustomEdit')?.value || '').trim() : '';
       const guardianName = String(host.querySelector('#p2StudentGuardianNameEdit')?.value || '').trim();
       if (guardianRelation && !guardianName) { toast('Įrašyk tėčio, mamos arba globėjo vardą'); host.querySelector('#p2StudentGuardianNameEdit')?.focus(); return; }
-      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk ryšio pavadinimą'); host.querySelector('#p2StudentGuardianCustomEdit')?.focus(); return; }
+      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk, kas tai yra'); host.querySelector('#p2StudentGuardianCustomEdit')?.focus(); return; }
       requestStudentDb({
         action: 'update', studentId: selectedStudentId,
         name: host.querySelector('#p2StudentNameEdit')?.value || selected.name || '',
