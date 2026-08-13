@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7.1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -913,10 +913,25 @@ function scheduleSlotTimeForDate(entry, dateKeyRaw) {
   const versions = scheduleTimeVersionsForEntry(entry).filter(item => item.effectiveFrom <= dateKey);
   return versions.length ? versions[versions.length - 1] : null;
 }
+function scheduleClosureRangesForEntry(entry) {
+  const raw = entry?.closedRanges && typeof entry.closedRanges === 'object' ? entry.closedRanges : {};
+  return Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
+    .map(item => ({ ...item, fromDate: validScheduleDateKey(item.fromDate), toDate: validScheduleDateKey(item.toDate) }))
+    .filter(item => item.fromDate && item.toDate && item.toDate >= item.fromDate)
+    .sort((a, b) => a.fromDate.localeCompare(b.fromDate) || a.toDate.localeCompare(b.toDate));
+}
+function scheduleSlotClosedOnDate(entry, dateKeyRaw) {
+  const dateKey = validScheduleDateKey(dateKeyRaw);
+  if (!dateKey) return false;
+  const retiredFrom = validScheduleDateKey(entry?.retiredFrom);
+  if (retiredFrom && dateKey >= retiredFrom) return true;
+  return scheduleClosureRangesForEntry(entry).some(item => dateKey >= item.fromDate && dateKey <= item.toDate);
+}
 function scheduleSlotOccursOnDate(entry, dateKeyRaw) {
   const dateKey = validScheduleDateKey(dateKeyRaw);
+  if (!dateKey || scheduleSlotClosedOnDate(entry, dateKey)) return false;
   const time = scheduleSlotTimeForDate(entry, dateKey);
-  return Boolean(dateKey && time && time.day === scheduleDayFromDateKey(dateKey));
+  return Boolean(time && time.day === scheduleDayFromDateKey(dateKey));
 }
 function scheduleAssignmentsForEntry(entry) {
   const result = [];
@@ -1031,6 +1046,11 @@ function explicitScheduleSlotPayload(existing = {}) {
     else value.date = validScheduleDateKey(item.date);
     assignments[id] = value;
   }
+  const closedRanges = {};
+  for (const item of scheduleClosureRangesForEntry(existing)) {
+    const id = String(item.id || '').trim() || `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    closedRanges[id] = { fromDate: item.fromDate, toDate: item.toDate, createdAt: Math.max(0, Number(item.createdAt || now)) || now };
+  }
   const currentTime = scheduleSlotTimeForDate(existing, localDateKey()) || Object.values(timeVersions).sort((a,b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).slice(-1)[0] || { day: 1, start: '16:00', durationMinutes: 40 };
   return {
     schemaVersion: P2_DATA_SCHEMA_VERSION,
@@ -1038,6 +1058,8 @@ function explicitScheduleSlotPayload(existing = {}) {
     label: cleanScheduleLabel(existing.label),
     timeVersions,
     assignments,
+    closedRanges,
+    retiredFrom: validScheduleDateKey(existing.retiredFrom),
     lessonId: String(existing.lessonId || '').trim().slice(0, 80),
     practiceTitle: String(existing.practiceTitle || '').trim().slice(0, 140),
     taskCount: Math.max(0, Math.min(500, Math.round(Number(existing.taskCount) || 0))),
@@ -1473,6 +1495,42 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
 
+    if (detail.action === 'slot-close-range') {
+      const fromDate = validScheduleDateKey(detail.fromDate);
+      const toDate = validScheduleDateKey(detail.toDate);
+      if (!fromDate || !toDate || toDate < fromDate) throw new Error('Patikrink laikino pašalinimo datas');
+      const payload = explicitScheduleSlotPayload(existing);
+      const retiredFrom = validScheduleDateKey(payload.retiredFrom);
+      if (retiredFrom && fromDate >= retiredFrom) throw new Error('Šis pamokos laikas nuo pasirinktos datos jau pašalintas visam laikui');
+      const closureId = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      payload.closedRanges[closureId] = { fromDate, toDate: retiredFrom && toDate >= retiredFrom ? scheduleAddDays(retiredFrom, -1) : toDate, createdAt: Date.now() };
+      if (payload.closedRanges[closureId].toDate < fromDate) throw new Error('Pasirinktas intervalas patenka po laiko pašalinimo visam laikui datos');
+      await saveSlot(scheduleId, payload, 'slot-close-range', `Pamokos laikas laikinai pašalintas ${fromDate}–${payload.closedRanges[closureId].toDate}`);
+      return;
+    }
+
+    if (detail.action === 'slot-close-range-delete') {
+      const closureId = String(detail.closureId || '').trim();
+      const payload = explicitScheduleSlotPayload(existing);
+      if (!closureId || !payload.closedRanges?.[closureId]) throw new Error('Laikino pašalinimo išimtis nerasta');
+      delete payload.closedRanges[closureId];
+      await saveSlot(scheduleId, payload, 'slot-close-range-delete', 'Laikino pašalinimo išimtis atšaukta');
+      return;
+    }
+
+    if (detail.action === 'slot-close-forever') {
+      const fromDate = validScheduleDateKey(detail.fromDate);
+      if (!fromDate) throw new Error('Pasirink datą, nuo kurios laikas pašalinamas');
+      const payload = explicitScheduleSlotPayload(existing);
+      payload.retiredFrom = fromDate;
+      for (const [id, range] of Object.entries(payload.closedRanges || {})) {
+        if (range.fromDate >= fromDate) { delete payload.closedRanges[id]; continue; }
+        if (range.toDate >= fromDate) range.toDate = scheduleAddDays(fromDate, -1);
+      }
+      await saveSlot(scheduleId, payload, 'slot-close-forever', `Pamokos laikas pašalintas visam laikui nuo ${fromDate}`);
+      return;
+    }
+
     if (detail.action === 'slot-meta') {
       const payload = explicitScheduleSlotPayload(existing);
       const lessonId = String(detail.lessonId || '').trim().slice(0, 80);
@@ -1651,7 +1709,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.7 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.7.1 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

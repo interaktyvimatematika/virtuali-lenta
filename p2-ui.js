@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2550,7 +2550,7 @@
     return formatStudentDate(lesson?.createdAt || lesson?.linkedAt);
   }
 
-  // P2-SPLIT-P2.5-P4-P1.7.7: būsimos mokinio pamokos skaičiuojamos ne iš
+  // P2-SPLIT-P2.5-P4-P1.7.7.1: būsimos mokinio pamokos skaičiuojamos ne iš
   // paties pamokos laiko, o iš konkrečių mokinio priskyrimų tam laikui.
   function studentScheduleNextOccurrence(entry, studentId, now = new Date()) {
     const id = String(studentId || '').trim();
@@ -3349,7 +3349,7 @@
     renderStudentsModal();
   }
 
-  // P2-SPLIT-P2.5-P4-P1.7.7: tvarkaraštis turi tris atskirus sluoksnius:
+  // P2-SPLIT-P2.5-P4-P1.7.7.1: tvarkaraštis turi tris atskirus sluoksnius:
   // 1) pamokos laikas (slotas), 2) mokinio priskyrimas tam laikui, 3) konkrečios
   // datos pamoka / Room. Pamokos laikas gali keistis nuo pasirinktos datos,
   // neperrašant ankstesnių savaičių istorijos.
@@ -3505,7 +3505,22 @@
     return versions.length ? versions[versions.length - 1] : null;
   }
 
+  function scheduleSlotClosureRanges(entry) {
+    const raw = entry?.closedRanges && typeof entry.closedRanges === 'object' ? entry.closedRanges : {};
+    return Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
+      .filter(item => scheduleDateKeyValid(item.fromDate) && scheduleDateKeyValid(item.toDate) && String(item.toDate) >= String(item.fromDate))
+      .sort((a, b) => String(a.fromDate).localeCompare(String(b.fromDate)) || String(a.toDate).localeCompare(String(b.toDate)));
+  }
+
+  function scheduleSlotClosedOnDate(entry, dateKey) {
+    if (!scheduleDateKeyValid(dateKey)) return false;
+    const retiredFrom = scheduleDateKeyValid(entry?.retiredFrom) ? String(entry.retiredFrom) : '';
+    if (retiredFrom && dateKey >= retiredFrom) return true;
+    return scheduleSlotClosureRanges(entry).some(item => dateKey >= String(item.fromDate) && dateKey <= String(item.toDate));
+  }
+
   function scheduleSlotOccursOnDate(entry, dateKey) {
+    if (scheduleSlotClosedOnDate(entry, dateKey)) return false;
     const time = scheduleSlotTimeForDate(entry, dateKey);
     return Boolean(time && Number(time.day) === scheduleDateDayIndex(dateKey));
   }
@@ -3791,6 +3806,9 @@
       }).join('') : '<div class="p2-schedule-no-students">Mokiniai dar nepriskirti.</div>';
       const versions = scheduleSlotTimeVersions(editing);
       const versionRows = versions.map(item => `<div class="p2-schedule-time-version ${item.id === '__legacy__' ? 'is-legacy' : ''}"><strong>Nuo ${escapeHtml(item.effectiveFrom)}</strong><span>${escapeHtml(SCHEDULE_DAYS.find(day => day.id === Number(item.day))?.label || '')} · ${escapeHtml(item.start)} · ${Math.max(15, Number(item.durationMinutes || 40))} min.</span></div>`).join('');
+      const closureRanges = scheduleSlotClosureRanges(editing);
+      const retiredFrom = scheduleDateKeyValid(editing.retiredFrom) ? String(editing.retiredFrom) : '';
+      const closureRows = closureRanges.length ? closureRanges.map(item => `<div class="p2-schedule-time-version is-closed"><strong>Nevyksta ${escapeHtml(item.fromDate)}–${escapeHtml(item.toDate)}</strong><span>Po šio intervalo laikas ir jo mokinių priskyrimai automatiškai grįžta.</span><button type="button" class="is-muted" data-schedule-closure-delete="${escapeHtml(item.id)}">Atšaukti išimtį</button></div>`).join('') : '';
       const label = String(editing.label || '').trim();
       editorHost.innerHTML = `
         <div class="p2-schedule-editor-head"><button type="button" class="p2-schedule-editor-close" data-schedule-editor-close>×</button><span class="p2-label">PAMOKOS LAIKAS</span><h3>${escapeHtml(label || `${time.start} · ${SCHEDULE_DAYS.find(day => day.id === Number(time.day))?.label || ''}`)}</h3><p class="p2-schedule-editor-note">Keisdami laiką nuo datos, ankstesnių savaičių istorijos neperrašome.</p></div>
@@ -3810,7 +3828,14 @@
             </div>
           </section>
           <section class="p2-schedule-editor-section"><h4>${escapeHtml(selectedDate)} pamoka</h4><div class="p2-schedule-open-box ${run ? 'is-running' : ''}"><div><strong>${run ? 'Pamoka jau atidaryta' : (activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra')}</strong><span>${activeAssignments.length ? activeAssignments.map(item => `${studentTeacherLabel(studentRecord(item.studentId), students, { alwaysGrade: true })} · ${scheduleModeLabel(item, true)}`).join(' · ') : 'Priskirk mokinius šiai datai.'}</span></div><button type="button" class="p2-primary" data-schedule-open-lesson ${(runRooms.length || activeAssignments.length) ? '' : 'disabled'}>Atidaryti pamoką</button></div></section>
-          <div class="p2-schedule-form-actions"><button type="button" class="p2-student-danger" data-schedule-delete>Pašalinti pamokos laiką</button><span></span></div>
+          <section class="p2-schedule-editor-section p2-schedule-delete-section"><details class="p2-schedule-change-time" data-schedule-delete-panel><summary>Pašalinti pamokos laiką</summary>
+            ${retiredFrom ? `<div class="p2-schedule-current-time"><span>Laikas uždarytas visam laikui nuo</span><strong>${escapeHtml(retiredFrom)}</strong></div>` : ''}
+            ${closureRows ? `<div class="p2-schedule-time-history">${closureRows}</div>` : ''}
+            <div class="p2-schedule-delete-options">
+              <div class="p2-schedule-assignment-form"><h5>Laikinai pašalinti</h5><small>Šiuo laikotarpiu pamokos laikas ir jo mokiniai tvarkaraštyje nerodomi. Pasibaigus intervalui viskas automatiškai grįžta.</small><div class="p2-schedule-form-row two"><label><span>Nuo</span><input id="p2ScheduleCloseFrom" type="date" value="${escapeHtml(selectedDate)}"></label><label><span>Iki</span><input id="p2ScheduleCloseTo" type="date" value="${escapeHtml(selectedDate)}"></label></div><button type="button" class="p2-student-danger" data-schedule-close-range>Pašalinti pasirinktam laikotarpiui</button></div>
+              ${retiredFrom ? '' : `<div class="p2-schedule-assignment-form"><h5>Pašalinti visam laikui</h5><small>Praeities pamokos ir Room lieka istorijoje. Nuo pasirinktos datos šis laikas nebegrįš, o jo mokiniai nebeturės šio pamokos laiko.</small><label><span>Nuo datos</span><input id="p2ScheduleRetireFrom" type="date" value="${escapeHtml(selectedDate)}"></label><button type="button" class="p2-student-danger" data-schedule-close-forever>Pašalinti visam laikui</button></div>`}
+            </div>
+          </details></section>
         </div>`;
     }
 
@@ -3983,12 +4008,28 @@
       requestSchedule({ action: 'start', scheduleId: editingScheduleId, dateKey });
     });
 
-    editorHost.querySelector('[data-schedule-delete]')?.addEventListener('click', () => {
+    editorHost.querySelector('[data-schedule-close-range]')?.addEventListener('click', () => {
       if (!editingScheduleId) return;
-      if (!window.confirm('Pašalinti šį pamokos laiką? Jau įvykusių pamokų istorija ir Room liks.')) return;
-      requestSchedule({ action: 'slot-delete', scheduleId: editingScheduleId });
-      editingScheduleId = '';
-      editingScheduleDateKey = '';
+      const fromDate = String(editorHost.querySelector('#p2ScheduleCloseFrom')?.value || '').trim();
+      const toDate = String(editorHost.querySelector('#p2ScheduleCloseTo')?.value || '').trim();
+      if (!scheduleDateKeyValid(fromDate) || !scheduleDateKeyValid(toDate) || toDate < fromDate) { toast('Patikrink laikino pašalinimo datas'); return; }
+      if (!window.confirm(`Pašalinti šį pamokos laiką nuo ${fromDate} iki ${toDate}? Pasibaigus intervalui jis automatiškai grįš su tais pačiais mokiniais.`)) return;
+      requestSchedule({ action: 'slot-close-range', scheduleId: editingScheduleId, fromDate, toDate });
+    });
+
+    editorHost.querySelectorAll('[data-schedule-closure-delete]').forEach(button => button.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const closureId = String(button.dataset.scheduleClosureDelete || '').trim();
+      if (!closureId) return;
+      requestSchedule({ action: 'slot-close-range-delete', scheduleId: editingScheduleId, closureId });
+    }));
+
+    editorHost.querySelector('[data-schedule-close-forever]')?.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const fromDate = String(editorHost.querySelector('#p2ScheduleRetireFrom')?.value || '').trim();
+      if (!scheduleDateKeyValid(fromDate)) { toast('Pasirink datą, nuo kurios laikas pašalinamas'); return; }
+      if (!window.confirm(`Pašalinti šį pamokos laiką visam laikui nuo ${fromDate}? Praeities pamokų istorija liks, tačiau nuo šios datos laikas ir jo mokinių priskyrimai nebegrįš.`)) return;
+      requestSchedule({ action: 'slot-close-forever', scheduleId: editingScheduleId, fromDate });
     });
   }
 
@@ -4150,9 +4191,12 @@
   window.addEventListener('p2:schedule-saved', event => {
     const scheduleId = String(event.detail?.scheduleId || '').trim();
     const kind = String(event.detail?.kind || '').trim();
-    if (kind === 'slot-delete') {
-      editingScheduleId = '';
-      editingScheduleDateKey = '';
+    if (kind === 'slot-delete' || kind === 'slot-close-range' || kind === 'slot-close-forever') {
+      const entry = scheduleId ? teacherStudentDb.scheduleEntries?.[scheduleId] : null;
+      if (kind === 'slot-delete' || (entry && editingScheduleDateKey && !scheduleSlotOccursOnDate({ id: scheduleId, ...entry }, editingScheduleDateKey))) {
+        editingScheduleId = '';
+        editingScheduleDateKey = '';
+      }
       scheduleCreateMode = false;
       scheduleCreatePreset = null;
       renderScheduleModal();
