@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.3';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.4';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2829,9 +2829,8 @@
     const selected = selectedStudentId ? teacherStudentDb.students[selectedStudentId] : null;
     const history = selected ? lessonHistoryForStudent(selected) : [];
     const currentLesson = selected?.lessons?.[roomId] || null;
-    const defaultLessonId = currentLesson?.lessonId || assignment?.lessonId || '';
-    const linkedToOther = linkedStudentId && linkedStudentId !== selectedStudentId;
-    const currentLinkedStudent = linkedStudentId ? teacherStudentDb.students?.[linkedStudentId] || null : null;
+    const selectedOwnsActiveRoom = Boolean(selected && roomId && (linkedStudentId === selectedStudentId || currentLesson));
+    const defaultLessonId = selectedOwnsActiveRoom ? (currentLesson?.lessonId || assignment?.lessonId || '') : '';
     const classSessionId = linkedClassSessionIdForRoom(roomId);
     const classParticipants = classSessionParticipants(classSessionId);
     const selectedClassParticipant = classParticipants.find(item => item.studentId === selectedStudentId) || null;
@@ -2937,6 +2936,30 @@
       const currentLessonCatalogItem = currentLesson?.lessonId ? lessonForId(currentLesson.lessonId) : null;
       const currentLessonTitle = currentLessonCatalogItem?.shortTitle || currentLesson?.title || (currentLesson?.lessonId ? currentLesson.lessonId : 'Tik lenta');
       const currentLessonTaskCount = Math.max(0, Number(currentLessonCatalogItem?.taskCount || currentLesson?.taskCount || 0));
+      const participantRoomId = String(selectedClassParticipant?.roomId || '').trim().toUpperCase();
+      const participantLesson = participantRoomId ? (selected?.lessons?.[participantRoomId] || null) : null;
+      const participantCatalogItem = participantLesson?.lessonId ? lessonForId(participantLesson.lessonId) : null;
+      const participantLessonTitle = participantCatalogItem?.shortTitle || participantLesson?.title || (participantLesson?.lessonId ? participantLesson.lessonId : 'Tik lenta');
+      const participantTaskCount = Math.max(0, Number(participantCatalogItem?.taskCount || participantLesson?.taskCount || 0));
+      let selectedCurrentSessionMarkup = '';
+      if (selectedOwnsActiveRoom) {
+        selectedCurrentSessionMarkup = `<section class="p2-student-current-session is-linked">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${escapeHtml(studentTeacherLabel(selected, students))} · Room ${escapeHtml(roomId || '—')}</h3></div><span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span></div>
+          ${currentLesson?.lessonId
+            ? `<div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(currentLessonTitle)}${currentLessonTaskCount ? ` · ${currentLessonTaskCount} užd.` : ''}</strong></div>`
+            : `<div class="p2-student-assign-row">
+                <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
+                <button type="button" class="p2-primary" data-student-link-current>Priskirti pratybas</button>
+              </div>`}
+          <p class="p2-student-current-help">Čia rodoma tik šio mokinio dabar atidaryta lenta ir jos pratybos.</p>
+        </section>`;
+      } else if (selectedClassParticipant && participantRoomId) {
+        selectedCurrentSessionMarkup = `<section class="p2-student-current-session is-linked">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Šio mokinio pamoka</span><h3>${escapeHtml(studentTeacherLabel(selected, students))} · Room ${escapeHtml(participantRoomId)}</h3></div><span class="p2-status-badge is-assigned">✓ Yra aktyvioje pamokoje</span></div>
+          <div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(participantLessonTitle)}${participantTaskCount ? ` · ${participantTaskCount} užd.` : ''}</strong></div>
+          <div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(participantRoomId)}">Atidaryti šio mokinio lentą</button></div>
+        </section>`;
+      }
       const historyMarkup = history.length ? history.map(item => {
         const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
         const summary = item.summary && typeof item.summary === 'object' ? item.summary : {};
@@ -2997,22 +3020,7 @@
           </div>
           <p class="p2-student-info-private">Tėčio / mamos / globėjo duomenys matomi tik mokytojui ir į mokinio Room nekopijuojami.</p>
         </section>`}
-        <section class="p2-student-current-session ${currentLesson || selectedClassParticipant ? 'is-linked' : ''}">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(studentTeacherLabel(currentLinkedStudent, students))} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
-          ${linkedToOther ? (selectedClassParticipant
-            ? `<div class="p2-student-class-info"><strong>${escapeHtml(studentTeacherLabel(selected, students))}</strong> jau yra šioje pamokoje ir turi atskirą lentą <code>${escapeHtml(selectedClassParticipant.roomId)}</code>.</div>`
-            : `<div class="p2-student-class-info">Dabar atidaryta <strong>${escapeHtml(studentTeacherLabel(currentLinkedStudent, students))}</strong> lenta. Pasirinktam mokiniui <strong>„${escapeHtml(studentTeacherLabel(selected, students))}“</strong> bus automatiškai sukurta <strong>atskira lenta</strong>, o viršuje atsiras jo vardinis skirtukas.</div>`)
-            : ''}
-          ${linkedToOther && selectedClassParticipant
-            ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(studentTeacherLabel(selected, students))}</button></div>`
-            : currentLesson?.lessonId && !linkedToOther
-              ? `<div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(currentLessonTitle)}${currentLessonTaskCount ? ` · ${currentLessonTaskCount} užd.` : ''}</strong></div>`
-              : `<div class="p2-student-assign-row">
-                  <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
-                  <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Priskirti pratybas' : 'Priskirti šią pamoką')}</button>
-                </div>`}
-          <p class="p2-student-current-help">Kiekvienas mokinys turi savo Room, lentą ir pratybų eigą. Tos pačios pamokos mokinius mokytojas perjungia viršuje esančiais vardiniais skirtukais.</p>
-        </section>
+        ${selectedCurrentSessionMarkup}
         <section class="p2-student-history">
           <div class="p2-student-section-heading"><div><span class="p2-label">Pamokų istorija</span><h3>${history.length} ${history.length === 1 ? 'pamoka' : 'pamokos'}</h3></div></div>
           <div class="p2-student-history-list">${historyMarkup}</div>
@@ -3169,21 +3177,6 @@
       const lesson = lessonForId(selectedLessonId);
       requestStudentDb({
         action: 'link-room',
-        studentId: selectedStudentId,
-        roomId,
-        lessonId: lesson?.id || '',
-        title: lesson?.shortTitle || '',
-        taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
-        ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
-      });
-    });
-    host.querySelector('[data-student-add-to-class]')?.addEventListener('click', () => {
-      if (!selectedStudentId || !roomId || !linkedStudentId) return;
-      const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
-      const lesson = lessonForId(selectedLessonId);
-      requestStudentDb({
-        action: 'add-to-class-session',
         studentId: selectedStudentId,
         roomId,
         lessonId: lesson?.id || '',
