@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.1';
+  const BUILD = 'P2-SPLIT-P2.4.7.19.4';
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -207,7 +207,7 @@
     ]
   });
 
-  // P2-SPLIT-P2.4.7.19.4: 5 klasės rinkinio sąlygose ir pasirinkimuose rodomos tikros LaTeX formulės.
+  // P2-SPLIT-P2.4.7.19.3: 5 klasės rinkinio sąlygose ir pasirinkimuose rodomos tikros LaTeX formulės.
   // Sąmoningai naudojami tik testiniai klausimai ir paprasti vienos eilutės
   // atsakymo laukeliai, kad penktokei nereikėtų sudėtingo formulės įvedimo.
   const GRADE5_REVIEW_LESSON = Object.freeze({
@@ -403,27 +403,218 @@
     ]
   });
 
-  const LESSON_CATALOG = Object.freeze([DEMO_LESSON, GRADE5_REVIEW_LESSON]);
+  // P2-SPLIT-P2.4.7.19.4: 7 klasės kurso kartojimo rinkinys pagal atnaujintos
+  // matematikos bendrosios programos 7 klasės turinį. Sąlygų formulės rodomos
+  // per LaTeX/MathLive, o atsakymai paliekami kuo paprastesni: pasirinkimas arba skaičius.
+  const GRADE7_REVIEW_LESSON = Object.freeze({
+    id: 'p2-grade7-review-01',
+    title: '7 klasės matematikos pakartojimas',
+    shortTitle: '7 klasės pakartojimas',
+    description: '30 įvairių 7 klasės kurso kartojimo užduočių: laipsniai ir standartinė išraiška, procentai ir palūkanos, nelygybės, tiesioginis ir atvirkštinis proporcingumas, koordinačių plokštuma, geometrija, plotai, apskritimas, tūris ir duomenys.',
+    taskCount: 30,
+    classCount: 20,
+    selfCount: 10,
+    tasks: [
+      {
+        id: 'g7-01', type: 'input', section: 'class', label: 'Laipsniai',
+        title: 'Laipsnis su natūraliuoju rodikliu', prompt: 'Apskaičiuok: 2^5', promptDisplay: 'Apskaičiuok: \\(2^5\\)',
+        answer: '32', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
+        hint: 'Laipsnis 2⁵ reiškia penkių dvejetų sandaugą.'
+      },
+      {
+        id: 'g7-02', type: 'input', section: 'class', label: 'Laipsniai',
+        title: 'Veiksmai su vienodais pagrindais', prompt: 'Apskaičiuok: 3^4 · 3^2 : 3^3', promptDisplay: 'Apskaičiuok: \\(3^4\\cdot3^2:3^3\\)',
+        answer: '27', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
+        hint: 'Dauginant vienodo pagrindo laipsnius rodikliai sudedami, dalijant – atimami.'
+      },
+      {
+        id: 'g7-03', type: 'input', section: 'class', label: 'Laipsniai',
+        title: 'Laipsnio kėlimas laipsniu', prompt: 'Apskaičiuok: (2^3)^2', promptDisplay: 'Apskaičiuok: \\((2^3)^2\\)',
+        answer: '64', answerType: 'number', inputLabel: 'Atsakymas', placeholder: 'Įrašyk skaičių',
+        hint: 'Keliant laipsnį laipsniu, rodikliai dauginami.'
+      },
+      {
+        id: 'g7-04', type: 'choice', section: 'class', label: 'Laipsniai',
+        title: 'Nulinis rodiklis', prompt: 'Kuri lygybė teisinga?',
+        choices: ['7^0 = 0', '7^0 = 1', '7^0 = 7', '7^0 = 49'],
+        choicesDisplay: ['\\(7^0=0\\)', '\\(7^0=1\\)', '\\(7^0=7\\)', '\\(7^0=49\\)'], answer: '7^0 = 1',
+        hint: 'Bet kurio nuliui nelygaus skaičiaus nulinis laipsnis lygus 1.'
+      },
+      {
+        id: 'g7-05', type: 'choice', section: 'class', label: 'Laipsniai',
+        title: 'Neigiamas rodiklis', prompt: 'Kam lygu 10^−3?', promptDisplay: 'Kam lygu \\(10^{-3}\\)?',
+        choices: ['1000', '0,001', '−1000', '−0,001'],
+        choicesDisplay: ['\\(1000\\)', '\\(0{,}001\\)', '\\(-1000\\)', '\\(-0{,}001\\)'], answer: '0,001',
+        hint: '10⁻³ = 1 : 10³.'
+      },
+      {
+        id: 'g7-06', type: 'choice', section: 'class', label: 'Laipsniai',
+        title: 'Standartinė skaičiaus išraiška', prompt: 'Kuri standartinė išraiška lygi skaičiui 0,00056?', promptDisplay: 'Kuri standartinė išraiška lygi skaičiui \\(0{,}00056\\)?',
+        choices: ['5,6 · 10^−4', '5,6 · 10^−3', '56 · 10^−4', '0,56 · 10^−4'],
+        choicesDisplay: ['\\(5{,}6\\cdot10^{-4}\\)', '\\(5{,}6\\cdot10^{-3}\\)', '\\(56\\cdot10^{-4}\\)', '\\(0{,}56\\cdot10^{-4}\\)'], answer: '5,6 · 10^−4',
+        hint: 'Standartinėje išraiškoje pirmasis daugiklis turi būti ne mažesnis už 1 ir mažesnis už 10.'
+      },
+      {
+        id: 'g7-07', type: 'input', section: 'class', label: 'Procentai',
+        title: 'Pakartotinis procentinis didėjimas', prompt: 'Kaina buvo 200 Eur. Ji du kartus iš eilės padidėjo po 10 %. Kokia tapo kaina?', promptDisplay: 'Kaina buvo \\(200\\text{ Eur}\\). Ji du kartus iš eilės padidėjo po \\(10\\%\\). Kokia tapo kaina?',
+        answer: '242', answerType: 'number', inputLabel: 'Kaina', inputSuffix: 'Eur', placeholder: 'Įrašyk skaičių',
+        hint: 'Antrą kartą 10 % skaičiuojama jau nuo po pirmojo padidėjimo gautos kainos.'
+      },
+      {
+        id: 'g7-08', type: 'input', section: 'class', label: 'Procentai',
+        title: 'Pakartotinis procentinis mažėjimas', prompt: 'Prekė kainavo 500 Eur. Pirmiausia kaina sumažinta 20 %, vėliau dar 10 %. Kokia galutinė kaina?', promptDisplay: 'Prekė kainavo \\(500\\text{ Eur}\\). Pirmiausia kaina sumažinta \\(20\\%\\), vėliau dar \\(10\\%\\). Kokia galutinė kaina?',
+        answer: '360', answerType: 'number', inputLabel: 'Kaina', inputSuffix: 'Eur', placeholder: 'Įrašyk skaičių',
+        hint: 'Po pirmos nuolaidos lieka 80 % pradinės kainos, o antra nuolaida taikoma naujai kainai.'
+      },
+      {
+        id: 'g7-09', type: 'input', section: 'class', label: 'Finansai',
+        title: 'Paprastos palūkanos', prompt: 'Į sąskaitą padėta 600 Eur. Metinė palūkanų norma yra 5 %. Kiek palūkanų bus gauta per vienus metus?', promptDisplay: 'Į sąskaitą padėta \\(600\\text{ Eur}\\). Metinė palūkanų norma yra \\(5\\%\\). Kiek palūkanų bus gauta per vienus metus?',
+        answer: '30', answerType: 'number', inputLabel: 'Palūkanos', inputSuffix: 'Eur', placeholder: 'Įrašyk skaičių',
+        hint: 'Rask 5 % nuo 600 Eur.'
+      },
+      {
+        id: 'g7-10', type: 'choice', section: 'class', label: 'Nelygybės',
+        title: 'Paprasta nelygybė', prompt: 'Kuris atsakymas yra nelygybės x + 4 > 9 sprendinys?', promptDisplay: 'Kuris atsakymas yra nelygybės \\(x+4>9\\) sprendinys?',
+        choices: ['x > 5', 'x < 5', 'x ≥ 13', 'x > 13'],
+        choicesDisplay: ['\\(x>5\\)', '\\(x<5\\)', '\\(x\\ge13\\)', '\\(x>13\\)'], answer: 'x > 5',
+        hint: 'Iš abiejų nelygybės pusių atimk 4.'
+      },
+      {
+        id: 'g7-11', type: 'choice', section: 'class', label: 'Nelygybės',
+        title: 'Dalyba iš neigiamo skaičiaus', prompt: 'Išspręsk nelygybę: −3x ≤ 12', promptDisplay: 'Išspręsk nelygybę: \\(-3x\\le12\\)',
+        choices: ['x ≤ −4', 'x ≥ −4', 'x ≤ 4', 'x ≥ 4'],
+        choicesDisplay: ['\\(x\\le-4\\)', '\\(x\\ge-4\\)', '\\(x\\le4\\)', '\\(x\\ge4\\)'], answer: 'x ≥ −4',
+        hint: 'Dalyjant nelygybę iš neigiamo skaičiaus, nelygybės ženklas apsiverčia.'
+      },
+      {
+        id: 'g7-12', type: 'choice', section: 'class', label: 'Nelygybės',
+        title: 'Dviguboji nelygybė ir intervalas', prompt: 'Kuris intervalas atitinka nelygybę −2 < x ≤ 5?', promptDisplay: 'Kuris intervalas atitinka nelygybę \\(-2<x\\le5\\)?',
+        choices: ['[−2; 5]', '(−2; 5]', '(−2; 5)', '[−2; 5)'],
+        choicesDisplay: ['\\([-2;5]\\)', '\\((-2;5]\\)', '\\((-2;5)\\)', '\\([-2;5)\\)'], answer: '(−2; 5]',
+        hint: 'Ties −2 ženklas griežtas, todėl galas atviras; 5 priklauso sprendiniams.'
+      },
+      {
+        id: 'g7-13', type: 'choice', section: 'class', label: 'Nelygybės',
+        title: 'Nelygybių sistema', prompt: 'Kuris intervalas yra sistemos x ≥ 1 ir x < 4 sprendinių aibė?', promptDisplay: 'Kuris intervalas yra sistemos \\(x\\ge1\\) ir \\(x<4\\) sprendinių aibė?',
+        choices: ['(1; 4)', '[1; 4)', '(1; 4]', '[1; 4]'],
+        choicesDisplay: ['\\((1;4)\\)', '\\([1;4)\\)', '\\((1;4]\\)', '\\([1;4]\\)'], answer: '[1; 4)',
+        hint: 'Reikia skaičių, kurie tenkina abi sąlygas vienu metu.'
+      },
+      {
+        id: 'g7-14', type: 'choice', section: 'class', label: 'Nelygybės',
+        title: 'Nelygybė su skliaustais', prompt: 'Išspręsk: 5 − 2x > −1', promptDisplay: 'Išspręsk: \\(5-2x>-1\\)',
+        choices: ['x < 3', 'x > 3', 'x < −3', 'x > −3'],
+        choicesDisplay: ['\\(x<3\\)', '\\(x>3\\)', '\\(x<-3\\)', '\\(x>-3\\)'], answer: 'x < 3',
+        hint: 'Atėmus 5 gausi −2x > −6, tada nepamiršk ženklo pakeitimo.'
+      },
+      {
+        id: 'g7-15', type: 'input', section: 'class', label: 'Proporcingumas',
+        title: 'Tiesioginis proporcingumas', prompt: '6 kg obuolių kainuoja 15 Eur. Kiek kainuos 10 kg obuolių, jei kilogramo kaina nekinta?', promptDisplay: '\\(6\\text{ kg}\\) obuolių kainuoja \\(15\\text{ Eur}\\). Kiek kainuos \\(10\\text{ kg}\\) obuolių, jei kilogramo kaina nekinta?',
+        answer: '25', answerType: 'number', inputLabel: 'Kaina', inputSuffix: 'Eur', placeholder: 'Įrašyk skaičių',
+        hint: 'Pirmiausia rask 1 kg kainą.'
+      },
+      {
+        id: 'g7-16', type: 'input', section: 'class', label: 'Proporcingumas',
+        title: 'Atvirkštinis proporcingumas', prompt: '4 vienodai našūs darbininkai darbą atlieka per 15 valandų. Per kiek valandų tokį pat darbą atliktų 10 tokių darbininkų?', promptDisplay: '\\(4\\) vienodai našūs darbininkai darbą atlieka per \\(15\\) valandų. Per kiek valandų tokį pat darbą atliktų \\(10\\) tokių darbininkų?',
+        answer: '6', answerType: 'number', inputLabel: 'Laikas', inputSuffix: 'val.', placeholder: 'Įrašyk skaičių',
+        hint: 'Darbininkų skaičiaus ir laiko sandauga čia išlieka ta pati.'
+      },
+      {
+        id: 'g7-17', type: 'input', section: 'class', label: 'Proporcingumas',
+        title: 'Greitis ir laikas', prompt: 'Reikia nuvažiuoti 240 km. Jei vidutinis greitis 80 km/h, kiek valandų truks kelionė?', promptDisplay: 'Reikia nuvažiuoti \\(240\\text{ km}\\). Jei vidutinis greitis \\(80\\text{ km/h}\\), kiek valandų truks kelionė?',
+        answer: '3', answerType: 'number', inputLabel: 'Laikas', inputSuffix: 'val.', placeholder: 'Įrašyk skaičių',
+        hint: 'Esant pastoviam keliui, laikas = kelias : greitis.'
+      },
+      {
+        id: 'g7-18', type: 'choice', section: 'class', label: 'Koordinatės',
+        title: 'Lygiagretusis postūmis', prompt: 'Taškas A(−2; 5) perkeliamas pagal taisyklę (x; y) → (x + 3; y − 4). Kokios naujo taško koordinatės?', promptDisplay: 'Taškas \\(A(-2;5)\\) perkeliamas pagal taisyklę \\((x;y)\\to(x+3;y-4)\\). Kokios naujo taško koordinatės?',
+        choices: ['(1; 1)', '(−5; 9)', '(1; 9)', '(−5; 1)'],
+        choicesDisplay: ['\\((1;1)\\)', '\\((-5;9)\\)', '\\((1;9)\\)', '\\((-5;1)\\)'], answer: '(1; 1)',
+        hint: 'Prie x koordinatės pridėk 3, iš y koordinatės atimk 4.'
+      },
+      {
+        id: 'g7-19', type: 'choice', section: 'class', label: 'Koordinatės',
+        title: 'Atkarpos vidurio taškas', prompt: 'Duoti taškai A(2; −1) ir B(8; 5). Kuris taškas yra atkarpos AB vidurys?', promptDisplay: 'Duoti taškai \\(A(2;-1)\\) ir \\(B(8;5)\\). Kuris taškas yra atkarpos \\(AB\\) vidurys?',
+        choices: ['(5; 2)', '(6; 4)', '(3; 3)', '(10; 4)'],
+        choicesDisplay: ['\\((5;2)\\)', '\\((6;4)\\)', '\\((3;3)\\)', '\\((10;4)\\)'], answer: '(5; 2)',
+        hint: 'Vidurio taško koordinatės yra atitinkamų galų koordinačių vidurkiai.'
+      },
+      {
+        id: 'g7-20', type: 'choice', section: 'class', label: 'Geometrija',
+        title: 'Trikampio elementai', prompt: 'Kaip vadinama atkarpa, nubrėžta iš trikampio viršūnės statmenai priešingai kraštinei arba jos tęsiniui?',
+        choices: ['Pusiaukampinė', 'Pusiaukraštinė', 'Aukštinė', 'Vidurio linija'], answer: 'Aukštinė',
+        hint: 'Svarbiausias žodis sąlygoje – „statmenai“.'
+      },
+      {
+        id: 'g7-21', type: 'input', section: 'self', label: 'Geometrija',
+        title: 'Lygiagrečios tiesės', prompt: 'Dvi lygiagrečias tieses kerta trečioji tiesė. Vienas iš atitinkamųjų kampų yra 68°. Koks kitas atitinkamasis kampas?', promptDisplay: 'Dvi lygiagrečias tieses kerta trečioji tiesė. Vienas iš atitinkamųjų kampų yra \\(68^\\circ\\). Koks kitas atitinkamasis kampas?',
+        answer: '68', answerType: 'number', inputLabel: 'Kampas', inputSuffix: '°', placeholder: 'Įrašyk skaičių',
+        hint: 'Kai tiesės lygiagrečios, atitinkamieji kampai yra lygūs.'
+      },
+      {
+        id: 'g7-22', type: 'choice', section: 'self', label: 'Geometrija',
+        title: 'Keturkampių savybės', prompt: 'Kuris teiginys apie lygiagretainį visada teisingas?',
+        choices: ['Visi kampai statūs', 'Visos kraštinės lygios', 'Priešingos kraštinės lygiagrečios ir lygios', 'Įstrižainės visada statmenos'], answer: 'Priešingos kraštinės lygiagrečios ir lygios',
+        hint: 'Lygiagretainis yra bendresnė figūra negu stačiakampis ar rombas.'
+      },
+      {
+        id: 'g7-23', type: 'input', section: 'self', label: 'Plotai',
+        title: 'Trikampio plotas', prompt: 'Trikampio pagrindas 12 cm, o į tą pagrindą nubrėžtos aukštinės ilgis 7 cm. Rask plotą.', promptDisplay: 'Trikampio pagrindas \\(12\\text{ cm}\\), o į tą pagrindą nubrėžtos aukštinės ilgis \\(7\\text{ cm}\\). Rask plotą.',
+        answer: '42', answerType: 'number', inputLabel: 'Plotas', inputSuffix: 'cm²', placeholder: 'Įrašyk skaičių',
+        hint: 'Trikampio plotas yra pusė pagrindo ir aukštinės sandaugos.'
+      },
+      {
+        id: 'g7-24', type: 'input', section: 'self', label: 'Plotai',
+        title: 'Lygiagretainio plotas', prompt: 'Lygiagretainio pagrindas yra 9 cm, o aukštinė į tą pagrindą – 6 cm. Rask plotą.', promptDisplay: 'Lygiagretainio pagrindas yra \\(9\\text{ cm}\\), o aukštinė į tą pagrindą – \\(6\\text{ cm}\\). Rask plotą.',
+        answer: '54', answerType: 'number', inputLabel: 'Plotas', inputSuffix: 'cm²', placeholder: 'Įrašyk skaičių',
+        hint: 'Lygiagretainio plotas = pagrindas · aukštinė.'
+      },
+      {
+        id: 'g7-25', type: 'input', section: 'self', label: 'Plotai',
+        title: 'Trapecijos plotas', prompt: 'Trapecijos pagrindai yra 8 cm ir 14 cm, aukštinė 5 cm. Rask plotą.', promptDisplay: 'Trapecijos pagrindai yra \\(8\\text{ cm}\\) ir \\(14\\text{ cm}\\), aukštinė \\(5\\text{ cm}\\). Rask plotą.',
+        answer: '55', answerType: 'number', inputLabel: 'Plotas', inputSuffix: 'cm²', placeholder: 'Įrašyk skaičių',
+        hint: 'Sudėk pagrindus, padaugink iš aukštinės ir padalink iš 2.'
+      },
+      {
+        id: 'g7-26', type: 'choice', section: 'self', label: 'Apskritimas',
+        title: 'Apskritimo ilgis ir skritulio plotas', prompt: 'Skritulio spindulys yra 5 cm. Imk π ≈ 3,14. Kuri apskritimo ilgio C ir skritulio ploto S pora teisinga?', promptDisplay: 'Skritulio spindulys yra \\(5\\text{ cm}\\). Imk \\(\\pi\\approx3{,}14\\). Kuri apskritimo ilgio \\(C\\) ir skritulio ploto \\(S\\) pora teisinga?',
+        choices: ['C = 31,4 cm; S = 78,5 cm²', 'C = 15,7 cm; S = 31,4 cm²', 'C = 78,5 cm; S = 31,4 cm²', 'C = 10 cm; S = 25 cm²'],
+        choicesDisplay: ['\\(C=31{,}4\\text{ cm};\\ S=78{,}5\\text{ cm}^2\\)', '\\(C=15{,}7\\text{ cm};\\ S=31{,}4\\text{ cm}^2\\)', '\\(C=78{,}5\\text{ cm};\\ S=31{,}4\\text{ cm}^2\\)', '\\(C=10\\text{ cm};\\ S=25\\text{ cm}^2\\)'], answer: 'C = 31,4 cm; S = 78,5 cm²',
+        hint: 'Naudok C = 2πr ir S = πr².'
+      },
+      {
+        id: 'g7-27', type: 'input', section: 'self', label: 'Erdvės figūros',
+        title: 'Ritinio tūris', prompt: 'Ritinio pagrindo spindulys 3 cm, aukštis 4 cm. Imk π ≈ 3,14. Rask ritinio tūrį.', promptDisplay: 'Ritinio pagrindo spindulys \\(3\\text{ cm}\\), aukštis \\(4\\text{ cm}\\). Imk \\(\\pi\\approx3{,}14\\). Rask ritinio tūrį.',
+        answer: '113,04', acceptedAnswers: ['113,04', '113.04'], answerType: 'number', inputLabel: 'Tūris', inputSuffix: 'cm³', placeholder: 'Įrašyk skaičių',
+        hint: 'Ritinio tūris V = πr²h.'
+      },
+      {
+        id: 'g7-28', type: 'choice', section: 'self', label: 'Duomenys',
+        title: 'Populiacija ir imtis', prompt: 'Mokykloje mokosi 600 mokinių. Apklausai atsitiktinai pasirinkti 60 mokinių. Kas šioje situacijoje yra imtis?',
+        choices: ['Visi 600 mokinių', 'Pasirinkti 60 mokinių', 'Tik apklausą atlikęs mokytojas', 'Visos Lietuvos mokiniai'], answer: 'Pasirinkti 60 mokinių',
+        hint: 'Imtis – tai populiacijos dalis, iš kurios renkami duomenys.'
+      },
+      {
+        id: 'g7-29', type: 'choice', section: 'self', label: 'Duomenys',
+        title: 'Reprezentatyvi imtis', prompt: 'Norima sužinoti visos mokyklos mokinių nuomonę apie valgyklą. Kuris atrankos būdas tinkamiausias?',
+        choices: ['Apklausti tik krepšinio komandos narius', 'Apklausti tik 7A klasę', 'Atsitiktinai parinkti mokinių iš skirtingų klasių', 'Apklausti tik pirmus 30 atėjusių į valgyklą'], answer: 'Atsitiktinai parinkti mokinių iš skirtingų klasių',
+        hint: 'Gera imtis turėtų kuo geriau atspindėti visą tiriamą populiaciją.'
+      },
+      {
+        id: 'g7-30', type: 'input', section: 'self', label: 'Duomenys',
+        title: 'Skritulinė diagrama', prompt: 'Apklausoje 18 iš 60 mokinių pasirinko variantą A. Kokio dydžio kampas skritulinėje diagramoje turi vaizduoti šią dalį?', promptDisplay: 'Apklausoje \\(18\\) iš \\(60\\) mokinių pasirinko variantą A. Kokio dydžio kampas skritulinėje diagramoje turi vaizduoti šią dalį?',
+        answer: '108', answerType: 'number', inputLabel: 'Kampas', inputSuffix: '°', placeholder: 'Įrašyk skaičių',
+        hint: '18/60 = 30 %, o visas skritulys yra 360°.'
+      }
+    ]
+  });
+
+  const LESSON_CATALOG = Object.freeze([DEMO_LESSON, GRADE5_REVIEW_LESSON, GRADE7_REVIEW_LESSON]);
 
   let assignment = null;
   let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
   let progress = null;
   let selectedAnswers = {};
-
-  // P2-SPLIT-P2.5-P2: mokinys yra ilgalaikis objektas, o Room – tik vienos
-  // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
-  // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
-  let studentsModal = null;
-  let scheduleModal = null;
-  let editingScheduleId = '';
-  let scheduleCreateMode = false;
-  let scheduleSelectedDay = 0;
-  let selectedStudentId = null;
-  let studentDbSnapshotTimer = null;
-  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
-  let roomStudentProfile = null;
-  let lessonStudentTabs = null;
-  let roomSwitching = false;
 
   function lessonForId(lessonId) {
     const id = String(lessonId || '').trim();
@@ -478,9 +669,7 @@
   }
 
   // Leidžia paprastame sąlygos tekste naudoti LaTeX fragmentus tarp \( ... \).
-  // Sąlygose matematika yra tik rodoma, todėl naudojame MathLive statinį
-  // <math-span>, o ne redagavimui skirtą <math-field>. Taip formulė tampa
-  // natūralia tos pačios teksto eilutės dalimi ir neatsineša įvedimo lauko geometrijos.
+  // Tekstas visada escapinamas, o formulė pateikiama read-only MathLive lauku.
   function renderRichMathText(value) {
     const source = String(value ?? '');
     const re = /\\\(([\s\S]*?)\\\)/g;
@@ -489,15 +678,8 @@
     let match;
     while ((match = re.exec(source))) {
       html += escapeHtml(source.slice(cursor, match.index));
-
-      const mathEnd = match.index + match[0].length;
-      const afterMath = source.slice(mathEnd);
-      // Skyrybos ženklas turi jungtis prie formulės kaip prie paprasto teksto.
-      // Toleruojame ir netyčia tarp \(...\) bei skyrybos paliktus tarpus.
-      const punctuation = afterMath.match(/^(\s*)([.,:;?!…])/u);
-      html += `<math-span class="p2-inline-math" mode="textstyle">${escapeHtml(match[1])}</math-span>`;
-
-      cursor = mathEnd + (punctuation ? punctuation[1].length : 0);
+      html += `<math-field class="p2-static-math p2-inline-math" read-only tabindex="-1">${escapeHtml(match[1])}</math-field>`;
+      cursor = match.index + match[0].length;
     }
     html += escapeHtml(source.slice(cursor));
     return html;
@@ -907,13 +1089,13 @@
       studentPanel.innerHTML = `
         <div class="p2-student-hero">
           <div class="p2-student-hero-icon" aria-hidden="true">∑</div>
-          <div class="p2-student-hero-copy"><span class="p2-label">Mano pratybos</span><h3>Čia atsiras mokytojo priskirtos pratybos</h3><p>Pratybos veiks atskirai nuo bendros lentos, todėl galėsi spręsti savo tempu, o lenta liks bendra darbo erdvė.</p></div>
+          <div class="p2-student-hero-copy"><span class="p2-label">Mano pratybos</span><h3>Čia atsiras mokytojo priskirtos pamokos</h3><p>Pratybos veiks atskirai nuo bendros lentos, todėl galėsi spręsti savo tempu, o lenta liks bendra darbo erdvė.</p></div>
           <span class="p2-count-badge">0</span>
         </div>
         <div class="p2-empty-card p2-practice-empty">
           <div class="p2-empty-illustration" aria-hidden="true"><span>f(x)</span><i></i></div>
           <strong>Kol kas nėra priskirtų pratybų</strong>
-          <p>Kai mokytojas priskirs pratybas, jos atsiras čia. Tada galėsi jas atidaryti „Padalintame“ arba „Tik pratybos“ vaizde.</p>
+          <p>Kai mokytojas priskirs pamoką, ji atsiras čia. Tada galėsi ją atidaryti „Padalintame“ arba „Tik pratybos“ vaizde.</p>
         </div>
         ${studentProgressSummary(stats)}
       `;
@@ -926,7 +1108,7 @@
         <article class="p2-assigned-lesson-card">
           <div class="p2-assigned-lesson-icon" aria-hidden="true">ƒ</div>
           <div class="p2-assigned-lesson-copy">
-            <span class="p2-label">Priskirtos pratybos</span>
+            <span class="p2-label">Priskirta pamoka</span>
             <h3>${escapeHtml(activeLesson().title)}</h3>
             <p>${escapeHtml(activeLesson().description)}</p>
             <div class="p2-assignment-meta"><span>${activeLesson().classCount} pamokoje</span><span>${activeLesson().selfCount} savarankiškai</span><span>${activeLesson().taskCount} užduotys</span></div>
@@ -945,12 +1127,9 @@
   }
 
   function studentProgressSummary(stats) {
-    const progressBadge = assignment
-      ? `<span class="p2-soft-pill">${stats.finished} / ${activeLesson().taskCount}</span>`
-      : '';
     return `
       <section class="p2-mini-section" aria-label="Mano pažanga">
-        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div>${progressBadge}</header>
+        <header><div><span class="p2-label">Mano pažanga</span><h3>Ši pamoka</h3></div><span class="p2-soft-pill">${stats.finished} / ${activeLesson().taskCount}</span></header>
         <div class="p2-student-progress">
           <div><span>Savarankiškai</span><strong>${stats.good}</strong></div>
           <div><span>Su pagalba / taisant</span><strong>${stats.help}</strong></div>
@@ -1719,34 +1898,32 @@
   function renderTeacherPanel() {
     const count = Math.max(0, Number(userCount?.textContent || 0));
     const studentOnline = count >= 2;
-    const learnerName = currentStudentName('Mokinys');
-    const learnerInitial = String(learnerName || 'M').trim().slice(0, 1).toUpperCase() || 'M';
     const state = normalizedProgress(progress);
     const stats = progressStats();
     const task = assignment ? currentTask() : null;
     const item = assignment ? currentTaskState() : null;
     const assigned = Boolean(assignment);
     const started = assigned && state.status !== 'not_started';
-    const assignmentTitle = assigned ? activeLesson().shortTitle : 'Pratybos dar nepriskirtos';
+    const assignmentTitle = assigned ? activeLesson().shortTitle : 'Pamoka dar nepriskirta';
     const currentLabel = task ? `${taskIndex(task.id) + 1} / ${activeLesson().taskCount}` : '— / —';
     const helper = !assigned ? '—' : item?.hintUsed ? 'Naudota' : 'Nenaudota';
     const currentPedagogy = started ? pedagogicalStatus(item, { taskId: task?.id, current: state.status === 'in_progress' && Boolean(task) }) : { key: 'pending', label: '—' };
-    const activityTitle = !assigned ? 'Pratybos dar nepriskirtos' : !started ? `${learnerName} dar neatidarė pratybų` : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
+    const activityTitle = !assigned ? 'Pamoka dar nepriskirta' : !started ? 'Mokinys dar neatidarė pratybų' : state.status === 'completed' ? 'Pratybos atliktos' : `Sprendžiama ${taskIndex(task.id) + 1} užduotis`;
     const activityText = !assigned
-      ? `Priskirk pratybas Bibliotekoje. ${learnerName} jas iškart pamatys savo „Mano pratybos“ srityje.`
+      ? 'Priskirk pamoką Bibliotekoje. Mokinys ją iškart pamatys savo „Mano pratybos“ srityje.'
       : !started
-        ? `Pratybos priskirtos. Kai ${learnerName} paspaus „Atidaryti“, čia realiu laiku atsiras dabartinė užduotis, bandymai ir pagalbos būsena.`
+        ? 'Pamoka priskirta. Kai mokinys paspaus „Atidaryti“, čia realiu laiku atsiras jo dabartinė užduotis, bandymai ir pagalbos būsena.'
         : `${task?.prompt || ''}`;
 
     teacherPanel.innerHTML = `
       <div class="p2-learner-card p2-learner-overview">
-        <div class="p2-avatar" aria-hidden="true">${escapeHtml(learnerInitial)}</div>
-        <div class="p2-learner-copy"><span class="p2-label">${escapeHtml(learnerName)} · eiga</span><h3>${studentOnline ? `Prisijungė: ${escapeHtml(learnerName)}` : `Laukiama: ${escapeHtml(learnerName)}`}</h3><p>${studentOnline ? 'Lenta ir individuali pratybų būsena sinchronizuojamos realiu laiku.' : 'Nukopijuok šio mokinio nuorodą ir atidaryk ją kitame įrenginyje.'}</p></div>
+        <div class="p2-avatar" aria-hidden="true">M</div>
+        <div class="p2-learner-copy"><span class="p2-label">Mokinio eiga</span><h3>${studentOnline ? 'Mokinys prisijungęs' : 'Laukiama mokinio'}</h3><p>${studentOnline ? 'Bendra lenta ir individuali pratybų būsena sinchronizuojamos realiu laiku.' : 'Nukopijuok mokinio nuorodą ir atidaryk ją kitame įrenginyje.'}</p></div>
         <span class="p2-presence-pill ${studentOnline ? 'is-online' : ''}">${studentOnline ? 'Prisijungęs' : `${count} įrenginys`}</span>
       </div>
       <div class="p2-teacher-dashboard-grid">
         <div class="p2-progress-card">
-          <div class="p2-progress-head"><div><span class="p2-label">Priskirtos pratybos</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? `${statusLabel(state)} · ${policySummary(assignment)}` : 'Bibliotekoje pasirink pratybas ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.finished} / ${activeLesson().taskCount}` : '— / —'}</strong></div>
+          <div class="p2-progress-head"><div><span class="p2-label">Priskirta pamoka</span><h3>${escapeHtml(assignmentTitle)}</h3><p class="p2-teacher-status-line">${assigned ? `${statusLabel(state)} · ${policySummary(assignment)}` : 'Bibliotekoje pasirink pamoką ir priskirk mokiniui.'}</p></div><strong>${assigned ? `${stats.finished} / ${activeLesson().taskCount}` : '— / —'}</strong></div>
           <div class="p2-progress-line"><span style="width:${assigned ? stats.percent : 0}%"></span></div>
           <div class="p2-metrics">
             <div><span>Dabartinė užduotis</span><strong>${started ? currentLabel : '—'}</strong></div>
@@ -1767,7 +1944,7 @@
       </div>
       <div class="p2-insight-card ${started ? '' : 'p2-insight-empty'}">
         <div class="p2-insight-icon" aria-hidden="true">✦</div>
-        <div><span class="p2-label">${escapeHtml(learnerName)} · įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
+        <div><span class="p2-label">Mokinio įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
       </div>
     `;
 
@@ -1787,27 +1964,19 @@
     teacherPanel.hidden = !isTeacher;
     if (!isTeacher || teacherPreviewMode !== 'docked') {
       sideKicker.textContent = isTeacher ? 'MOKYTOJO STEBĖJIMAS' : 'MOKINIO ERDVĖ';
-      sideTitle.textContent = isTeacher ? `${currentStudentName('Mokinys')} · eiga` : 'Mano pratybos';
+      sideTitle.textContent = isTeacher ? 'Mokinio eiga' : 'Mano pratybos';
     }
-    practiceModeButton.textContent = isTeacher ? `${currentStudentName('Mokinys')} · eiga` : 'Tik pratybos';
-    if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : currentStudentName('Mokinys');
+    practiceModeButton.textContent = isTeacher ? 'Mokinio eiga' : 'Tik pratybos';
+    if (sideRolePill) sideRolePill.textContent = isTeacher ? 'Mokytojas' : 'Mokinys';
     document.querySelectorAll('.p2-teacher-only').forEach(el => el.hidden = !isTeacher);
     const p2LibraryButton = document.getElementById('libraryButton');
     if (p2LibraryButton) p2LibraryButton.hidden = !isTeacher;
-    const p2StudentsButton = document.getElementById('studentsButton');
-    if (p2StudentsButton) p2StudentsButton.hidden = !isTeacher;
-    const p2ScheduleButton = document.getElementById('scheduleButton');
-    if (p2ScheduleButton) p2ScheduleButton.hidden = !isTeacher;
-    if (!isTeacher && studentsModal) studentsModal.hidden = true;
-    if (!isTeacher && scheduleModal) scheduleModal.hidden = true;
     if (!isTeacher && teacherPreviewMode !== 'closed') {
       teacherPreviewMode = 'closed';
       if (teacherPreviewWindow) teacherPreviewWindow.hidden = true;
       body.classList.remove('p2-teacher-preview-maximized');
       sidePane.classList.remove('has-preview-docked');
     }
-    updateStudentIdentityLabels();
-    renderLessonStudentTabs();
     updatePresence();
     renderPanels();
     if (isTeacher && teacherPreviewMode === 'docked') setTeacherSideHeader(true);
@@ -1824,970 +1993,6 @@
   }
 
   if (userCount) new MutationObserver(updatePresence).observe(userCount, { childList: true, subtree: true, characterData: true });
-
-
-  function currentRoomId() {
-    const visible = String(document.getElementById('onlineRoomCode')?.textContent || '').trim().toUpperCase();
-    if (/^[A-Z0-9_-]{4,24}$/.test(visible) && visible !== '—') return visible;
-    const fromUrl = String(new URL(location.href).searchParams.get('room') || '').trim().toUpperCase();
-    return /^[A-Z0-9_-]{4,24}$/.test(fromUrl) ? fromUrl : '';
-  }
-
-  function normalizeTeacherStudentDb(value) {
-    const source = value && typeof value === 'object' ? value : {};
-    return {
-      profileId: String(source.profileId || ''),
-      students: source.students && typeof source.students === 'object' ? source.students : {},
-      roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {},
-      classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {},
-      scheduleEntries: source.scheduleEntries && typeof source.scheduleEntries === 'object' ? source.scheduleEntries : {},
-      scheduleRuns: source.scheduleRuns && typeof source.scheduleRuns === 'object' ? source.scheduleRuns : {}
-    };
-  }
-
-  function studentList() {
-    return Object.entries(teacherStudentDb.students || {})
-      .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'lt'));
-  }
-
-  function linkedStudentIdForRoom(roomId = currentRoomId()) {
-    return String(teacherStudentDb.roomLinks?.[roomId]?.studentId || '');
-  }
-
-
-  function linkedClassSessionIdForRoom(roomId = currentRoomId()) {
-    return String(teacherStudentDb.roomLinks?.[roomId]?.classSessionId || roomStudentProfile?.classSessionId || '');
-  }
-
-  function studentRecord(studentId) {
-    const id = String(studentId || '').trim();
-    return id ? teacherStudentDb.students?.[id] || null : null;
-  }
-
-  function currentStudentId() {
-    return String(roomStudentProfile?.studentId || linkedStudentIdForRoom() || '').trim();
-  }
-
-  function currentStudentName(fallback = 'Mokinys') {
-    const id = currentStudentId();
-    const fromDb = studentRecord(id)?.name;
-    const value = String(roomStudentProfile?.name || fromDb || '').trim();
-    return value || fallback;
-  }
-
-  function classSessionParticipants(classSessionId = linkedClassSessionIdForRoom()) {
-    const session = teacherStudentDb.classSessions?.[classSessionId];
-    const entries = Object.entries(session?.students && typeof session.students === 'object' ? session.students : {});
-    return entries.map(([studentId, item]) => ({
-      studentId,
-      roomId: String(item?.roomId || '').trim().toUpperCase(),
-      name: String(studentRecord(studentId)?.name || 'Mokinys').trim() || 'Mokinys',
-      addedAt: Number(item?.addedAt || 0)
-    })).filter(item => item.roomId).sort((a, b) => a.addedAt - b.addedAt || a.name.localeCompare(b.name, 'lt'));
-  }
-
-  function ensureLessonStudentTabs() {
-    if (lessonStudentTabs) return lessonStudentTabs;
-    lessonStudentTabs = document.createElement('nav');
-    lessonStudentTabs.id = 'p2LessonStudentTabs';
-    lessonStudentTabs.className = 'p2-lesson-student-tabs';
-    lessonStudentTabs.setAttribute('aria-label', 'Pamokos mokiniai');
-    const topbar = document.querySelector('.topbar');
-    if (topbar?.parentNode) topbar.insertAdjacentElement('afterend', lessonStudentTabs);
-    return lessonStudentTabs;
-  }
-
-  function renderLessonStudentTabs() {
-    if (role() !== 'teacher') {
-      body.classList.remove('p2-lesson-student-tabs-active');
-      if (lessonStudentTabs) lessonStudentTabs.hidden = true;
-      return;
-    }
-    const classSessionId = linkedClassSessionIdForRoom();
-    const participants = classSessionParticipants(classSessionId);
-    if (!classSessionId || participants.length < 2) {
-      body.classList.remove('p2-lesson-student-tabs-active');
-      if (lessonStudentTabs) lessonStudentTabs.hidden = true;
-      return;
-    }
-    const bar = ensureLessonStudentTabs();
-    const activeRoom = currentRoomId();
-    bar.hidden = false;
-    bar.innerHTML = `<span class="p2-lesson-tabs-label">Pamokos mokiniai</span><div class="p2-lesson-tabs-scroll">${participants.map(item => {
-      const active = item.roomId === activeRoom;
-      const initial = String(item.name || 'M').trim().slice(0, 1).toUpperCase() || 'M';
-      return `<button type="button" class="p2-lesson-student-tab ${active ? 'is-active' : ''}" data-lesson-student-room="${escapeHtml(item.roomId)}" ${active ? 'aria-current="page"' : ''}><span class="p2-lesson-tab-avatar">${escapeHtml(initial)}</span><span>${escapeHtml(item.name)}</span></button>`;
-    }).join('')}</div>`;
-    bar.querySelectorAll('[data-lesson-student-room]').forEach(button => button.addEventListener('click', () => {
-      const targetRoom = String(button.dataset.lessonStudentRoom || '').trim().toUpperCase();
-      if (!targetRoom || targetRoom === activeRoom || roomSwitching) return;
-      requestTeacherRoomSwitch(targetRoom);
-    }));
-    body.classList.add('p2-lesson-student-tabs-active');
-  }
-
-  function requestTeacherRoomSwitch(targetRoom, preserveStay = true) {
-    const safe = String(targetRoom || '').trim().toUpperCase();
-    if (role() !== 'teacher' || !/^[A-Z0-9_-]{4,24}$/.test(safe) || safe === currentRoomId() || roomSwitching) return;
-    roomSwitching = true;
-    clearTimeout(studentDbSnapshotTimer);
-    studentDbSnapshotTimer = null;
-    renderLessonStudentTabs();
-    window.dispatchEvent(new CustomEvent('p2:room-switch-request', {
-      detail: { roomId: safe, preserveStay: preserveStay !== false }
-    }));
-  }
-
-  function updateStudentIdentityLabels() {
-    const isTeacher = role() === 'teacher';
-    const name = currentStudentName('Mokinys');
-    const hasName = currentStudentId() && name !== 'Mokinys';
-    const roleBadge = document.getElementById('onlineRoleBadge');
-    if (roleBadge) {
-      roleBadge.textContent = isTeacher ? 'Mokytojas' : (hasName ? name : 'Mokinys');
-      roleBadge.title = isTeacher ? 'Mokytojo režimas' : (hasName ? `Mokinio režimas · ${name}` : 'Mokinio režimas');
-    }
-    const boardTitle = document.querySelector('.p2-board-heading strong');
-    const boardSubtitle = document.querySelector('.p2-board-subtitle');
-    if (boardTitle) boardTitle.textContent = hasName ? `${name} · lenta` : 'Bendra lenta';
-    if (boardSubtitle) boardSubtitle.textContent = hasName ? 'Individuali realaus laiko erdvė' : 'Bendra realaus laiko erdvė';
-    if (isTeacher) {
-      if (teacherPreviewMode !== 'docked' && sideTitle) sideTitle.textContent = `${name} · eiga`;
-      if (practiceModeButton) practiceModeButton.textContent = `${name} · eiga`;
-    } else if (sideRolePill) {
-      sideRolePill.textContent = hasName ? name : 'Mokinys';
-    }
-  }
-
-  function formatStudentDate(value, compact = false) {
-    const stamp = Number(value);
-    if (!Number.isFinite(stamp) || stamp <= 0) return '—';
-    try {
-      return new Intl.DateTimeFormat('lt-LT', compact
-        ? { year: 'numeric', month: '2-digit', day: '2-digit' }
-        : { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-      ).format(new Date(stamp));
-    } catch (_) { return new Date(stamp).toLocaleString('lt-LT'); }
-  }
-
-  function historicalRoomUrl(roomId, targetRole = 'teacher', useStay = true) {
-    const url = new URL(location.href);
-    url.searchParams.set('room', roomId);
-    url.searchParams.set('role', targetRole === 'student' ? 'student' : 'teacher');
-    if (useStay) url.searchParams.set('stay', '1');
-    else url.searchParams.delete('stay');
-    url.searchParams.delete('blank');
-    return url.toString();
-  }
-
-  const STUDENT_HISTORY_RETURN_KEY = 'p2-student-history-return-v1';
-  const STUDENT_CARD_REOPEN_KEY = 'p2-student-card-reopen-v1';
-
-  function saveStudentHistoryReturn(studentId = selectedStudentId, targetRoomId = '', targetRole = 'teacher') {
-    if (role() !== 'teacher') return;
-    const safeStudentId = String(studentId || '').trim();
-    const safeTargetRoomId = String(targetRoomId || '').trim().toUpperCase();
-    const safeTargetRole = targetRole === 'student' ? 'student' : 'teacher';
-    if (!safeStudentId || !safeTargetRoomId) return;
-    try {
-      sessionStorage.setItem(STUDENT_HISTORY_RETURN_KEY, JSON.stringify({
-        url: location.href,
-        studentId: safeStudentId,
-        targetRoomId: safeTargetRoomId,
-        targetRole: safeTargetRole,
-        savedAt: Date.now()
-      }));
-    } catch (_) {}
-  }
-
-  function readStudentHistoryReturn() {
-    try {
-      const value = JSON.parse(sessionStorage.getItem(STUDENT_HISTORY_RETURN_KEY) || 'null');
-      if (!value || typeof value !== 'object') return null;
-      const url = String(value.url || '');
-      const studentId = String(value.studentId || '').trim();
-      const targetRoomId = String(value.targetRoomId || '').trim().toUpperCase();
-      const targetRole = value.targetRole === 'student' ? 'student' : 'teacher';
-      if (!url || !studentId || !targetRoomId) return null;
-      if (Number(value.savedAt || 0) && Date.now() - Number(value.savedAt) > 12 * 60 * 60 * 1000) return null;
-      return { url, studentId, targetRoomId, targetRole };
-    } catch (_) { return null; }
-  }
-
-  function installStudentHistoryReturnButton() {
-    const state = readStudentHistoryReturn();
-    if (!state) return;
-    const params = new URL(location.href).searchParams;
-    const activeRoomId = String(params.get('room') || '').trim().toUpperCase();
-    const activeRole = params.get('role') === 'student' ? 'student' : 'teacher';
-    const historical = params.get('stay') === '1';
-    if (!activeRoomId || activeRoomId !== state.targetRoomId) return;
-
-    // P2-SPLIT-P2.5-P4-P1.2: grįžimo juosta priklauso tik tam vaizdui,
-    // kuris buvo sąmoningai atidarytas iš mokinio kortelės. Grįžus į įprastą
-    // mokytojo lentą (be stay=1) senas sessionStorage įrašas nebegali jos
-    // klaidingai paversti „Mokinio vaizdu“.
-    if (!historical && activeRole !== state.targetRole) {
-      try { sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY); } catch (_) {}
-      return;
-    }
-
-    const app = document.getElementById('app');
-    const workspace = document.getElementById('p2Workspace');
-    if (!app || !workspace || document.getElementById('studentHistoryReturnBar')) return;
-
-    const bar = document.createElement('div');
-    bar.className = 'p2-history-return-bar';
-    bar.id = 'studentHistoryReturnBar';
-    bar.setAttribute('role', 'navigation');
-    bar.setAttribute('aria-label', 'Grįžimas į mokinio kortelę');
-    bar.innerHTML = `<div class="p2-history-return-context"><span aria-hidden="true">${historical ? '◷' : '◉'}</span><strong>${historical ? 'Istorinė pamoka' : 'Mokinio vaizdas'}</strong><code>${escapeHtml(activeRoomId)}</code></div>`;
-
-    const button = document.createElement('button');
-    button.className = 'p2-history-return-button';
-    button.id = 'studentHistoryReturnButton';
-    button.type = 'button';
-    button.innerHTML = '<span aria-hidden="true">←</span><span>Grįžti į mokinio kortelę</span>';
-    button.title = 'Grįžti į mokinio kortelę tame pačiame naršyklės skirtuke';
-    button.addEventListener('click', () => {
-      try {
-        sessionStorage.setItem(STUDENT_CARD_REOPEN_KEY, state.studentId);
-        // Grįžimo tikslas jau perduotas per STUDENT_CARD_REOPEN_KEY, todėl
-        // seno vaizdo navigacijos įrašą išvalome dar prieš grįždami.
-        sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY);
-      } catch (_) {}
-      location.assign(state.url);
-    });
-    bar.appendChild(button);
-    app.insertBefore(bar, workspace);
-    document.body.classList.add('p2-student-history-nav-active');
-  }
-
-  function openHistoricalRoom(roomId, targetRole = 'teacher') {
-    const safe = String(roomId || '').trim().toUpperCase();
-    if (!safe) return;
-    const target = targetRole === 'student' ? 'student' : 'teacher';
-    const activeRoomId = currentRoomId();
-
-    // P2-SPLIT-P2.5-P2: jei mokytojas iš kortelės atidaro būtent tą pačią
-    // aktyvią lentą, jokios istorinės navigacijos nereikia. Tiesiog uždarome
-    // kortelę, todėl URL lieka be stay=1 ir aktyvios sesijos funkcijos išlieka.
-    if (safe === activeRoomId && target === role()) {
-      if (studentsModal) studentsModal.hidden = true;
-      return;
-    }
-
-    saveStudentHistoryReturn(selectedStudentId, safe, target);
-    const isHistoricalRoom = safe !== activeRoomId;
-    // Kitai (senesnei) Room pridedame stay=1, kad transition nenukreiptų į
-    // naujesnę sesiją. Tos pačios aktyvios Room mokinio vaizdui stay nereikia.
-    location.assign(historicalRoomUrl(safe, target, isHistoricalRoom));
-  }
-
-  installStudentHistoryReturnButton();
-
-  function requestStudentDb(detail) {
-    if (role() !== 'teacher') return;
-    window.dispatchEvent(new CustomEvent('p2:students-request', { detail }));
-  }
-
-  function ensureStudentsModal() {
-    if (studentsModal) return studentsModal;
-    studentsModal = document.createElement('div');
-    studentsModal.className = 'p2-students-modal';
-    studentsModal.hidden = true;
-    studentsModal.innerHTML = `
-      <div class="p2-students-backdrop" data-students-close></div>
-      <section class="p2-students-panel" role="dialog" aria-modal="true" aria-label="Mokiniai">
-        <header class="p2-students-header">
-          <div><span class="p2-side-kicker">MOKINIŲ DUOMENŲ BAZĖ</span><h2>Mokiniai</h2><p>Pamokų istorija, progresas ir konkrečių pamokų lentos.</p></div>
-          <button type="button" data-students-close aria-label="Uždaryti">×</button>
-        </header>
-        <div class="p2-students-body" id="p2StudentsBody"></div>
-      </section>`;
-    document.body.appendChild(studentsModal);
-    studentsModal.querySelectorAll('[data-students-close]').forEach(el => el.addEventListener('click', () => { studentsModal.hidden = true; }));
-    return studentsModal;
-  }
-
-  function lessonHistoryForStudent(student) {
-    return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
-      .map(([roomId, item]) => ({ roomId, ...(item && typeof item === 'object' ? item : {}) }))
-      .sort((a, b) => Number(b.createdAt || b.linkedAt || 0) - Number(a.createdAt || a.linkedAt || 0));
-  }
-
-  function studentProgressLabel(lesson) {
-    const summary = lesson?.summary && typeof lesson.summary === 'object' ? lesson.summary : {};
-    const taskCount = Math.max(0, Number(lesson?.taskCount || summary.taskCount || 0));
-    const finished = Math.max(0, Number(summary.finished || 0));
-    if (!lesson?.lessonId) return 'Lenta be pratybų';
-    if (!taskCount) return summary.status === 'completed' ? 'Baigta' : 'Pratybos priskirtos';
-    return `${finished} / ${taskCount}${summary.status === 'completed' ? ' · baigta' : ''}`;
-  }
-
-  function renderStudentsModal() {
-    if (!studentsModal || studentsModal.hidden) return;
-    const host = studentsModal.querySelector('#p2StudentsBody');
-    if (!host) return;
-    const students = studentList();
-    const roomId = currentRoomId();
-    const linkedStudentId = linkedStudentIdForRoom(roomId);
-    if (!selectedStudentId || !teacherStudentDb.students?.[selectedStudentId]) {
-      selectedStudentId = linkedStudentId && teacherStudentDb.students?.[linkedStudentId]
-        ? linkedStudentId
-        : students[0]?.id || null;
-    }
-    const selected = selectedStudentId ? teacherStudentDb.students[selectedStudentId] : null;
-    const history = selected ? lessonHistoryForStudent(selected) : [];
-    const currentLesson = selected?.lessons?.[roomId] || null;
-    const defaultLessonId = currentLesson?.lessonId || assignment?.lessonId || '';
-    const linkedToOther = linkedStudentId && linkedStudentId !== selectedStudentId;
-    const currentLinkedStudent = linkedStudentId ? teacherStudentDb.students?.[linkedStudentId] || null : null;
-    const classSessionId = linkedClassSessionIdForRoom(roomId);
-    const classParticipants = classSessionParticipants(classSessionId);
-    const selectedClassParticipant = classParticipants.find(item => item.studentId === selectedStudentId) || null;
-
-    const listMarkup = students.length ? students.map(student => {
-      const count = lessonHistoryForStudent(student).length;
-      const current = linkedStudentId === student.id;
-      return `<button class="p2-student-list-item ${student.id === selectedStudentId ? 'is-active' : ''}" type="button" data-student-select="${escapeHtml(student.id)}">
-        <span class="p2-student-avatar" aria-hidden="true">${escapeHtml(String(student.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</span>
-        <span><strong>${escapeHtml(student.name || 'Mokinys')}</strong><small>${count} ${count === 1 ? 'pamoka' : 'pamokos'}${current ? ' · dabartinė sesija' : ''}</small></span>
-      </button>`;
-    }).join('') : `<div class="p2-students-empty"><strong>Dar nėra mokinių</strong><span>Įrašyk vardą žemiau ir sukurk pirmą mokinio kortelę.</span></div>`;
-
-    let detailMarkup = `<div class="p2-student-detail-empty"><span aria-hidden="true">♟</span><h3>Pasirink mokinį</h3><p>Sukūrus mokinį čia atsiras jo pamokų istorija ir senų lentų nuorodos.</p></div>`;
-    if (selected) {
-      const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === defaultLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
-      const historyMarkup = history.length ? history.map(item => {
-        const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
-        const summary = item.summary || {};
-        const percent = Math.max(0, Math.min(100, Number(summary.percent || 0)));
-        return `<article class="p2-student-history-item ${item.roomId === roomId ? 'is-current' : ''}">
-          <div class="p2-student-history-main">
-            <div class="p2-student-history-title"><strong>${escapeHtml(title)}</strong>${item.roomId === roomId ? '<span>Dabartinė</span>' : ''}</div>
-            <p>${formatStudentDate(item.createdAt || item.linkedAt)} · Room <code>${escapeHtml(item.roomId)}</code></p>
-            <div class="p2-student-history-progress"><i><b style="width:${percent}%"></b></i><span>${escapeHtml(studentProgressLabel(item))}</span></div>
-          </div>
-          <div class="p2-student-history-actions">
-            <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="teacher">Atidaryti lentą</button>
-            <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="student">Mokinio vaizdas</button>
-            <button class="is-muted" type="button" data-student-unlink-room="${escapeHtml(item.roomId)}">Pašalinti iš istorijos</button>
-          </div>
-        </article>`;
-      }).join('') : `<div class="p2-student-history-empty">Šiam mokiniui dar nepriskirta nė viena pamoka.</div>`;
-
-      detailMarkup = `
-        <div class="p2-student-card-head">
-          <div class="p2-student-avatar is-large" aria-hidden="true">${escapeHtml(String(selected.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</div>
-          <div><span class="p2-label">Mokinio kortelė</span><h3>${escapeHtml(selected.name || 'Mokinys')}</h3><p>Sukurta ${formatStudentDate(selected.createdAt, true)}</p></div>
-          <button class="p2-student-danger" type="button" data-student-delete>Pašalinti mokinį</button>
-        </div>
-        <section class="p2-student-edit-card">
-          <label><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
-          <label><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
-          <button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button>
-        </section>
-        <section class="p2-student-current-session ${currentLesson || selectedClassParticipant ? 'is-linked' : ''}">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(currentLinkedStudent?.name || 'Mokinys')} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
-          ${linkedToOther ? (selectedClassParticipant
-            ? `<div class="p2-student-class-info"><strong>${escapeHtml(selected.name || 'Mokinys')}</strong> jau yra šioje pamokoje ir turi atskirą lentą <code>${escapeHtml(selectedClassParticipant.roomId)}</code>.</div>`
-            : `<div class="p2-student-class-info">Dabar atidaryta <strong>${escapeHtml(currentLinkedStudent?.name || 'kito mokinio')}</strong> lenta. Pasirinktam mokiniui <strong>„${escapeHtml(selected.name || 'Mokinys')}“</strong> bus automatiškai sukurta <strong>atskira lenta</strong>, o viršuje atsiras jo vardinis skirtukas.</div>`)
-            : ''}
-          ${linkedToOther && selectedClassParticipant
-            ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(selected.name || 'Mokinys')}</button></div>`
-            : `<div class="p2-student-assign-row">
-                <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
-                <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką')}</button>
-              </div>`}
-          <p class="p2-student-current-help">Kiekvienas mokinys turi savo Room, lentą ir pratybų eigą. Tos pačios pamokos mokinius mokytojas perjungia viršuje esančiais vardiniais skirtukais.</p>
-        </section>
-        <section class="p2-student-history">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Pamokų istorija</span><h3>${history.length} ${history.length === 1 ? 'pamoka' : 'pamokos'}</h3></div></div>
-          <div class="p2-student-history-list">${historyMarkup}</div>
-        </section>`;
-    }
-
-    host.innerHTML = `
-      <aside class="p2-students-list-pane">
-        <div class="p2-student-create"><label for="p2NewStudentName">Naujas mokinys</label><div><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"><button type="button" data-student-add>＋</button></div></div>
-        <div class="p2-students-list">${listMarkup}</div>
-        <div class="p2-student-db-id"><span>Šios naršyklės mokytojo bazė</span><code title="Techninis bazės identifikatorius">${escapeHtml(teacherStudentDb.profileId || 'jungiama…')}</code></div>
-      </aside>
-      <main class="p2-student-detail-pane">${detailMarkup}</main>`;
-
-    host.querySelectorAll('[data-student-select]').forEach(button => button.addEventListener('click', () => {
-      selectedStudentId = button.dataset.studentSelect;
-      renderStudentsModal();
-    }));
-    const addInput = host.querySelector('#p2NewStudentName');
-    const addStudent = () => {
-      const name = String(addInput?.value || '').trim();
-      if (!name) { addInput?.focus(); return; }
-      requestStudentDb({ action: 'add', name });
-      if (addInput) addInput.value = '';
-    };
-    host.querySelector('[data-student-add]')?.addEventListener('click', addStudent);
-    addInput?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addStudent(); } });
-
-    host.querySelector('[data-student-save]')?.addEventListener('click', () => {
-      if (!selectedStudentId) return;
-      requestStudentDb({
-        action: 'update', studentId: selectedStudentId,
-        name: host.querySelector('#p2StudentNameEdit')?.value || selected.name || '',
-        notes: host.querySelector('#p2StudentNotesEdit')?.value || ''
-      });
-    });
-    host.querySelector('[data-student-delete]')?.addEventListener('click', () => {
-      if (!selectedStudentId) return;
-      if (!window.confirm(`Pašalinti mokinį „${selected.name || 'Mokinys'}“ iš mokinių bazės? Senos Room lentos nebus ištrintos.`)) return;
-      requestStudentDb({ action: 'delete', studentId: selectedStudentId });
-      selectedStudentId = null;
-    });
-    host.querySelector('[data-student-link-current]')?.addEventListener('click', () => {
-      if (!selectedStudentId || !roomId) return;
-      const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
-      const lesson = lessonForId(selectedLessonId);
-      requestStudentDb({
-        action: 'link-room',
-        studentId: selectedStudentId,
-        roomId,
-        lessonId: lesson?.id || '',
-        title: lesson?.shortTitle || '',
-        taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
-      });
-    });
-    host.querySelector('[data-student-add-to-class]')?.addEventListener('click', () => {
-      if (!selectedStudentId || !roomId || !linkedStudentId) return;
-      const selectedLessonId = String(host.querySelector('#p2StudentLessonSelect')?.value || '');
-      const lesson = lessonForId(selectedLessonId);
-      requestStudentDb({
-        action: 'add-to-class-session',
-        studentId: selectedStudentId,
-        roomId,
-        lessonId: lesson?.id || '',
-        title: lesson?.shortTitle || '',
-        taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
-      });
-    });
-    host.querySelector('[data-student-switch-class-room]')?.addEventListener('click', event => {
-      const targetRoom = String(event.currentTarget?.dataset.studentSwitchClassRoom || '').trim().toUpperCase();
-      if (!targetRoom) return;
-      if (studentsModal) studentsModal.hidden = true;
-      requestTeacherRoomSwitch(targetRoom);
-    });
-    host.querySelectorAll('[data-student-open-room]').forEach(button => button.addEventListener('click', () => {
-      openHistoricalRoom(button.dataset.studentOpenRoom, button.dataset.roomRole || 'teacher');
-    }));
-    host.querySelectorAll('[data-student-unlink-room]').forEach(button => button.addEventListener('click', () => {
-      const oldRoom = button.dataset.studentUnlinkRoom;
-      if (!window.confirm(`Pašalinti Room ${oldRoom} iš šio mokinio pamokų istorijos? Pati lenta Firebase liks nepaliesta.`)) return;
-      requestStudentDb({ action: 'unlink-room', studentId: selectedStudentId, roomId: oldRoom });
-    }));
-  }
-
-  function openStudentsDatabase() {
-    if (role() !== 'teacher') return;
-    ensureStudentsModal();
-    studentsModal.hidden = false;
-    renderStudentsModal();
-  }
-
-  // P2-SPLIT-P2.5-P4-P1.2: savaitinis tvarkaraštis yra mokytojo profilio dalis,
-  // o ne vienos Room būsena. Tvarkaraščio įrašas kartojasi kas savaitę;
-  // reali pamoka (classSession + atskiros mokinių Room) sukuriama tik paspaudus „Pradėti“.
-  const SCHEDULE_DAYS = Object.freeze([
-    { id: 1, short: 'Pr', label: 'Pirmadienis' },
-    { id: 2, short: 'An', label: 'Antradienis' },
-    { id: 3, short: 'Tr', label: 'Trečiadienis' },
-    { id: 4, short: 'Kt', label: 'Ketvirtadienis' },
-    { id: 5, short: 'Pn', label: 'Penktadienis' },
-    { id: 6, short: 'Št', label: 'Šeštadienis' },
-    { id: 7, short: 'Sk', label: 'Sekmadienis' }
-  ]);
-
-  function scheduleTodayIndex(date = new Date()) {
-    const day = Number(date.getDay());
-    return day === 0 ? 7 : day;
-  }
-
-  function localDateKey(date = new Date()) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-
-  function formatScheduleClock(value) {
-    const stamp = Number(value);
-    if (!Number.isFinite(stamp) || stamp <= 0) return '';
-    try { return new Intl.DateTimeFormat('lt-LT', { hour: '2-digit', minute: '2-digit' }).format(new Date(stamp)); }
-    catch (_) { return new Date(stamp).toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' }); }
-  }
-
-  function defaultScheduleTime() {
-    const date = new Date();
-    let minutes = date.getMinutes();
-    minutes = Math.ceil(minutes / 15) * 15;
-    if (minutes >= 60) { date.setHours(date.getHours() + 1); minutes = 0; }
-    return `${String(date.getHours()).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  }
-
-  function scheduleTimeToMinutes(value) {
-    const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').trim());
-    if (!match) return null;
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-    return hours * 60 + minutes;
-  }
-
-  function scheduleClockFromMinutes(value) {
-    const total = Math.max(0, Math.min(24 * 60, Math.round(Number(value) || 0)));
-    const hours = Math.floor(total / 60);
-    const minutes = total % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-  }
-
-  function scheduleFindConflict(day, start, durationMinutes, excludeScheduleId = '') {
-    const startMinutes = scheduleTimeToMinutes(start);
-    if (startMinutes === null) return null;
-    const duration = Math.max(15, Math.min(180, Math.round(Number(durationMinutes) || 40)));
-    const endMinutes = startMinutes + duration;
-    return scheduleEntriesList().find(entry => {
-      if (String(entry.id || '') === String(excludeScheduleId || '')) return false;
-      if (Number(entry.day || 0) !== Number(day || 0)) return false;
-      const otherStart = scheduleTimeToMinutes(entry.start);
-      if (otherStart === null) return false;
-      const otherDuration = Math.max(15, Math.min(180, Math.round(Number(entry.durationMinutes) || 40)));
-      const otherEnd = otherStart + otherDuration;
-      // Gretimos pamokos leidžiamos: 15:00–15:40 ir 15:40–16:20 nesikerta.
-      return startMinutes < otherEnd && endMinutes > otherStart;
-    }) || null;
-  }
-
-  function scheduleConflictText(conflict) {
-    if (!conflict) return '';
-    const startMinutes = scheduleTimeToMinutes(conflict.start);
-    const duration = Math.max(15, Math.min(180, Math.round(Number(conflict.durationMinutes) || 40)));
-    const end = startMinutes === null ? '' : scheduleClockFromMinutes(startMinutes + duration);
-    const label = String(conflict.label || '').trim() || 'kita pamoka';
-    return `Laikas persidengia su „${label}“ (${conflict.start || '—'}${end ? `–${end}` : ''}).`;
-  }
-
-  function scheduleEntriesList() {
-    return Object.entries(teacherStudentDb.scheduleEntries || {})
-      .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
-      .sort((a, b) => Number(a.day || 0) - Number(b.day || 0) || String(a.start || '').localeCompare(String(b.start || '')) || Number(a.createdAt || 0) - Number(b.createdAt || 0));
-  }
-
-  function scheduleStudentIds(entry) {
-    const raw = entry?.studentIds;
-    if (Array.isArray(raw)) return raw.map(String).filter(id => teacherStudentDb.students?.[id]);
-    if (raw && typeof raw === 'object') return Object.keys(raw).filter(id => raw[id] && teacherStudentDb.students?.[id]);
-    return [];
-  }
-
-  function scheduleStudentNames(entry) {
-    return scheduleStudentIds(entry).map(id => String(teacherStudentDb.students?.[id]?.name || 'Mokinys').trim() || 'Mokinys');
-  }
-
-  function scheduleRunRooms(run) {
-    const rooms = run?.rooms && typeof run.rooms === 'object' ? run.rooms : {};
-    return Object.values(rooms).map(value => String(value?.roomId || value || '').trim().toUpperCase()).filter(Boolean);
-  }
-
-  function requestSchedule(detail) {
-    if (role() !== 'teacher') return;
-    window.dispatchEvent(new CustomEvent('p2:schedule-request', { detail }));
-  }
-
-  function ensureScheduleModal() {
-    if (scheduleModal) return scheduleModal;
-    scheduleModal = document.createElement('div');
-    scheduleModal.className = 'p2-schedule-modal';
-    scheduleModal.hidden = true;
-    scheduleModal.innerHTML = `
-      <div class="p2-schedule-backdrop" data-schedule-close></div>
-      <section class="p2-schedule-panel" role="dialog" aria-modal="true" aria-label="Pamokų tvarkaraštis">
-        <header class="p2-schedule-header">
-          <div><span class="p2-side-kicker">SAVAITINIS PLANAS</span><h2>Tvarkaraštis</h2><p>Pirmiausia sukurk pamoką ir jos laiką. Tada atidaryk pamoką, priskirk mokinius bei pratybas ir vienu mygtuku atverk visą pamoką.</p></div>
-          <button type="button" data-schedule-close aria-label="Uždaryti">×</button>
-        </header>
-        <div class="p2-schedule-body">
-          <main class="p2-schedule-week-pane" id="p2ScheduleWeekPane"></main>
-          <aside class="p2-schedule-editor-pane" id="p2ScheduleEditorPane"></aside>
-        </div>
-      </section>`;
-    document.body.appendChild(scheduleModal);
-    scheduleModal.querySelectorAll('[data-schedule-close]').forEach(el => el.addEventListener('click', () => { scheduleModal.hidden = true; editingScheduleId = ''; scheduleCreateMode = false; }));
-    return scheduleModal;
-  }
-
-  function renderScheduleModal() {
-    if (!scheduleModal || scheduleModal.hidden) return;
-    const weekHost = scheduleModal.querySelector('#p2ScheduleWeekPane');
-    const editorHost = scheduleModal.querySelector('#p2ScheduleEditorPane');
-    if (!weekHost || !editorHost) return;
-
-    const entries = scheduleEntriesList();
-    const today = scheduleTodayIndex();
-    const selectedDay = scheduleSelectedDay >= 1 && scheduleSelectedDay <= 7 ? scheduleSelectedDay : today;
-    scheduleSelectedDay = selectedDay;
-    const todayKey = localDateKey();
-    const students = studentList();
-    const editing = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] || null : null;
-    const editorVisible = Boolean(editing || scheduleCreateMode);
-    const scheduleBody = scheduleModal.querySelector('.p2-schedule-body');
-    if (scheduleBody) scheduleBody.classList.toggle('is-editor-closed', !editorVisible);
-    editorHost.hidden = !editorVisible;
-
-    const dayColumns = SCHEDULE_DAYS.map(day => {
-      const dayEntries = entries.filter(item => Number(item.day) === day.id);
-      const cards = dayEntries.length ? dayEntries.map(entry => {
-        const names = scheduleStudentNames(entry);
-        const run = teacherStudentDb.scheduleRuns?.[entry.id]?.[todayKey] || null;
-        const practice = entry.lessonId ? (entry.practiceTitle || lessonForId(entry.lessonId)?.shortTitle || 'Pratybos') : '';
-        const duration = Math.max(15, Number(entry.durationMinutes || 40));
-        const label = String(entry.label || '').trim();
-        const conflict = scheduleFindConflict(entry.day, entry.start, duration, entry.id);
-        return `<article class="p2-schedule-card ${editingScheduleId === entry.id ? 'is-editing' : ''} ${run ? 'is-started' : ''} ${conflict ? 'has-conflict' : ''}" data-schedule-card="${escapeHtml(entry.id)}">
-          <div class="p2-schedule-card-time"><strong>${escapeHtml(entry.start || '—')}</strong><span>${duration} min.</span></div>
-          <div class="p2-schedule-card-copy">
-            ${label ? `<h4>${escapeHtml(label)}</h4>` : '<h4>Pamoka</h4>'}
-            <div class="p2-schedule-card-students">${names.length ? names.map(name => `<span>${escapeHtml(name)}</span>`).join('') : '<em>Mokiniai dar nepriskirti</em>'}</div>
-            ${practice ? `<p>▦ ${escapeHtml(practice)}</p>` : '<p>□ Pratybos dar nepriskirtos</p>'}
-            ${run ? `<small>✓ Šiandien pirmą kartą atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
-            ${conflict ? '<small class="p2-schedule-conflict">⚠ Persidengia su kita pamoka</small>' : ''}
-          </div>
-        </article>`;
-      }).join('') : '<div class="p2-schedule-day-empty">Pamokų nėra</div>';
-      return `<section class="p2-schedule-day ${day.id === today ? 'is-today' : ''} ${day.id === selectedDay ? 'is-selected' : ''}" data-schedule-day="${day.id}">
-        <header data-schedule-select-day="${day.id}" title="Pasirinkti ${escapeHtml(day.label)} naujai pamokai"><span>${escapeHtml(day.short)}</span><strong>${escapeHtml(day.label)}</strong>${day.id === today ? '<b>Šiandien</b>' : ''}</header>
-        <div class="p2-schedule-day-list">${cards}</div>
-      </section>`;
-    }).join('');
-
-    weekHost.innerHTML = `
-      <div class="p2-schedule-week-toolbar">
-        <div><span class="p2-label">Savaitė</span><strong>${entries.length} ${entries.length === 1 ? 'pamoka' : 'pamokos'}</strong></div>
-        <button type="button" class="p2-secondary" data-schedule-new>＋ Nauja pamoka</button>
-      </div>
-      <div class="p2-schedule-week-grid">${dayColumns}</div>`;
-
-    if (scheduleCreateMode && !editing) {
-      const editDay = selectedDay;
-      const editStart = defaultScheduleTime();
-      const dayOptions = SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === editDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
-      editorHost.innerHTML = `
-        <div class="p2-schedule-editor-head"><button type="button" class="p2-schedule-editor-close" data-schedule-editor-close aria-label="Uždaryti naujos pamokos formą">×</button><span class="p2-label">NAUJA PAMOKA</span><h3>Sukurti pamoką</h3><p class="p2-schedule-editor-note">Pirmiausia nustatyk tik pamokos vietą tvarkaraštyje. Mokinius ir pratybas priskirsi atidaręs sukurtą pamoką.</p></div>
-        <div class="p2-schedule-form">
-          <div class="p2-schedule-form-row two">
-            <label><span>Savaitės diena</span><select id="p2ScheduleDay">${dayOptions}</select></label>
-            <label><span>Pradžia</span><input id="p2ScheduleStart" type="time" value="${escapeHtml(editStart)}" step="300"></label>
-          </div>
-          <label><span>Trukmė (min.)</span><input id="p2ScheduleDuration" type="number" min="15" max="180" step="5" value="40"></label>
-          <label><span>Pavadinimas <small>nebūtina</small></span><input id="p2ScheduleLabel" maxlength="80" value="" placeholder="Pvz. VBE pasiruošimas"></label>
-          <div class="p2-schedule-form-actions p2-schedule-form-actions-single">
-            <span></span><button type="button" class="p2-primary" data-schedule-create>Sukurti pamoką</button>
-          </div>
-        </div>`;
-    } else if (editing) {
-      const editDay = Number(editing.day || today);
-      const editStart = String(editing.start || defaultScheduleTime());
-      const editDuration = Math.max(15, Math.min(180, Number(editing.durationMinutes || 40)));
-      const editLabel = String(editing.label || '');
-      const editLessonId = String(editing.lessonId || '');
-      const selectedIds = new Set(scheduleStudentIds(editing));
-      const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[todayKey] || null;
-      const runRooms = scheduleRunRooms(run);
-      const dayOptions = SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === editDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
-      const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === editLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
-      const studentChecks = students.length ? students.map(student => `<label class="p2-schedule-student-check"><input type="checkbox" value="${escapeHtml(student.id)}" ${selectedIds.has(student.id) ? 'checked' : ''}><span class="p2-student-avatar">${escapeHtml(String(student.name || 'M').trim().slice(0,1).toUpperCase() || 'M')}</span><strong>${escapeHtml(student.name || 'Mokinys')}</strong></label>`).join('') : '<div class="p2-schedule-no-students">Pirmiausia sukurk mokinius skiltyje „Mokiniai“.</div>';
-      const openCaption = run && runRooms.length ? 'Atidaryti pamoką' : 'Atidaryti pamoką';
-      const openHint = run && runRooms.length
-        ? `Šiandienos pamoka jau pradėta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}. Atidarysi esamas mokinių lentas.`
-        : selectedIds.size
-          ? 'Atidarius pirmą kartą kiekvienam priskirtam mokiniui bus sukurta atskira lenta ir mokinių skirtukai.'
-          : 'Priskirk bent vieną mokinį, kad galėtum atidaryti visą pamoką.';
-
-      editorHost.innerHTML = `
-        <div class="p2-schedule-editor-head"><button type="button" class="p2-schedule-editor-close" data-schedule-editor-close aria-label="Uždaryti pamokos nustatymus">×</button><span class="p2-label">PAMOKA</span><h3>${escapeHtml(editLabel || `${SCHEDULE_DAYS.find(day => day.id === editDay)?.label || 'Pamoka'} ${editStart}`)}</h3><p class="p2-schedule-editor-note">Čia valdai pačią pamoką: jos laiką, dalyvius ir pratybas.</p></div>
-        <div class="p2-schedule-form">
-          <div class="p2-schedule-form-row two">
-            <label><span>Savaitės diena</span><select id="p2ScheduleDay">${dayOptions}</select></label>
-            <label><span>Pradžia</span><input id="p2ScheduleStart" type="time" value="${escapeHtml(editStart)}" step="300"></label>
-          </div>
-          <label><span>Trukmė (min.)</span><input id="p2ScheduleDuration" type="number" min="15" max="180" step="5" value="${editDuration}"></label>
-          <label><span>Pavadinimas <small>nebūtina</small></span><input id="p2ScheduleLabel" maxlength="80" value="${escapeHtml(editLabel)}" placeholder="Pvz. VBE pasiruošimas"></label>
-          <fieldset class="p2-schedule-students-field"><legend>Pamokos mokiniai</legend><div>${studentChecks}</div></fieldset>
-          <label><span>Pratybos <small>nebūtina</small></span><select id="p2ScheduleLesson"><option value="">Tik lenta / pratybas priskirsiu vėliau</option>${lessonOptions}</select></label>
-          <div class="p2-schedule-open-box ${run ? 'is-running' : ''}">
-            <div><strong>${run ? 'Šiandienos pamoka paruošta' : 'Visa pamoka'}</strong><span>${openHint}</span></div>
-            <button type="button" class="p2-primary" data-schedule-open-lesson ${selectedIds.size ? '' : 'disabled'}>${openCaption}</button>
-          </div>
-          ${run ? '<p class="p2-schedule-run-note">Pakeitimai mokinių sąraše ar pratybose bus naudojami kitą kartą pradedant šią savaitinę pamoką; jau sukurtos šiandienos lentos neperrašomos.</p>' : ''}
-          <div class="p2-schedule-form-actions">
-            <button type="button" class="p2-student-danger" data-schedule-delete>Pašalinti pamoką</button>
-            <button type="button" class="p2-primary" data-schedule-save>Išsaugoti pakeitimus</button>
-          </div>
-        </div>`;
-    }
-
-    weekHost.querySelector('[data-schedule-new]')?.addEventListener('click', () => { editingScheduleId = ''; scheduleCreateMode = true; renderScheduleModal(); });
-    const selectScheduleDay = day => {
-      if (day < 1 || day > 7) return;
-      scheduleSelectedDay = day;
-      weekHost.querySelectorAll('[data-schedule-day]').forEach(column => column.classList.toggle('is-selected', Number(column.dataset.scheduleDay || 0) === day));
-      if (scheduleCreateMode && !editingScheduleId) {
-        const select = editorHost.querySelector('#p2ScheduleDay');
-        if (select) select.value = String(day);
-      }
-    };
-    weekHost.querySelectorAll('[data-schedule-select-day]').forEach(header => header.addEventListener('click', () => {
-      selectScheduleDay(Number(header.dataset.scheduleSelectDay || 0));
-    }));
-    weekHost.querySelectorAll('[data-schedule-day]').forEach(column => column.addEventListener('click', event => {
-      if (event.target.closest('[data-schedule-card], button, input, select, textarea')) return;
-      selectScheduleDay(Number(column.dataset.scheduleDay || 0));
-    }));
-    // Visa pamokos kortelė yra vienintelis pagrindinis įėjimas į jos informaciją.
-    // Atskiro „Tvarkyti“ mygtuko nebėra: vienas paspaudimas bet kurioje laisvoje
-    // kortelės vietoje atveria pamokos valdymo panelę.
-    weekHost.querySelectorAll('[data-schedule-card]').forEach(card => card.addEventListener('click', event => {
-      if (event.target.closest('button, input, select, textarea, a')) return;
-      const scheduleId = String(card.dataset.scheduleCard || '');
-      if (!scheduleId) return;
-      editingScheduleId = scheduleId;
-      scheduleCreateMode = false;
-      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
-      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || today);
-      renderScheduleModal();
-    }));
-
-
-    editorHost.querySelector('[data-schedule-editor-close]')?.addEventListener('click', () => {
-      editingScheduleId = '';
-      scheduleCreateMode = false;
-      renderScheduleModal();
-    });
-
-    editorHost.querySelector('[data-schedule-create]')?.addEventListener('click', () => {
-      const day = Number(editorHost.querySelector('#p2ScheduleDay')?.value || 0);
-      const start = String(editorHost.querySelector('#p2ScheduleStart')?.value || '').trim();
-      const durationMinutes = Number(editorHost.querySelector('#p2ScheduleDuration')?.value || 40);
-      const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
-      if (!start) { toast('Pasirink pamokos pradžios laiką'); return; }
-      const conflict = scheduleFindConflict(day, start, durationMinutes);
-      if (conflict) { toast(scheduleConflictText(conflict)); return; }
-      scheduleSelectedDay = day;
-      const button = editorHost.querySelector('[data-schedule-create]');
-      if (button) { button.disabled = true; button.textContent = 'Kuriama…'; }
-      requestSchedule({ action: 'add', day, start, durationMinutes, label, studentIds: [], lessonId: '', practiceTitle: '', taskCount: 0, attemptPolicy: null });
-    });
-
-    editorHost.querySelector('[data-schedule-save]')?.addEventListener('click', () => {
-      if (!editingScheduleId) return;
-      const day = Number(editorHost.querySelector('#p2ScheduleDay')?.value || 0);
-      const start = String(editorHost.querySelector('#p2ScheduleStart')?.value || '').trim();
-      const durationMinutes = Number(editorHost.querySelector('#p2ScheduleDuration')?.value || 40);
-      const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
-      const lessonId = String(editorHost.querySelector('#p2ScheduleLesson')?.value || '').trim();
-      const lesson = lessonForId(lessonId);
-      const studentIds = Array.from(editorHost.querySelectorAll('.p2-schedule-student-check input:checked')).map(input => input.value);
-      if (!start) { toast('Pasirink pamokos pradžios laiką'); return; }
-      const conflict = scheduleFindConflict(day, start, durationMinutes, editingScheduleId);
-      if (conflict) { toast(scheduleConflictText(conflict)); return; }
-      scheduleSelectedDay = day;
-      requestSchedule({
-        action: 'update', scheduleId: editingScheduleId,
-        day, start, durationMinutes, label, studentIds,
-        lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
-      });
-    });
-
-    const syncScheduleOpenButton = () => {
-      const openButton = editorHost.querySelector('[data-schedule-open-lesson]');
-      if (!openButton) return;
-      const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[todayKey] || null;
-      const hasExistingRooms = scheduleRunRooms(run).length > 0;
-      const hasSelectedStudents = editorHost.querySelectorAll('.p2-schedule-student-check input:checked').length > 0;
-      openButton.disabled = !hasExistingRooms && !hasSelectedStudents;
-    };
-    editorHost.querySelectorAll('.p2-schedule-student-check input').forEach(input => input.addEventListener('change', syncScheduleOpenButton));
-
-    editorHost.querySelector('[data-schedule-open-lesson]')?.addEventListener('click', () => {
-      if (!editingScheduleId) return;
-      const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[todayKey] || null;
-      const runRooms = scheduleRunRooms(run);
-      if (runRooms.length) {
-        const button = editorHost.querySelector('[data-schedule-open-lesson]');
-        if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
-        // Net jau pradėtą pamoką atidarome per schedule valdiklį: jis P4-P1.2
-        // patikrina / atkuria bendrą classSession indeksą, todėl visų mokinių
-        // skirtukai atsiranda ir seniau P4-P1.1 sukurtoms šiandienos pamokoms.
-        requestSchedule({ action: 'start', scheduleId: editingScheduleId, dateKey: todayKey });
-        return;
-      }
-      const studentIds = Array.from(editorHost.querySelectorAll('.p2-schedule-student-check input:checked')).map(input => input.value);
-      if (!studentIds.length) { toast('Priskirk bent vieną mokinį'); return; }
-      // Prieš pirmą atidarymą išsaugome dabartinę pamokos kortelę, kad
-      // kuriamos Room tiksliai atitiktų tai, ką mokytojas mato ekrane.
-      const day = Number(editorHost.querySelector('#p2ScheduleDay')?.value || 0);
-      const start = String(editorHost.querySelector('#p2ScheduleStart')?.value || '').trim();
-      const durationMinutes = Number(editorHost.querySelector('#p2ScheduleDuration')?.value || 40);
-      const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
-      const lessonId = String(editorHost.querySelector('#p2ScheduleLesson')?.value || '').trim();
-      const lesson = lessonForId(lessonId);
-      const conflict = scheduleFindConflict(day, start, durationMinutes, editingScheduleId);
-      if (conflict) { toast(scheduleConflictText(conflict)); return; }
-      scheduleSelectedDay = day;
-      const button = editorHost.querySelector('[data-schedule-open-lesson]');
-      if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
-      requestSchedule({
-        action: 'update-and-start', scheduleId: editingScheduleId, dateKey: todayKey,
-        day, start, durationMinutes, label, studentIds,
-        lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
-      });
-    });
-
-    editorHost.querySelector('[data-schedule-delete]')?.addEventListener('click', () => {
-      if (!editingScheduleId) return;
-      if (!window.confirm('Pašalinti šią pamoką iš savaitinio tvarkaraščio? Jau įvykusių pamokų istorija liks.')) return;
-      requestSchedule({ action: 'delete', scheduleId: editingScheduleId });
-      editingScheduleId = '';
-      scheduleCreateMode = false;
-    });
-  }
-
-  function openSchedule() {
-    if (role() !== 'teacher') return;
-    if (scheduleSelectedDay < 1 || scheduleSelectedDay > 7) scheduleSelectedDay = scheduleTodayIndex();
-    ensureScheduleModal();
-    editingScheduleId = '';
-    scheduleCreateMode = false;
-    scheduleModal.hidden = false;
-    renderScheduleModal();
-  }
-
-  const originalStudentsButton = document.getElementById('studentsButton');
-  if (originalStudentsButton) originalStudentsButton.addEventListener('click', openStudentsDatabase);
-  const originalScheduleButton = document.getElementById('scheduleButton');
-  if (originalScheduleButton) originalScheduleButton.addEventListener('click', openSchedule);
-
-  function queueCurrentStudentLessonSnapshot() {
-    if (role() !== 'teacher' || roomSwitching) return;
-    clearTimeout(studentDbSnapshotTimer);
-    const scheduledRoomId = currentRoomId();
-    studentDbSnapshotTimer = setTimeout(() => {
-      if (roomSwitching || currentRoomId() !== scheduledRoomId) return;
-      const roomId = scheduledRoomId;
-      const studentId = linkedStudentIdForRoom(roomId);
-      if (!roomId || !studentId) return;
-      const state = progress ? normalizedProgress(progress) : null;
-      let summary = { status: state?.status || 'not_started', finished: 0, solved: 0, good: 0, help: 0, repeat: 0, percent: 0, taskCount: assignment?.taskCount || 0, currentTaskId: state?.currentTaskId || null };
-      if (assignment && state) summary = { ...summary, ...progressStats(), status: state.status, taskCount: activeLesson().taskCount, currentTaskId: state.currentTaskId };
-      requestStudentDb({
-        action: 'snapshot', studentId, roomId,
-        lessonId: assignment?.lessonId || '',
-        title: assignment ? activeLesson().shortTitle : '',
-        taskCount: assignment ? activeLesson().taskCount : 0,
-        summary
-      });
-    }, 450);
-  }
-
-  window.addEventListener('p2:room-student-state', event => {
-    roomStudentProfile = event.detail && typeof event.detail === 'object' ? event.detail : null;
-    updateStudentIdentityLabels();
-    renderLessonStudentTabs();
-    renderPanels();
-    renderTeacherPreview();
-    renderStudentsModal();
-  });
-
-  window.addEventListener('p2:room-switch-start', () => {
-    roomSwitching = true;
-    clearTimeout(studentDbSnapshotTimer);
-    studentDbSnapshotTimer = null;
-    // Senos Room pedagoginę būseną atjungiame lokaliai, bet sąmoningai
-    // neuždarome mokytojo pratybų peržiūros režimo. Naujo mokinio assignment
-    // ir progress netrukus ateis iš jo Firebase Room.
-    roomStudentProfile = null;
-    assignment = null;
-    progress = null;
-    selectedAnswers = {};
-  });
-
-  window.addEventListener('p2:room-switch-complete', () => {
-    roomSwitching = false;
-    updateStudentIdentityLabels();
-    renderLessonStudentTabs();
-    renderPanels();
-    renderTeacherPreview();
-    renderStudentsModal();
-    queueCurrentStudentLessonSnapshot();
-  });
-
-  window.addEventListener('p2:room-switch-error', () => {
-    roomSwitching = false;
-    renderLessonStudentTabs();
-    renderStudentsModal();
-    toast('Nepavyko perjungti mokinio lentos');
-  });
-
-  window.addEventListener('p2:students-state', event => {
-    teacherStudentDb = normalizeTeacherStudentDb(event.detail);
-    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
-    updateStudentIdentityLabels();
-    renderLessonStudentTabs();
-
-    // Grįžus iš istorinės lentos tame pačiame skirtuke, atstatome būtent
-    // tą mokinio kortelę, iš kurios pamoka buvo atidaryta.
-    if (role() === 'teacher') {
-      let reopenStudentId = '';
-      try { reopenStudentId = String(sessionStorage.getItem(STUDENT_CARD_REOPEN_KEY) || '').trim(); } catch (_) {}
-      if (reopenStudentId && teacherStudentDb.students?.[reopenStudentId]) {
-        selectedStudentId = reopenStudentId;
-        try {
-          sessionStorage.removeItem(STUDENT_CARD_REOPEN_KEY);
-          sessionStorage.removeItem(STUDENT_HISTORY_RETURN_KEY);
-        } catch (_) {}
-        openStudentsDatabase();
-        return;
-      }
-    }
-    renderStudentsModal();
-    renderScheduleModal();
-  });
-
-  window.addEventListener('p2:schedule-saved', event => {
-    const scheduleId = String(event.detail?.scheduleId || '').trim();
-    if (scheduleId) {
-      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
-      if (entry) scheduleSelectedDay = Number(entry.day || scheduleSelectedDay || scheduleTodayIndex());
-    }
-    editingScheduleId = '';
-    scheduleCreateMode = false;
-    renderScheduleModal();
-  });
-
-  window.addEventListener('p2:schedule-started', event => {
-    const firstRoom = String(event.detail?.firstRoom || '').trim().toUpperCase();
-    if (scheduleModal) scheduleModal.hidden = true;
-    editingScheduleId = '';
-    scheduleCreateMode = false;
-    if (firstRoom && firstRoom !== currentRoomId()) requestTeacherRoomSwitch(firstRoom, false);
-  });
-
-  window.addEventListener('p2:schedule-error', () => {
-    renderScheduleModal();
-  });
 
   const originalLibraryButton = document.getElementById('libraryButton');
   if (originalLibraryButton) {
@@ -2927,7 +2132,7 @@
   function setTeacherSideHeader(previewActive = false) {
     if (role() !== 'teacher') return;
     sideKicker.textContent = previewActive ? 'MOKYTOJO PERŽIŪRA' : 'MOKYTOJO STEBĖJIMAS';
-    sideTitle.textContent = previewActive ? 'Pratybų peržiūra' : `${currentStudentName('Mokinys')} · eiga`;
+    sideTitle.textContent = previewActive ? 'Pratybų peržiūra' : 'Mokinio eiga';
   }
 
   function setTeacherPreviewMode(nextMode) {
@@ -3191,12 +2396,12 @@
     }).join('');
 
     const locationText = isStudentTask
-      ? `${currentStudentName('Mokinys')} · ${studentIndex} / ${activeLesson().taskCount}`
-      : `${currentStudentName('Mokinys')} · ${studentIndex} / ${activeLesson().taskCount} · Peržiūri ${previewIndex}`;
+      ? `Mokinys · ${studentIndex} / ${activeLesson().taskCount}`
+      : `Mokinys · ${studentIndex} / ${activeLesson().taskCount} · Peržiūri ${previewIndex}`;
 
     host.innerHTML = `
       <div class="p2-preview-toolbar">
-        <div class="p2-preview-location"><span class="p2-live-dot" aria-hidden="true"></span><strong>${escapeHtml(locationText)}</strong></div>
+        <div class="p2-preview-location"><span class="p2-live-dot" aria-hidden="true"></span><strong>${locationText}</strong></div>
         <div class="p2-preview-follow-actions">
           ${teacherFollowStudent
             ? '<button type="button" class="p2-secondary is-active" data-preview-action="follow">✓ Sekama</button>'
@@ -3208,7 +2413,7 @@
           <article class="p2-preview-detail ${(solutionTask || expressionTask) ? 'p2-solution-preview-detail' : ''}${simpleInputTask ? ' p2-simple-input-preview-detail' : ''}">
             <header class="p2-preview-detail-head">
               <div>
-                <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ` · ${escapeHtml(currentStudentName('Mokinys'))} dabar čia` : ''}</span>
+                <span class="p2-label">${escapeHtml(previewTask.label)} · ${previewIndex} užduotis${isStudentTask ? ' · mokinys dabar čia' : ''}</span>
                 ${conditionMarkup}
                 ${answerKeyMarkup}
               </div>
@@ -3315,8 +2520,6 @@
     renderPanels();
     renderLibraryContent();
     renderTeacherPreview();
-    queueCurrentStudentLessonSnapshot();
-    renderStudentsModal();
   });
 
   window.addEventListener('p2:progress-state', event => {
@@ -3328,11 +2531,9 @@
       && comparableProgress(incoming) === comparableProgress(progress);
     progress = incoming;
     if (teacherFollowStudent && progress) teacherPreviewTaskId = currentTask().id;
-    if (ownLiveEcho) { queueCurrentStudentLessonSnapshot(); return; }
+    if (ownLiveEcho) return;
     renderPanels();
     renderTeacherPreview();
-    queueCurrentStudentLessonSnapshot();
-    renderStudentsModal();
   });
 
   const roleObserver = new MutationObserver(() => applyRole());
