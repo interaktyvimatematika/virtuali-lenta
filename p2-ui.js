@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4.2';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2585,6 +2585,16 @@
           <div><span class="p2-label">Mokinių bazė</span><h3>Mokinių sąrašas</h3><p>${visibleStudents.length === students.length ? `${students.length} ${students.length === 1 ? 'mokinys' : 'mokiniai'}` : `Rodoma ${visibleStudents.length} iš ${students.length}`}</p></div>
           <button type="button" class="p2-primary" data-student-create-open>＋ Naujas mokinys</button>
         </div>
+        <div class="p2-students-overview-toolbar">
+          <div class="p2-students-overview-filters">
+            <label class="p2-student-search"><span aria-hidden="true">⌕</span><input id="p2StudentSearch" value="${escapeHtml(studentSearchQuery)}" placeholder="Ieškoti mokinio…" autocomplete="off"></label>
+            <select id="p2StudentGradeFilter" aria-label="Filtruoti pagal klasę">${gradeFilterOptions}</select>
+          </div>
+          <div class="p2-students-overview-actions">
+            <span class="p2-student-overview-summary">${presentGrades.length ? `${presentGrades.length} ${presentGrades.length === 1 ? 'klasė' : 'klasės'}` : 'Klasės dar nenurodytos'}</span>
+            <button type="button" class="p2-secondary p2-student-backup-inline" data-student-backup title="Atsisiųsti mokinių bazės ir susietų pamokų atsarginę kopiją">↓ Atsarginė kopija</button>
+          </div>
+        </div>
         <div class="p2-students-overview-groups">${overviewMarkup}</div>
       </section>`;
 
@@ -2668,18 +2678,7 @@
         </section>`;
     }
 
-    host.innerHTML = `
-      <aside class="p2-students-list-pane">
-        <button type="button" class="p2-student-create-toggle" data-student-create-open>＋ Naujas mokinys</button>
-        <div class="p2-student-list-tools">
-          <label class="p2-student-search"><span aria-hidden="true">⌕</span><input id="p2StudentSearch" value="${escapeHtml(studentSearchQuery)}" placeholder="Ieškoti mokinio…" autocomplete="off"></label>
-          <select id="p2StudentGradeFilter" aria-label="Filtruoti pagal klasę">${gradeFilterOptions}</select>
-        </div>
-        <div class="p2-student-side-summary"><span>Mokinių bazė</span><strong>${students.length}</strong><small>${presentGrades.length ? `${presentGrades.length} ${presentGrades.length === 1 ? 'klasė' : 'klasės'}` : 'Klasės dar nenurodytos'}</small></div>
-        <div class="p2-student-backup-box"><strong>Duomenų sauga</strong><span>Schema v${escapeHtml(String(teacherStudentDb.meta?.schemaVersion || P2_DATA_SCHEMA_VERSION))}. Kopijoje išsaugomi mokiniai, pamokų istorija, rezultatai, tvarkaraštis ir susietų Room lentos.</span><button type="button" class="p2-secondary" data-student-backup>↓ Atsisiųsti atsarginę kopiją</button></div>
-        <div class="p2-student-db-id"><span>Šios naršyklės mokytojo bazė</span><code title="Techninis bazės identifikatorius">${escapeHtml(teacherStudentDb.profileId || 'jungiama…')}</code></div>
-      </aside>
-      <main class="p2-student-detail-pane">${detailMarkup}</main>`;
+    host.innerHTML = `<main class="p2-student-detail-pane p2-student-detail-pane-full">${detailMarkup}</main>`;
 
     host.querySelector('[data-student-backup]')?.addEventListener('click', event => {
       const button = event.currentTarget;
