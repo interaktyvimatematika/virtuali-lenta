@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3';
+  const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
   const workspace = document.getElementById('p2Workspace');
@@ -37,6 +38,7 @@
     // Sąmoningai paliekamas tas pats lesson id, kad jau priskirta demonstracinė pamoka
     // mokinio lange neprapultų po GitHub atnaujinimo.
     id: 'p2-demo-funkcija-01',
+    contentVersion: 1,
     title: 'Lygčių tikrintuvo diagnostika',
     shortTitle: 'Lygčių diagnostika',
     description: '6 tiesinių ir kvadratinių lygčių diagnostikos užduotys, visos naudojančios naujausią semantinį sprendimo srautą.',
@@ -212,6 +214,7 @@
   // atsakymo laukeliai, kad penktokei nereikėtų sudėtingo formulės įvedimo.
   const GRADE5_REVIEW_LESSON = Object.freeze({
     id: 'p2-grade5-review-01',
+    contentVersion: 1,
     title: '5 klasės matematikos pakartojimas',
     shortTitle: '5 klasės pakartojimas',
     description: '30 įvairių 5 klasės kurso kartojimo užduočių: skaičiai ir veiksmai, dalumas, trupmenos, dešimtainiai skaičiai, procentai, dėsningumai, paprastos lygtys, geometrija, matavimai, duomenys ir tikimybės.',
@@ -408,6 +411,7 @@
   // per LaTeX/MathLive, o atsakymai paliekami kuo paprastesni: pasirinkimas arba skaičius.
   const GRADE7_REVIEW_LESSON = Object.freeze({
     id: 'p2-grade7-review-01',
+    contentVersion: 1,
     title: '7 klasės matematikos pakartojimas',
     shortTitle: '7 klasės pakartojimas',
     description: '30 įvairių 7 klasės kurso kartojimo užduočių: laipsniai ir standartinė išraiška, procentai ir palūkanos, nelygybės, tiesioginis ir atvirkštinis proporcingumas, koordinačių plokštuma, geometrija, plotai, apskritimas, tūris ir duomenys.',
@@ -626,7 +630,7 @@
   let scheduleSelectedDay = 0;
   let selectedStudentId = null;
   let studentDbSnapshotTimer = null;
-  let teacherStudentDb = { profileId: '', students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+  let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
   let roomSwitching = false;
@@ -634,6 +638,46 @@
   function lessonForId(lessonId) {
     const id = String(lessonId || '').trim();
     return LESSON_CATALOG.find(lesson => lesson.id === id) || null;
+  }
+
+  function contentHash(value) {
+    const text = JSON.stringify(value ?? null);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `fnv1a-${hash.toString(16).padStart(8, '0')}`;
+  }
+
+  function lessonContentSnapshot(lesson) {
+    if (!lesson) return null;
+    const snapshot = {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      lessonId: String(lesson.id || ''),
+      contentVersion: Math.max(1, Math.round(Number(lesson.contentVersion) || 1)),
+      title: String(lesson.title || ''),
+      shortTitle: String(lesson.shortTitle || lesson.title || ''),
+      description: String(lesson.description || ''),
+      taskCount: Math.max(0, Number(lesson.taskCount) || 0),
+      classCount: Math.max(0, Number(lesson.classCount) || 0),
+      selfCount: Math.max(0, Number(lesson.selfCount) || 0),
+      taskIds: Array.isArray(lesson.tasks) ? lesson.tasks.map(task => String(task?.id || '')).filter(Boolean) : [],
+      tasks: Array.isArray(lesson.tasks) ? JSON.parse(JSON.stringify(lesson.tasks)) : []
+    };
+    snapshot.contentHash = contentHash(snapshot);
+    return snapshot;
+  }
+
+  function assignmentContentDetail(lesson) {
+    const snapshot = lessonContentSnapshot(lesson);
+    return snapshot ? {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      contentVersion: snapshot.contentVersion,
+      contentHash: snapshot.contentHash,
+      taskIds: snapshot.taskIds,
+      contentSnapshot: snapshot
+    } : { schemaVersion: P2_DATA_SCHEMA_VERSION };
   }
 
   function activeLesson() {
@@ -2043,6 +2087,7 @@
     const source = value && typeof value === 'object' ? value : {};
     return {
       profileId: String(source.profileId || ''),
+      meta: source.meta && typeof source.meta === 'object' ? source.meta : {},
       students: source.students && typeof source.students === 'object' ? source.students : {},
       roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {},
       classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {},
@@ -2419,9 +2464,16 @@
       <aside class="p2-students-list-pane">
         <div class="p2-student-create"><label for="p2NewStudentName">Naujas mokinys</label><div><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"><button type="button" data-student-add>＋</button></div></div>
         <div class="p2-students-list">${listMarkup}</div>
+        <div class="p2-student-backup-box"><strong>Duomenų sauga</strong><span>Schema v${escapeHtml(String(teacherStudentDb.meta?.schemaVersion || P2_DATA_SCHEMA_VERSION))}. Kopijoje išsaugomi mokiniai, pamokų istorija, rezultatai, tvarkaraštis ir susietų Room lentos.</span><button type="button" class="p2-secondary" data-student-backup>↓ Atsisiųsti atsarginę kopiją</button></div>
         <div class="p2-student-db-id"><span>Šios naršyklės mokytojo bazė</span><code title="Techninis bazės identifikatorius">${escapeHtml(teacherStudentDb.profileId || 'jungiama…')}</code></div>
       </aside>
       <main class="p2-student-detail-pane">${detailMarkup}</main>`;
+
+    host.querySelector('[data-student-backup]')?.addEventListener('click', event => {
+      const button = event.currentTarget;
+      if (button) { button.disabled = true; button.textContent = 'Ruošiama…'; }
+      window.dispatchEvent(new CustomEvent('p2:backup-request'));
+    });
 
     host.querySelectorAll('[data-student-select]').forEach(button => button.addEventListener('click', () => {
       selectedStudentId = button.dataset.studentSelect;
@@ -2462,7 +2514,8 @@
         lessonId: lesson?.id || '',
         title: lesson?.shortTitle || '',
         taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
+        ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
     host.querySelector('[data-student-add-to-class]')?.addEventListener('click', () => {
@@ -2476,7 +2529,8 @@
         lessonId: lesson?.id || '',
         title: lesson?.shortTitle || '',
         taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
+        ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
     host.querySelector('[data-student-switch-class-room]')?.addEventListener('click', event => {
@@ -2812,7 +2866,8 @@
         action: 'update', scheduleId: editingScheduleId,
         day, start, durationMinutes, label, studentIds,
         lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
+        ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
 
@@ -2858,7 +2913,8 @@
         action: 'update-and-start', scheduleId: editingScheduleId, dateKey: todayKey,
         day, start, durationMinutes, label, studentIds,
         lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
+        ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
 
@@ -2903,6 +2959,13 @@
         lessonId: assignment?.lessonId || '',
         title: assignment ? activeLesson().shortTitle : '',
         taskCount: assignment ? activeLesson().taskCount : 0,
+        assignmentKey: assignment?.assignmentKey || '',
+        assignedAt: Number(assignment?.assignedAt || 0) || null,
+        contentVersion: Number(assignment?.contentVersion || activeLesson()?.contentVersion || 1),
+        contentHash: String(assignment?.contentHash || ''),
+        taskIds: Array.isArray(assignment?.taskIds) ? assignment.taskIds : activeLesson().tasks.map(task => task.id),
+        contentSnapshot: assignment?.contentSnapshot || lessonContentSnapshot(activeLesson()),
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
         summary
       });
     }, 450);
@@ -2971,6 +3034,13 @@
     renderStudentsModal();
     renderScheduleModal();
   });
+
+  const resetBackupButton = () => {
+    const button = studentsModal?.querySelector('[data-student-backup]');
+    if (button) { button.disabled = false; button.textContent = '↓ Atsisiųsti atsarginę kopiją'; }
+  };
+  window.addEventListener('p2:backup-complete', resetBackupButton);
+  window.addEventListener('p2:backup-error', resetBackupButton);
 
   window.addEventListener('p2:schedule-saved', event => {
     const scheduleId = String(event.detail?.scheduleId || '').trim();
@@ -3083,7 +3153,7 @@
         }
         const attemptPolicy = normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy });
         window.dispatchEvent(new CustomEvent('p2:assignment-request', {
-          detail: { action: 'assign', lessonId: lesson.id, title: lesson.title, taskCount: lesson.taskCount, attemptPolicy }
+          detail: { action: 'assign', lessonId: lesson.id, title: lesson.title, taskCount: lesson.taskCount, attemptPolicy, ...assignmentContentDetail(lesson) }
         }));
         toast('Pamoka priskiriama mokiniui…');
       });
@@ -3487,7 +3557,7 @@
       }
       if (detail.action === 'assign') {
         const lesson = lessonForId(detail.lessonId) || DEMO_LESSON;
-        assignment = { lessonId: lesson.id, title: lesson.title, taskCount: lesson.taskCount, attemptPolicy: detail.attemptPolicy || pendingAttemptPolicy, assignedAt: Date.now() };
+        assignment = { lessonId: lesson.id, title: lesson.title, taskCount: lesson.taskCount, attemptPolicy: detail.attemptPolicy || pendingAttemptPolicy, assignedAt: Date.now(), assignmentKey: `LOCAL-${Date.now()}`, ...assignmentContentDetail(lesson) };
         pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
         progress = emptyProgress();
         selectedAnswers = {};
@@ -3514,7 +3584,22 @@
     assignment = event.detail && typeof event.detail === 'object' ? event.detail : null;
     const nextLessonId = assignment?.lessonId || null;
     const lessonChanged = previousLessonId !== nextLessonId;
-    if (assignment) pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
+    if (assignment) {
+      pendingAttemptPolicy = normalizedAttemptPolicy(assignment);
+      if (role() === 'teacher') {
+        const lesson = lessonForId(assignment.lessonId);
+        if (lesson && (!assignment.schemaVersion || !assignment.contentVersion || !assignment.contentSnapshot || !assignment.assignmentKey)) {
+          window.dispatchEvent(new CustomEvent('p2:assignment-request', {
+            detail: {
+              action: 'metadata',
+              lessonId: lesson.id,
+              assignedAt: Number(assignment.assignedAt || 0) || null,
+              ...assignmentContentDetail(lesson)
+            }
+          }));
+        }
+      }
+    }
     if (!assignment || lessonChanged) {
       progress = null;
       selectedAnswers = {};

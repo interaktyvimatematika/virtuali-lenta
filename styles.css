@@ -6866,3 +6866,17 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media (max-width:1050px) { .p2-schedule-body.is-editor-closed { grid-template-rows:minmax(0,1fr); } }
 
 /* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
+
+/* P2-SPLIT-P2.5-P4-P1.7.3 · duomenų saugos / atsarginės kopijos kortelė */
+.p2-student-backup-box {
+  margin: 12px 0 8px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, .10);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, .92);
+  display: grid;
+  gap: 7px;
+}
+.p2-student-backup-box strong { font-size: 13px; }
+.p2-student-backup-box span { font-size: 11px; line-height: 1.4; color: #64748b; }
+.p2-student-backup-box button { width: 100%; justify-content: center; }

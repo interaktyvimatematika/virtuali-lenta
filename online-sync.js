@@ -21,6 +21,76 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3';
+const P2_DATA_SCHEMA_VERSION = 1;
+const BACKUP_FORMAT_VERSION = 1;
+
+function safeAssignmentKey(value) {
+  return String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 96);
+}
+function newAssignmentKey(lessonId = 'lesson', stamp = Date.now()) {
+  const safeLesson = String(lessonId || 'lesson').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 36) || 'lesson';
+  const bytes = new Uint8Array(5);
+  crypto.getRandomValues(bytes);
+  const suffix = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  return `A-${Number(stamp || Date.now()).toString(36)}-${safeLesson}-${suffix}`.slice(0, 96);
+}
+function assignmentKeyFor(value, fallbackLessonId = '') {
+  const source = value && typeof value === 'object' ? value : {};
+  const existing = safeAssignmentKey(source.assignmentKey);
+  if (existing) return existing;
+  const stamp = Math.max(0, Number(source.assignedAt || 0) || 0);
+  const lessonId = String(source.lessonId || fallbackLessonId || 'lesson').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 36) || 'lesson';
+  return `LEGACY-${stamp || 'unknown'}-${lessonId}`.slice(0, 96);
+}
+function sanitizeContentSnapshot(value, fallback = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const tasks = Array.isArray(source.tasks) ? source.tasks.slice(0, 500) : [];
+  let clonedTasks = [];
+  try { clonedTasks = JSON.parse(JSON.stringify(tasks)); } catch (_) { clonedTasks = []; }
+  const taskIds = Array.isArray(source.taskIds)
+    ? source.taskIds.map(id => String(id || '').slice(0, 80)).filter(Boolean).slice(0, 500)
+    : clonedTasks.map(task => String(task?.id || '').slice(0, 80)).filter(Boolean);
+  const snapshot = {
+    schemaVersion: P2_DATA_SCHEMA_VERSION,
+    lessonId: String(source.lessonId || fallback.lessonId || '').slice(0, 80),
+    contentVersion: Math.max(1, Math.round(Number(source.contentVersion || fallback.contentVersion) || 1)),
+    title: String(source.title || fallback.title || '').slice(0, 180),
+    shortTitle: String(source.shortTitle || fallback.shortTitle || source.title || '').slice(0, 180),
+    description: String(source.description || '').slice(0, 1200),
+    taskCount: Math.max(0, Math.min(500, Math.round(Number(source.taskCount ?? fallback.taskCount) || clonedTasks.length || 0))),
+    classCount: Math.max(0, Math.min(500, Math.round(Number(source.classCount) || 0))),
+    selfCount: Math.max(0, Math.min(500, Math.round(Number(source.selfCount) || 0))),
+    taskIds,
+    tasks: clonedTasks,
+    contentHash: String(source.contentHash || fallback.contentHash || '').slice(0, 80)
+  };
+  try {
+    if (JSON.stringify(snapshot).length > 900000) snapshot.tasks = [];
+  } catch (_) { snapshot.tasks = []; }
+  return snapshot;
+}
+function assignmentContentMetadata(detail = {}, fallback = {}) {
+  const snapshot = sanitizeContentSnapshot(detail.contentSnapshot, {
+    lessonId: detail.lessonId ?? fallback.lessonId,
+    contentVersion: detail.contentVersion ?? fallback.contentVersion,
+    title: detail.title ?? fallback.title,
+    shortTitle: detail.title ?? fallback.shortTitle,
+    taskCount: detail.taskCount ?? fallback.taskCount,
+    contentHash: detail.contentHash ?? fallback.contentHash
+  });
+  const taskIds = Array.isArray(detail.taskIds) && detail.taskIds.length
+    ? detail.taskIds.map(id => String(id || '').slice(0, 80)).filter(Boolean).slice(0, 500)
+    : snapshot.taskIds;
+  return {
+    schemaVersion: P2_DATA_SCHEMA_VERSION,
+    contentVersion: Math.max(1, Math.round(Number(detail.contentVersion || snapshot.contentVersion || fallback.contentVersion) || 1)),
+    contentHash: String(detail.contentHash || snapshot.contentHash || fallback.contentHash || '').slice(0, 80),
+    taskIds,
+    contentSnapshot: snapshot
+  };
+}
+
 const bridge = window.P772OnlineBridge;
 const sessionBox = document.getElementById('onlineSession');
 const statusEl = document.getElementById('onlineStatus');
@@ -191,7 +261,7 @@ function resolveTeacherProfileId() {
 }
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
-let teacherProfileCache = { students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
 
 let roomRef;
 let workspaceRef;
@@ -249,6 +319,7 @@ const pendingLiveCommits = new Map();
 let remoteCache = {
   drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: ''
 };
+let p2AssignmentCache = null;
 let pendingRemoteNotes = null;
 let localNotesRevision = 0;
 let notesLiveTimer = null;
@@ -298,6 +369,7 @@ function resetRoomRuntimeState() {
   pendingRemoteNotes = null;
   localNotesRevision = 0;
   remoteCache = { drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: '' };
+  p2AssignmentCache = null;
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -815,6 +887,7 @@ function emitTeacherProfile() {
   window.dispatchEvent(new CustomEvent('p2:students-state', {
     detail: {
       profileId: teacherProfileId,
+      meta: teacherProfileCache.meta || {},
       students: teacherProfileCache.students || {},
       roomLinks: teacherProfileCache.roomLinks || {},
       classSessions: teacherProfileCache.classSessions || {},
@@ -827,12 +900,24 @@ if (teacherProfileRef) {
   onValue(teacherProfileRef, snapshot => {
     const value = snapshot.val() || {};
     teacherProfileCache = {
+      meta: value.meta && typeof value.meta === 'object' ? value.meta : {},
       students: value.students && typeof value.students === 'object' ? value.students : {},
       roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {},
       classSessions: value.classSessions && typeof value.classSessions === 'object' ? value.classSessions : {},
       scheduleEntries: value.scheduleEntries && typeof value.scheduleEntries === 'object' ? value.scheduleEntries : {},
       scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {}
     };
+    const profileMeta = teacherProfileCache.meta || {};
+    if (Number(profileMeta.schemaVersion || 0) < P2_DATA_SCHEMA_VERSION || profileMeta.lastCompatibleBuild !== BUILD) {
+      const now = Date.now();
+      const metaUpdates = {
+        'meta/schemaVersion': P2_DATA_SCHEMA_VERSION,
+        'meta/lastCompatibleBuild': BUILD,
+        'meta/lastOpenedAt': now
+      };
+      if (!profileMeta.createdAt) metaUpdates['meta/createdAt'] = now;
+      update(teacherProfileRef, metaUpdates).catch(error => console.warn('Nepavyko papildyti duomenų schemos metaduomenų', error));
+    }
     emitTeacherProfile();
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
@@ -840,6 +925,84 @@ if (teacherProfileRef) {
     emitTeacherProfile();
   });
 }
+
+function backupRoomIdsFromProfile(profile) {
+  const ids = new Set();
+  const activeRoom = safeRoom(roomId); if (activeRoom) ids.add(activeRoom);
+  for (const roomId of Object.keys(profile?.roomLinks || {})) {
+    const safe = safeRoom(roomId); if (safe) ids.add(safe);
+  }
+  for (const student of Object.values(profile?.students || {})) {
+    for (const roomId of Object.keys(student?.lessons || {})) {
+      const safe = safeRoom(roomId); if (safe) ids.add(safe);
+    }
+  }
+  for (const byDate of Object.values(profile?.scheduleRuns || {})) {
+    for (const run of Object.values(byDate || {})) {
+      for (const roomValue of Object.values(run?.rooms || {})) {
+        const safe = safeRoom(roomValue?.roomId || roomValue); if (safe) ids.add(safe);
+      }
+    }
+  }
+  return Array.from(ids).sort();
+}
+
+function triggerJsonDownload(filename, value) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+window.addEventListener('p2:backup-request', async () => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
+  try {
+    bridge.showToast?.('Ruošiama duomenų atsarginė kopija…');
+    const profileSnapshot = await get(teacherProfileRef);
+    const profile = profileSnapshot.val() || {};
+    const roomIds = backupRoomIdsFromProfile(profile);
+    const rooms = {};
+    const batchSize = 6;
+    for (let i = 0; i < roomIds.length; i += batchSize) {
+      const batch = roomIds.slice(i, i + batchSize);
+      const results = await Promise.all(batch.map(async targetRoom => {
+        const snapshot = await get(ref(db, `p772Rooms/${targetRoom}`));
+        const raw = snapshot.val() || {};
+        return [targetRoom, {
+          workspace: raw.workspace || null,
+          p2: raw.p2 || null,
+          control: raw.control || null
+        }];
+      }));
+      for (const [targetRoom, data] of results) rooms[targetRoom] = data;
+    }
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
+    const backup = {
+      backupFormatVersion: BACKUP_FORMAT_VERSION,
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      appBuild: BUILD,
+      exportedAt: Date.now(),
+      exportedAtIso: now.toISOString(),
+      teacherProfileId,
+      profile,
+      rooms
+    };
+    triggerJsonDownload(`virtuali-lenta-atsargine-kopija-${stamp}.json`, backup);
+    bridge.showToast?.(`Atsarginė kopija paruošta · ${roomIds.length} Room`);
+    window.dispatchEvent(new CustomEvent('p2:backup-complete', { detail: { roomCount: roomIds.length } }));
+  } catch (error) {
+    console.error('P2 duomenų atsarginės kopijos klaida', error);
+    bridge.showToast?.('Nepavyko paruošti atsarginės kopijos');
+    window.dispatchEvent(new CustomEvent('p2:backup-error'));
+  }
+});
 
 function cleanLessonSummary(value) {
   const source = value && typeof value === 'object' ? value : {};
@@ -948,7 +1111,9 @@ window.addEventListener('p2:schedule-request', async event => {
       const durationMinutes = safeScheduleDuration(detail.durationMinutes ?? existing.durationMinutes);
       const conflict = findScheduleConflict(day, start, durationMinutes, scheduleId);
       if (conflict) throw scheduleConflictError(conflict);
+      const contentMeta = lessonId ? assignmentContentMetadata(detail, existing) : null;
       const payload = {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
         day,
         start,
         durationMinutes,
@@ -957,6 +1122,10 @@ window.addEventListener('p2:schedule-request', async event => {
         lessonId,
         practiceTitle: String(detail.practiceTitle ?? existing.practiceTitle ?? '').trim().slice(0, 140),
         taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount ?? existing.taskCount) || 0))),
+        contentVersion: contentMeta?.contentVersion || null,
+        contentHash: contentMeta?.contentHash || '',
+        taskIds: contentMeta?.taskIds || [],
+        contentSnapshot: contentMeta?.contentSnapshot || null,
         attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy ?? existing.attemptPolicy) : null,
         createdAt: Number(existing.createdAt || 0) || Date.now(),
         updatedAt: Date.now()
@@ -1004,7 +1173,9 @@ window.addEventListener('p2:schedule-request', async event => {
         studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
         lessonId, practiceTitle: String(detail.practiceTitle || '').trim().slice(0, 140),
         taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0))),
-        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null
+        ...(lessonId ? assignmentContentMetadata(detail, existing) : {}),
+        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null,
+        schemaVersion: P2_DATA_SCHEMA_VERSION
       };
       detail.action = 'start';
       teacherProfileCache.scheduleEntries = { ...(teacherProfileCache.scheduleEntries || {}), [scheduleId]: entry };
@@ -1042,6 +1213,7 @@ window.addEventListener('p2:schedule-request', async event => {
       const durationMinutes = safeScheduleDuration(entry.durationMinutes);
       const rooms = {};
       const updates = {
+        [`classSessions/${classSessionId}/schemaVersion`]: P2_DATA_SCHEMA_VERSION,
         [`classSessions/${classSessionId}/createdAt`]: now,
         [`classSessions/${classSessionId}/updatedAt`]: now,
         [`classSessions/${classSessionId}/scheduleId`]: scheduleId,
@@ -1061,17 +1233,30 @@ window.addEventListener('p2:schedule-request', async event => {
           ...blank,
           meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
         });
+        let roomAssignment = null;
         if (lessonId) {
-          await set(ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`), {
+          const metadata = assignmentContentMetadata(entry, { lessonId, title: practiceTitle, taskCount });
+          const assignmentKey = newAssignmentKey(lessonId, now);
+          roomAssignment = {
+            schemaVersion: P2_DATA_SCHEMA_VERSION,
+            assignmentKey,
             lessonId,
             title: practiceTitle || 'Pamoka',
             taskCount,
+            contentVersion: metadata.contentVersion,
+            contentHash: metadata.contentHash,
+            taskIds: metadata.taskIds,
+            contentSnapshot: metadata.contentSnapshot,
             attemptPolicy: sanitizeAttemptPolicy(entry.attemptPolicy),
             assignedAt: now,
             assignedBy: me
-          });
+          };
+          await set(ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`), roomAssignment);
           await set(ref(db, `p772Rooms/${targetRoom}/p2/student/progress`), {
+            schemaVersion: P2_DATA_SCHEMA_VERSION,
             assignmentId: lessonId,
+            assignmentKey,
+            assignmentContentVersion: roomAssignment.contentVersion,
             status: 'not_started',
             currentTaskId: '',
             taskStates: {},
@@ -1080,15 +1265,20 @@ window.addEventListener('p2:schedule-request', async event => {
           });
         }
         await set(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`), {
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
           studentId,
           name: studentName,
           classSessionId,
           scheduleId,
           updatedAt: now
         });
+        await set(ref(db, `p772Rooms/${targetRoom}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, createdWithBuild: BUILD, updatedAt: now });
 
         const recordTitle = practiceTitle || cleanScheduleLabel(entry.label) || (lessonId ? 'Pamoka' : 'Lentos sesija');
+        const initialSummary = cleanLessonSummary({ taskCount });
+        const archiveMeta = roomAssignment ? assignmentArchiveMetadata(roomAssignment, initialSummary) : null;
         updates[`students/${studentId}/lessons/${targetRoom}`] = {
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
           roomId: targetRoom,
           classSessionId,
           scheduleId,
@@ -1099,10 +1289,16 @@ window.addEventListener('p2:schedule-request', async event => {
           lessonId,
           title: recordTitle,
           taskCount,
+          assignmentKey: roomAssignment?.assignmentKey || '',
+          contentVersion: roomAssignment?.contentVersion || null,
+          contentHash: roomAssignment?.contentHash || '',
+          taskIds: roomAssignment?.taskIds || [],
+          currentAssignmentKey: roomAssignment?.assignmentKey || '',
+          assignments: archiveMeta ? { [roomAssignment.assignmentKey]: archiveMeta } : {},
           createdAt: now,
           linkedAt: now,
           updatedAt: now,
-          summary: cleanLessonSummary({ taskCount })
+          summary: initialSummary
         };
         updates[`students/${studentId}/updatedAt`] = now;
         updates[`roomLinks/${targetRoom}`] = { studentId, classSessionId, scheduleId, linkedAt: now };
@@ -1110,6 +1306,7 @@ window.addEventListener('p2:schedule-request', async event => {
       }
 
       updates[`scheduleRuns/${scheduleId}/${dateKey}`] = {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
         classSessionId,
         startedAt: now,
         rooms,
@@ -1130,7 +1327,7 @@ window.addEventListener('p2:schedule-request', async event => {
       teacherProfileCache.classSessions = {
         ...(teacherProfileCache.classSessions || {}),
         [classSessionId]: {
-          createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey,
+          schemaVersion: P2_DATA_SCHEMA_VERSION, createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey,
           scheduledDay: safeScheduleDay(entry.day), scheduledStart: safeScheduleTime(entry.start),
           durationMinutes, label: cleanScheduleLabel(entry.label), students: localSessionStudents
         }
@@ -1140,7 +1337,7 @@ window.addEventListener('p2:schedule-request', async event => {
         ...(teacherProfileCache.scheduleRuns || {}),
         [scheduleId]: {
           ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}),
-          [dateKey]: { classSessionId, startedAt: now, rooms, scheduledStart: safeScheduleTime(entry.start), durationMinutes }
+          [dateKey]: { schemaVersion: P2_DATA_SCHEMA_VERSION, classSessionId, startedAt: now, rooms, scheduledStart: safeScheduleTime(entry.start), durationMinutes }
         }
       };
       emitTeacherProfile();
@@ -1151,7 +1348,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.2 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.3 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1167,7 +1364,7 @@ window.addEventListener('p2:students-request', async event => {
       if (!name) return;
       const studentId = newStudentId();
       await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), {
-        name, notes: '', createdAt: Date.now(), updatedAt: Date.now(), lessons: {}
+        schemaVersion: P2_DATA_SCHEMA_VERSION, name, notes: '', createdAt: Date.now(), updatedAt: Date.now(), lessons: {}
       });
       bridge.showToast?.(`Mokinys „${name}“ sukurtas`);
       return;
@@ -1178,14 +1375,14 @@ window.addEventListener('p2:students-request', async event => {
       const name = cleanStudentName(detail.name);
       if (!name) return;
       await update(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), {
-        name, notes: cleanStudentNotes(detail.notes), updatedAt: Date.now()
+        schemaVersion: P2_DATA_SCHEMA_VERSION, name, notes: cleanStudentNotes(detail.notes), updatedAt: Date.now()
       });
       const linkedRooms = Object.entries(teacherProfileCache.roomLinks || {})
         .filter(([, link]) => link?.studentId === studentId)
         .map(([linkedRoom]) => safeRoom(linkedRoom))
         .filter(Boolean);
       await Promise.all(linkedRooms.map(linkedRoom => update(ref(db, `p772Rooms/${linkedRoom}/p2/student/profile`), {
-        studentId, name, updatedAt: Date.now()
+        schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name, updatedAt: Date.now()
       }).catch(() => {})));
       bridge.showToast?.('Mokinio kortelė atnaujinta');
       return;
@@ -1238,46 +1435,75 @@ window.addEventListener('p2:students-request', async event => {
       const currentAssignmentSnap = await get(p2AssignmentRef);
       const currentProgressSnap = await get(p2ProgressRef);
       const currentAssignment = currentAssignmentSnap.val();
+      let effectiveAssignment = currentAssignment && typeof currentAssignment === 'object' ? currentAssignment : null;
       let lessonId = String(detail.lessonId || '').trim().slice(0, 80);
       let title = String(detail.title || '').trim().slice(0, 140);
       let taskCount = Math.max(0, Math.min(500, Number(detail.taskCount) || 0));
 
       if (lessonId) {
         if (String(currentAssignment?.lessonId || '') !== lessonId) {
+          if (currentAssignment?.lessonId) await archiveCurrentRoomPractice('replaced-by-link');
+          const assignedAt = Date.now();
+          const metadata = assignmentContentMetadata(detail, { lessonId, title, taskCount });
           const assignmentPayload = {
+            schemaVersion: P2_DATA_SCHEMA_VERSION,
+            assignmentKey: newAssignmentKey(lessonId, assignedAt),
             lessonId, title: title || 'Pamoka', taskCount,
+            contentVersion: metadata.contentVersion,
+            contentHash: metadata.contentHash,
+            taskIds: metadata.taskIds,
+            contentSnapshot: metadata.contentSnapshot,
             attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
-            assignedAt: Date.now(), assignedBy: me
+            assignedAt, assignedBy: me
           };
           await set(p2AssignmentRef, assignmentPayload);
           await set(p2ProgressRef, {
-            assignmentId: lessonId, status: 'not_started', currentTaskId: '', taskStates: {},
-            startedAt: null, updatedAt: Date.now()
+            schemaVersion: P2_DATA_SCHEMA_VERSION,
+            assignmentId: lessonId,
+            assignmentKey: assignmentPayload.assignmentKey,
+            assignmentContentVersion: assignmentPayload.contentVersion,
+            status: 'not_started', currentTaskId: '', taskStates: {},
+            startedAt: null, updatedAt: assignedAt
           });
+          effectiveAssignment = assignmentPayload;
         } else {
           title = String(currentAssignment?.title || title || 'Pamoka').slice(0, 140);
           taskCount = Math.max(0, Math.min(500, Number(currentAssignment?.taskCount || taskCount) || 0));
+          effectiveAssignment = currentAssignment;
         }
       } else if (currentAssignment?.lessonId) {
         lessonId = String(currentAssignment.lessonId).slice(0, 80);
         title = String(currentAssignment.title || '').slice(0, 140);
         taskCount = Math.max(0, Math.min(500, Number(currentAssignment.taskCount) || 0));
+        effectiveAssignment = currentAssignment;
       }
 
       const student = teacherProfileCache.students?.[studentId] || {};
       const studentName = cleanStudentName(student.name) || 'Mokinys';
       const existingRecord = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom] || {};
       const progressValue = currentProgressSnap.val();
+      const summary = existingRecord.summary || (progressValue ? cleanLessonSummary({ status: progressValue.status, taskCount }) : cleanLessonSummary({ taskCount }));
+      const archiveMeta = effectiveAssignment ? assignmentArchiveMetadata(effectiveAssignment, summary) : null;
+      const assignments = { ...(existingRecord.assignments && typeof existingRecord.assignments === 'object' ? existingRecord.assignments : {}) };
+      if (archiveMeta && !assignments[archiveMeta.assignmentKey]) assignments[archiveMeta.assignmentKey] = archiveMeta;
       const record = {
+        ...existingRecord,
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
         roomId: targetRoom,
         classSessionId,
         lessonId,
         title: title || (lessonId ? 'Pamoka' : 'Lentos sesija'),
         taskCount,
+        assignmentKey: effectiveAssignment ? assignmentKeyFor(effectiveAssignment, lessonId) : '',
+        contentVersion: effectiveAssignment?.contentVersion || null,
+        contentHash: effectiveAssignment?.contentHash || '',
+        taskIds: Array.isArray(effectiveAssignment?.taskIds) ? effectiveAssignment.taskIds : [],
+        currentAssignmentKey: effectiveAssignment ? assignmentKeyFor(effectiveAssignment, lessonId) : '',
+        assignments,
         createdAt: Number(existingRecord.createdAt || existingRecord.linkedAt || 0) || Date.now(),
         linkedAt: Date.now(),
         updatedAt: Date.now(),
-        summary: existingRecord.summary || (progressValue ? cleanLessonSummary({ status: progressValue.status, taskCount }) : cleanLessonSummary({ taskCount }))
+        summary
       };
       updates[`students/${studentId}/lessons/${targetRoom}`] = record;
       updates[`students/${studentId}/updatedAt`] = Date.now();
@@ -1286,7 +1512,8 @@ window.addEventListener('p2:students-request', async event => {
       updates[`classSessions/${classSessionId}/updatedAt`] = Date.now();
       updates[`classSessions/${classSessionId}/students/${studentId}`] = { roomId: targetRoom, addedAt: Date.now() };
       await update(teacherProfileRef, updates);
-      await set(p2StudentProfileRef, { studentId, name: studentName, classSessionId, updatedAt: Date.now() });
+      await set(p2StudentProfileRef, { schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name: studentName, classSessionId, updatedAt: Date.now() });
+      await update(ref(db, `p772Rooms/${targetRoom}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, lastCompatibleBuild: BUILD, updatedAt: Date.now() });
       bridge.showToast?.('Pamoka susieta su mokiniu');
       return;
     }
@@ -1321,8 +1548,9 @@ window.addEventListener('p2:students-request', async event => {
       let lessonId = String(detail.lessonId || '').trim().slice(0, 80);
       let title = String(detail.title || '').trim().slice(0, 140);
       let taskCount = Math.max(0, Math.min(500, Number(detail.taskCount) || 0));
+      let sourceAssignment = null;
       if (!lessonId) {
-        const sourceAssignment = (await get(p2AssignmentRef)).val();
+        sourceAssignment = (await get(p2AssignmentRef)).val();
         if (sourceAssignment?.lessonId) {
           lessonId = String(sourceAssignment.lessonId).slice(0, 80);
           title = String(sourceAssignment.title || '').slice(0, 140);
@@ -1335,27 +1563,51 @@ window.addEventListener('p2:students-request', async event => {
         ...blank,
         meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
       });
+      const now = Date.now();
+      let roomAssignment = null;
       if (lessonId) {
-        await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/assignment`), {
+        const metadataSource = sourceAssignment || detail;
+        const metadata = assignmentContentMetadata(metadataSource, { lessonId, title, taskCount });
+        roomAssignment = {
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
+          assignmentKey: newAssignmentKey(lessonId, now),
           lessonId, title: title || 'Pamoka', taskCount,
-          attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
-          assignedAt: Date.now(), assignedBy: me
-        });
+          contentVersion: metadata.contentVersion,
+          contentHash: metadata.contentHash,
+          taskIds: metadata.taskIds,
+          contentSnapshot: metadata.contentSnapshot,
+          attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy || sourceAssignment?.attemptPolicy),
+          assignedAt: now, assignedBy: me
+        };
+        await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/assignment`), roomAssignment);
         await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/progress`), {
-          assignmentId: lessonId, status: 'not_started', currentTaskId: '', taskStates: {},
-          startedAt: null, updatedAt: Date.now()
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
+          assignmentId: lessonId,
+          assignmentKey: roomAssignment.assignmentKey,
+          assignmentContentVersion: roomAssignment.contentVersion,
+          status: 'not_started', currentTaskId: '', taskStates: {},
+          startedAt: null, updatedAt: now
         });
       }
       await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/student/profile`), {
-        studentId, name: studentName, classSessionId, updatedAt: Date.now()
+        schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name: studentName, classSessionId, updatedAt: now
       });
+      await set(ref(db, `p772Rooms/${targetStudentRoom}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, createdWithBuild: BUILD, updatedAt: now });
 
-      const now = Date.now();
+      const summary = cleanLessonSummary({ taskCount });
+      const archiveMeta = roomAssignment ? assignmentArchiveMetadata(roomAssignment, summary) : null;
       const record = {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
         roomId: targetStudentRoom, classSessionId, lessonId,
         title: title || (lessonId ? 'Pamoka' : 'Lentos sesija'), taskCount,
+        assignmentKey: roomAssignment?.assignmentKey || '',
+        contentVersion: roomAssignment?.contentVersion || null,
+        contentHash: roomAssignment?.contentHash || '',
+        taskIds: roomAssignment?.taskIds || [],
+        currentAssignmentKey: roomAssignment?.assignmentKey || '',
+        assignments: archiveMeta ? { [roomAssignment.assignmentKey]: archiveMeta } : {},
         createdAt: now, linkedAt: now, updatedAt: now,
-        summary: cleanLessonSummary({ taskCount })
+        summary
       };
       updates[`students/${studentId}/lessons/${targetStudentRoom}`] = record;
       updates[`students/${studentId}/updatedAt`] = now;
@@ -1370,15 +1622,50 @@ window.addEventListener('p2:students-request', async event => {
     if (detail.action === 'snapshot') {
       if (teacherProfileCache.roomLinks?.[targetRoom]?.studentId !== studentId) return;
       const existing = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom] || {};
+      const now = Date.now();
+      const summary = cleanLessonSummary(detail.summary);
       const updates = {
-        [`students/${studentId}/lessons/${targetRoom}/updatedAt`]: Date.now(),
-        [`students/${studentId}/lessons/${targetRoom}/summary`]: cleanLessonSummary(detail.summary),
-        [`students/${studentId}/updatedAt`]: Date.now()
+        [`students/${studentId}/lessons/${targetRoom}/schemaVersion`]: P2_DATA_SCHEMA_VERSION,
+        [`students/${studentId}/lessons/${targetRoom}/updatedAt`]: now,
+        [`students/${studentId}/lessons/${targetRoom}/summary`]: summary,
+        [`students/${studentId}/updatedAt`]: now
       };
       if (detail.lessonId) {
-        updates[`students/${studentId}/lessons/${targetRoom}/lessonId`] = String(detail.lessonId).slice(0, 80);
+        const lessonId = String(detail.lessonId).slice(0, 80);
+        const assignmentKey = safeAssignmentKey(detail.assignmentKey) || safeAssignmentKey(existing.currentAssignmentKey) || `LEGACY-${Number(detail.assignedAt || existing.createdAt || now)}-${lessonId}`.slice(0, 96);
+        const existingArchive = existing.assignments?.[assignmentKey];
+        const lightweightVersion = Math.max(1, Math.round(Number(detail.contentVersion || existing.contentVersion) || 1));
+        const lightweightHash = String(detail.contentHash || existing.contentHash || '').slice(0, 80);
+        const lightweightTaskIds = Array.isArray(detail.taskIds) ? detail.taskIds.map(id => String(id || '').slice(0, 80)).filter(Boolean).slice(0, 500) : (Array.isArray(existing.taskIds) ? existing.taskIds : []);
+        updates[`students/${studentId}/lessons/${targetRoom}/lessonId`] = lessonId;
         updates[`students/${studentId}/lessons/${targetRoom}/title`] = String(detail.title || existing.title || 'Pamoka').slice(0, 140);
         updates[`students/${studentId}/lessons/${targetRoom}/taskCount`] = Math.max(0, Math.min(500, Number(detail.taskCount) || 0));
+        updates[`students/${studentId}/lessons/${targetRoom}/assignmentKey`] = assignmentKey;
+        updates[`students/${studentId}/lessons/${targetRoom}/currentAssignmentKey`] = assignmentKey;
+        updates[`students/${studentId}/lessons/${targetRoom}/contentVersion`] = lightweightVersion;
+        if (lightweightHash) updates[`students/${studentId}/lessons/${targetRoom}/contentHash`] = lightweightHash;
+        if (lightweightTaskIds.length) updates[`students/${studentId}/lessons/${targetRoom}/taskIds`] = lightweightTaskIds;
+        if (!existingArchive || typeof existingArchive !== 'object') {
+          const metadata = assignmentContentMetadata(detail, { lessonId, title: detail.title, taskCount: detail.taskCount, contentVersion: lightweightVersion, contentHash: lightweightHash });
+          updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}`] = {
+            schemaVersion: P2_DATA_SCHEMA_VERSION,
+            assignmentKey,
+            lessonId,
+            title: String(detail.title || existing.title || 'Pamoka').slice(0, 140),
+            taskCount: Math.max(0, Math.min(500, Number(detail.taskCount) || 0)),
+            contentVersion: metadata.contentVersion,
+            contentHash: metadata.contentHash,
+            taskIds: metadata.taskIds,
+            contentSnapshot: metadata.contentSnapshot,
+            assignedAt: Number(detail.assignedAt || 0) || null,
+            archivedMetadataAt: now,
+            latestSummary: summary
+          };
+        } else {
+          // Metaduomenys nekeičiami; gyvai atnaujinama tik eigos santrauka.
+          updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}/latestSummary`] = summary;
+          updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}/lastProgressAt`] = now;
+        }
       }
       await update(teacherProfileRef, updates);
     }
@@ -1392,7 +1679,8 @@ window.addEventListener('p2:students-request', async event => {
 // Firebase modulis su juo kalbasi per CustomEvent ir neturi valdyti DOM.
 function subscribeP2AssignmentAndProgress() {
   roomOnValue(p2AssignmentRef, snapshot => {
-    window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: snapshot.val() || null }));
+    p2AssignmentCache = snapshot.val() || null;
+    window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: p2AssignmentCache }));
   });
   roomOnValue(p2ProgressRef, snapshot => {
     const value = snapshot.val() || null;
@@ -1427,14 +1715,96 @@ function sanitizeAttemptPolicy(value) {
   return { defaultMaxAttempts, taskMaxAttempts };
 }
 
+async function archiveCurrentRoomPractice(reason = 'archived') {
+  const [assignmentSnap, progressSnap] = await Promise.all([get(p2AssignmentRef), get(p2ProgressRef)]);
+  const currentAssignment = assignmentSnap.val();
+  if (!currentAssignment || typeof currentAssignment !== 'object' || !currentAssignment.lessonId) return null;
+  const currentProgress = progressSnap.val() && typeof progressSnap.val() === 'object' ? progressSnap.val() : null;
+  const assignmentKey = assignmentKeyFor(currentAssignment, currentAssignment.lessonId);
+  const historyRef = ref(db, `p772Rooms/${roomId}/p2/history/${assignmentKey}`);
+  const historySnap = await get(historyRef);
+  const existing = historySnap.val();
+  const archivedAt = Date.now();
+  if (!existing || typeof existing !== 'object') {
+    await set(historyRef, {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      assignmentKey,
+      assignment: { ...currentAssignment, assignmentKey, schemaVersion: Number(currentAssignment.schemaVersion || P2_DATA_SCHEMA_VERSION) },
+      progress: currentProgress,
+      archivedAt,
+      lastArchivedAt: archivedAt,
+      reason: String(reason || 'archived').slice(0, 40)
+    });
+  } else {
+    // Priskyrimo metaduomenų neperrašome: archyvo turinio versija lieka tokia,
+    // kokia buvo pirmą kartą užfiksuota. Atnaujiname tik paskutinę eigos kopiją.
+    await update(historyRef, {
+      progress: currentProgress,
+      lastArchivedAt: archivedAt,
+      reason: String(reason || existing.reason || 'archived').slice(0, 40)
+    });
+  }
+  return { assignmentKey, assignment: currentAssignment, progress: currentProgress };
+}
+
+function assignmentArchiveMetadata(assignment, summary = null) {
+  const source = assignment && typeof assignment === 'object' ? assignment : {};
+  if (!source.lessonId) return null;
+  const assignmentKey = assignmentKeyFor(source, source.lessonId);
+  return {
+    schemaVersion: P2_DATA_SCHEMA_VERSION,
+    assignmentKey,
+    lessonId: String(source.lessonId || '').slice(0, 80),
+    title: String(source.title || 'Pamoka').slice(0, 140),
+    taskCount: Math.max(0, Math.min(500, Math.round(Number(source.taskCount) || 0))),
+    contentVersion: Math.max(1, Math.round(Number(source.contentVersion) || 1)),
+    contentHash: String(source.contentHash || '').slice(0, 80),
+    taskIds: Array.isArray(source.taskIds) ? source.taskIds.slice(0, 500) : [],
+    contentSnapshot: source.contentSnapshot && typeof source.contentSnapshot === 'object' ? source.contentSnapshot : null,
+    assignedAt: Number(source.assignedAt || 0) || null,
+    archivedMetadataAt: Date.now(),
+    latestSummary: summary || null
+  };
+}
+
 window.addEventListener('p2:assignment-request', async event => {
   if (onlineRole !== 'teacher') return;
   const detail = event.detail || {};
   try {
     if (detail.action === 'unassign') {
+      await archiveCurrentRoomPractice('unassigned');
       await remove(p2AssignmentRef);
       await remove(p2ProgressRef);
-      bridge.showToast?.('Pamokos priskyrimas atšauktas');
+      bridge.showToast?.('Pratybų priskyrimas atšauktas · ankstesnė eiga išsaugota archyve');
+      return;
+    }
+    if (detail.action === 'metadata') {
+      const currentSnap = await get(p2AssignmentRef);
+      const current = currentSnap.val();
+      if (!current || typeof current !== 'object') return;
+      if (detail.lessonId && String(detail.lessonId) !== String(current.lessonId || '')) return;
+      const metadata = assignmentContentMetadata(detail, current);
+      const updates = {};
+      if (!current.schemaVersion) updates.schemaVersion = P2_DATA_SCHEMA_VERSION;
+      if (!current.assignmentKey) updates.assignmentKey = assignmentKeyFor(current, current.lessonId);
+      if (!current.contentVersion) updates.contentVersion = metadata.contentVersion;
+      if (!current.contentHash && metadata.contentHash) updates.contentHash = metadata.contentHash;
+      if ((!Array.isArray(current.taskIds) || !current.taskIds.length) && metadata.taskIds.length) updates.taskIds = metadata.taskIds;
+      if ((!current.contentSnapshot || typeof current.contentSnapshot !== 'object') && metadata.contentSnapshot) updates.contentSnapshot = metadata.contentSnapshot;
+      if (Object.keys(updates).length) {
+        updates.metadataBackfilledAt = Date.now();
+        await update(p2AssignmentRef, updates);
+      }
+      const progressSnap = await get(p2ProgressRef);
+      const currentProgress = progressSnap.val();
+      if (currentProgress && typeof currentProgress === 'object') {
+        const progressUpdates = {};
+        if (!currentProgress.schemaVersion) progressUpdates.schemaVersion = P2_DATA_SCHEMA_VERSION;
+        if (!currentProgress.assignmentKey) progressUpdates.assignmentKey = updates.assignmentKey || current.assignmentKey || assignmentKeyFor(current, current.lessonId);
+        if (!currentProgress.assignmentContentVersion) progressUpdates.assignmentContentVersion = updates.contentVersion || current.contentVersion || metadata.contentVersion;
+        if (Object.keys(progressUpdates).length) await update(p2ProgressRef, progressUpdates);
+      }
+      await update(ref(db, `p772Rooms/${roomId}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, lastCompatibleBuild: BUILD, updatedAt: Date.now() });
       return;
     }
     if (detail.action === 'settings') {
@@ -1447,24 +1817,39 @@ window.addEventListener('p2:assignment-request', async event => {
       return;
     }
     if (detail.action !== 'assign') return;
+    const previousSnap = await get(p2AssignmentRef);
+    if (previousSnap.exists()) await archiveCurrentRoomPractice('replaced');
+    const assignedAt = Date.now();
+    const lessonId = String(detail.lessonId || '').slice(0, 80);
+    const metadata = assignmentContentMetadata(detail, { lessonId, title: detail.title, taskCount: detail.taskCount });
     const assignment = {
-      lessonId: String(detail.lessonId || ''),
-      title: String(detail.title || 'Pamokos prototipas'),
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      assignmentKey: newAssignmentKey(lessonId, assignedAt),
+      lessonId,
+      title: String(detail.title || 'Pamokos prototipas').slice(0, 140),
       taskCount: Math.max(0, Number(detail.taskCount) || 0),
+      contentVersion: metadata.contentVersion,
+      contentHash: metadata.contentHash,
+      taskIds: metadata.taskIds,
+      contentSnapshot: metadata.contentSnapshot,
       attemptPolicy: sanitizeAttemptPolicy(detail.attemptPolicy),
-      assignedAt: Date.now(),
+      assignedAt,
       assignedBy: me
     };
     await set(p2AssignmentRef, assignment);
     await set(p2ProgressRef, {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
       assignmentId: assignment.lessonId,
+      assignmentKey: assignment.assignmentKey,
+      assignmentContentVersion: assignment.contentVersion,
       status: 'not_started',
       currentTaskId: 'c1',
       taskStates: {},
       startedAt: null,
       updatedAt: Date.now()
     });
-    bridge.showToast?.('Pamoka priskirta mokiniui');
+    await update(ref(db, `p772Rooms/${roomId}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, lastCompatibleBuild: BUILD, updatedAt: Date.now() });
+    bridge.showToast?.('Pratybos priskirtos mokiniui');
   } catch (error) {
     console.error('P2-SPLIT-P2.1.1 priskyrimo / nustatymų klaida', error);
     bridge.showToast?.('Nepavyko pakeisti pamokos nustatymų');
@@ -1476,7 +1861,15 @@ async function persistP2PracticeProgress(event) {
   const value = event.detail;
   if (!value || typeof value !== 'object') return;
   try {
-    await set(p2ProgressRef, { ...value, updatedAt: Date.now(), updatedBy: me });
+    const currentAssignment = p2AssignmentCache || {};
+    await set(p2ProgressRef, {
+      ...value,
+      schemaVersion: Number(value.schemaVersion || P2_DATA_SCHEMA_VERSION),
+      assignmentKey: value.assignmentKey || currentAssignment.assignmentKey || assignmentKeyFor(currentAssignment, currentAssignment.lessonId),
+      assignmentContentVersion: Number(value.assignmentContentVersion || currentAssignment.contentVersion || 1),
+      updatedAt: Date.now(),
+      updatedBy: me
+    });
   } catch (error) {
     console.error('P2-SPLIT-P2.1.1 mokinio eigos klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
