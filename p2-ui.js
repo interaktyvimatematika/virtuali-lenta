@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.4';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.5';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2489,7 +2489,7 @@
       <div class="p2-students-backdrop" data-students-close></div>
       <section class="p2-students-panel" role="dialog" aria-modal="true" aria-label="Mokiniai">
         <header class="p2-students-header">
-          <div><span class="p2-side-kicker">MOKINIŲ DUOMENŲ BAZĖ</span><h2>Mokiniai</h2><p>Pamokų istorija, progresas ir konkrečių pamokų lentos.</p></div>
+          <div><span class="p2-side-kicker">MOKINIŲ DUOMENŲ BAZĖ</span><h2>Mokiniai</h2><p>Pamokos, jų eiga, pratybos ir mokinio darbas.</p></div>
           <button type="button" data-students-close aria-label="Uždaryti">×</button>
         </header>
         <div class="p2-students-body" id="p2StudentsBody"></div>
@@ -2541,6 +2541,51 @@
     if (schedule.duration) parts.push(`${schedule.duration} min.`);
     if (parts.length) return parts.join(' · ');
     return formatStudentDate(lesson?.createdAt || lesson?.linkedAt);
+  }
+
+  // P2-SPLIT-P2.5-P4-P1.7.5.5: mokinio kortelėje „pamoka“ yra pagrindinis
+  // vienetas. Lenta ir pratybos yra pamokos turinys, todėl tvarkaraščio,
+  // vykstančios sesijos ir istorijos įrašai rodomi viename vertikaliame sraute.
+  function studentScheduleNextOccurrence(entry, now = new Date()) {
+    const targetDay = Math.max(1, Math.min(7, Number(entry?.day || 0)));
+    const startMinutes = scheduleTimeToMinutes(entry?.start);
+    if (!targetDay || startMinutes === null) return null;
+    const currentDay = scheduleTodayIndex(now);
+    let daysAhead = (targetDay - currentDay + 7) % 7;
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead, Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 7);
+    return next;
+  }
+
+  function studentUpcomingScheduleLessons(studentId) {
+    const id = String(studentId || '').trim();
+    if (!id) return [];
+    const now = new Date();
+    return scheduleEntriesList()
+      .filter(entry => scheduleStudentIds(entry).includes(id))
+      .map(entry => ({ ...entry, nextAt: studentScheduleNextOccurrence(entry, now) }))
+      .filter(entry => entry.nextAt instanceof Date && Number.isFinite(entry.nextAt.getTime()))
+      .sort((a, b) => a.nextAt.getTime() - b.nextAt.getTime());
+  }
+
+  function studentScheduledLessonWhenLabel(entry) {
+    const date = entry?.nextAt instanceof Date ? entry.nextAt : studentScheduleNextOccurrence(entry);
+    if (!date) return 'Laikas nenurodytas';
+    let dateText = '';
+    try {
+      dateText = new Intl.DateTimeFormat('lt-LT', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    } catch (_) { dateText = date.toLocaleDateString('lt-LT'); }
+    const duration = Math.max(15, Math.min(180, Math.round(Number(entry?.durationMinutes) || 40)));
+    return `${dateText} · ${String(entry?.start || '').trim() || '—'} · ${duration} min.`;
+  }
+
+  function studentPracticeLabel(source) {
+    const lessonId = String(source?.lessonId || '').trim();
+    const catalog = lessonId ? lessonForId(lessonId) : null;
+    const title = String(source?.practiceTitle || source?.title || catalog?.shortTitle || '').trim();
+    const taskCount = Math.max(0, Number(source?.taskCount || catalog?.taskCount || 0));
+    if (!lessonId && !title) return 'Tik lenta';
+    return `${title || 'Pratybos'}${taskCount ? ` · ${taskCount} užd.` : ''}`;
   }
 
   function studentLessonStatus(lesson) {
@@ -2739,7 +2784,7 @@
     const storedPayload = storedStudentRoomHistoryPayload(lesson);
     const payload = cached?.data && typeof cached.data === 'object' ? cached.data : storedPayload;
     const runs = studentRoomPracticeRuns(lesson, payload);
-    const boardHint = `<div class="p2-history-board-hint"><div><span aria-hidden="true">✎</span><div><strong>Lentos sprendimas saugomas Room ${escapeHtml(lesson.roomId)}</strong><small>Atidarius lentą pamatysi būtent šios pamokos mokinio rašytą sprendimą.</small></div></div><button type="button" data-student-open-room="${escapeHtml(lesson.roomId)}" data-room-role="teacher">Atidaryti lentos sprendimą</button></div>`;
+    const boardHint = `<div class="p2-history-board-hint"><div><span aria-hidden="true">✎</span><div><strong>Pamokos lenta saugoma Room ${escapeHtml(lesson.roomId)}</strong><small>Atidaręs pamoką pamatysi jos lentą ir, jei buvo priskirtos, pratybas.</small></div></div><button type="button" data-student-open-room="${escapeHtml(lesson.roomId)}" data-room-role="teacher">Atidaryti pamoką</button></div>`;
 
     let syncStatus = '';
     if (cached?.fetching) {
@@ -2933,63 +2978,94 @@
       const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === defaultLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
       const relationDisplay = selectedRelation === 'mama' ? 'Mama' : selectedRelation === 'tėtis' ? 'Tėtis' : selectedRelation === 'kita' ? (String(selected.guardianCustomRelation || '').trim() || 'Kita') : 'Nenurodyta';
       const guardianNameDisplay = String(selected.guardianName || '').trim() || 'Nenurodytas';
-      const currentLessonCatalogItem = currentLesson?.lessonId ? lessonForId(currentLesson.lessonId) : null;
-      const currentLessonTitle = currentLessonCatalogItem?.shortTitle || currentLesson?.title || (currentLesson?.lessonId ? currentLesson.lessonId : 'Tik lenta');
-      const currentLessonTaskCount = Math.max(0, Number(currentLessonCatalogItem?.taskCount || currentLesson?.taskCount || 0));
       const participantRoomId = String(selectedClassParticipant?.roomId || '').trim().toUpperCase();
       const participantLesson = participantRoomId ? (selected?.lessons?.[participantRoomId] || null) : null;
-      const participantCatalogItem = participantLesson?.lessonId ? lessonForId(participantLesson.lessonId) : null;
-      const participantLessonTitle = participantCatalogItem?.shortTitle || participantLesson?.title || (participantLesson?.lessonId ? participantLesson.lessonId : 'Tik lenta');
-      const participantTaskCount = Math.max(0, Number(participantCatalogItem?.taskCount || participantLesson?.taskCount || 0));
-      let selectedCurrentSessionMarkup = '';
-      if (selectedOwnsActiveRoom) {
-        selectedCurrentSessionMarkup = `<section class="p2-student-current-session is-linked">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${escapeHtml(studentTeacherLabel(selected, students))} · Room ${escapeHtml(roomId || '—')}</h3></div><span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span></div>
-          ${currentLesson?.lessonId
-            ? `<div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(currentLessonTitle)}${currentLessonTaskCount ? ` · ${currentLessonTaskCount} užd.` : ''}</strong></div>`
-            : `<div class="p2-student-assign-row">
-                <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
-                <button type="button" class="p2-primary" data-student-link-current>Priskirti pratybas</button>
-              </div>`}
-          <p class="p2-student-current-help">Čia rodoma tik šio mokinio dabar atidaryta lenta ir jos pratybos.</p>
-        </section>`;
-      } else if (selectedClassParticipant && participantRoomId) {
-        selectedCurrentSessionMarkup = `<section class="p2-student-current-session is-linked">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Šio mokinio pamoka</span><h3>${escapeHtml(studentTeacherLabel(selected, students))} · Room ${escapeHtml(participantRoomId)}</h3></div><span class="p2-status-badge is-assigned">✓ Yra aktyvioje pamokoje</span></div>
-          <div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(participantLessonTitle)}${participantTaskCount ? ` · ${participantTaskCount} užd.` : ''}</strong></div>
-          <div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(participantRoomId)}">Atidaryti šio mokinio lentą</button></div>
-        </section>`;
-      }
-      const historyMarkup = history.length ? history.map(item => {
-        const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
-        const summary = item.summary && typeof item.summary === 'object' ? item.summary : {};
-        const percent = Math.max(0, Math.min(100, Number(summary.percent || 0)));
-        const status = studentLessonStatus(item);
-        const expanded = expandedStudentHistoryRoomId === item.roomId;
-        const resultDetails = item.lessonId
-          ? [
-              `Savarankiškai ${Math.max(0, Number(summary.good || 0))}`,
-              `Su pagalba ${Math.max(0, Number(summary.help || 0))}`,
-              `Kartoti ${Math.max(0, Number(summary.repeat || 0))}`
-            ].join(' · ')
-          : '';
-        return `<article class="p2-student-history-item ${item.roomId === roomId ? 'is-current' : ''} ${expanded ? 'is-expanded' : ''}">
-          <div class="p2-student-history-summary-row">
-            <div class="p2-student-history-main">
-              <div class="p2-student-history-title"><strong>${escapeHtml(title)}</strong><span class="p2-student-lesson-status is-${escapeHtml(status.key)}">${escapeHtml(status.label)}</span>${item.roomId === roomId ? '<span class="is-current-room">Dabartinė Room</span>' : ''}</div>
-              <p>${escapeHtml(studentLessonWhenLabel(item))} · Room <code>${escapeHtml(item.roomId)}</code></p>
-              <div class="p2-student-history-progress"><i><b style="width:${percent}%"></b></i><strong>${escapeHtml(studentLessonResultText(item))}</strong>${resultDetails ? `<span>${escapeHtml(resultDetails)}</span>` : ''}</div>
+      const runningRoomId = selectedOwnsActiveRoom ? roomId : (selectedClassParticipant && participantRoomId ? participantRoomId : '');
+      const runningLesson = runningRoomId ? (selected?.lessons?.[runningRoomId] || (runningRoomId === roomId ? currentLesson : participantLesson) || null) : null;
+      const runningIsOpenRoom = Boolean(runningRoomId && runningRoomId === roomId);
+      const runningExpanded = Boolean(runningRoomId && expandedStudentHistoryRoomId === runningRoomId);
+      const pastHistory = history.filter(item => !runningRoomId || item.roomId !== runningRoomId);
+      const upcomingLessons = studentUpcomingScheduleLessons(selectedStudentId);
+
+      const runningMarkup = runningRoomId ? (() => {
+        const runningSummary = runningLesson?.summary && typeof runningLesson.summary === 'object' ? runningLesson.summary : {};
+        const percent = Math.max(0, Math.min(100, Number(runningSummary.percent || 0)));
+        const openAttribute = runningIsOpenRoom
+          ? `data-student-open-room="${escapeHtml(runningRoomId)}" data-room-role="teacher"`
+          : `data-student-switch-class-room="${escapeHtml(runningRoomId)}"`;
+        const practice = studentPracticeLabel(runningLesson || {});
+        const runningClassSessionId = String(runningLesson?.classSessionId || linkedClassSessionIdForRoom(runningRoomId) || '').trim();
+        const runningTitle = String(teacherStudentDb.classSessions?.[runningClassSessionId]?.label || '').trim() || 'Pamoka';
+        const canAssignPractice = runningIsOpenRoom && !runningLesson?.lessonId;
+        return `<div class="p2-student-lessons-group is-running-group">
+          <div class="p2-student-lessons-group-title"><span>Vykstanti pamoka</span></div>
+          <article class="p2-student-lesson-card is-running ${runningExpanded ? 'is-expanded' : ''}">
+            <div class="p2-student-lesson-state"><span class="p2-student-lesson-dot" aria-hidden="true"></span><strong>Vyksta</strong></div>
+            <div class="p2-student-lesson-card-main">
+              <div class="p2-student-lesson-card-title"><strong>${escapeHtml(runningTitle)}</strong><span>${escapeHtml(studentTeacherLabel(selected, students))}</span></div>
+              <p>${escapeHtml(studentLessonWhenLabel(runningLesson || {}))} · Room <code>${escapeHtml(runningRoomId)}</code></p>
+              <div class="p2-student-lesson-content"><span>Pamokos turinys</span><strong>${escapeHtml(practice)}</strong></div>
+              ${runningLesson?.lessonId ? `<div class="p2-student-history-progress"><i><b style="width:${percent}%"></b></i><strong>${escapeHtml(studentLessonResultText(runningLesson))}</strong></div>` : ''}
+              ${canAssignPractice ? `<div class="p2-student-assign-row is-in-lesson-card"><label><span>Pridėti pratybas į šią pamoką</span><select id="p2StudentLessonSelect"><option value="">Tik lenta</option>${lessonOptions}</select></label><button type="button" class="p2-primary" data-student-link-current>Priskirti pratybas</button></div>` : ''}
             </div>
-            <div class="p2-student-history-actions">
-              <button type="button" class="p2-history-detail-toggle ${expanded ? 'is-open' : ''}" data-student-history-toggle="${escapeHtml(item.roomId)}">${expanded ? 'Slėpti pamokos detales' : 'Pamokos detalės'}</button>
-              <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="teacher">Atidaryti lentą</button>
+            <div class="p2-student-lesson-card-actions">
+              ${runningLesson ? `<button type="button" class="p2-history-detail-toggle ${runningExpanded ? 'is-open' : ''}" data-student-history-toggle="${escapeHtml(runningRoomId)}">${runningExpanded ? 'Slėpti detales' : 'Pamokos detalės'}</button>` : ''}
+              <button type="button" class="p2-primary" ${openAttribute}>Atidaryti pamoką</button>
+            </div>
+            ${runningLesson ? renderStudentRoomHistoryDetails(selected, { roomId: runningRoomId, ...runningLesson }) : ''}
+          </article>
+        </div>`;
+      })() : '';
+
+      const upcomingMarkup = upcomingLessons.length ? `<div class="p2-student-lessons-group is-upcoming-group">
+        <div class="p2-student-lessons-group-title"><span>Vyksiančios pamokos</span><strong>${upcomingLessons.length}</strong></div>
+        ${upcomingLessons.map(entry => {
+          const title = String(entry.label || '').trim() || 'Pamoka';
+          return `<article class="p2-student-lesson-card is-upcoming">
+            <div class="p2-student-lesson-state"><span class="p2-student-lesson-dot" aria-hidden="true"></span><strong>Numatyta</strong></div>
+            <div class="p2-student-lesson-card-main">
+              <div class="p2-student-lesson-card-title"><strong>${escapeHtml(title)}</strong></div>
+              <p>${escapeHtml(studentScheduledLessonWhenLabel(entry))}</p>
+              <div class="p2-student-lesson-content"><span>Pamokos turinys</span><strong>${escapeHtml(studentPracticeLabel(entry))}</strong></div>
+            </div>
+            <div class="p2-student-lesson-card-actions"><button type="button" data-student-open-schedule="${escapeHtml(entry.id)}">Tvarkyti pamoką</button></div>
+          </article>`;
+        }).join('')}
+      </div>` : '';
+
+      const pastMarkup = pastHistory.length ? `<div class="p2-student-lessons-group is-past-group">
+        <div class="p2-student-lessons-group-title"><span>Įvykusios pamokos</span><strong>${pastHistory.length}</strong></div>
+        ${pastHistory.map(item => {
+          const title = String(teacherStudentDb.classSessions?.[item.classSessionId]?.label || '').trim() || 'Pamoka';
+          const summary = item.summary && typeof item.summary === 'object' ? item.summary : {};
+          const percent = Math.max(0, Math.min(100, Number(summary.percent || 0)));
+          const practiceStatus = studentLessonStatus(item);
+          const expanded = expandedStudentHistoryRoomId === item.roomId;
+          const resultDetails = item.lessonId
+            ? [`Savarankiškai ${Math.max(0, Number(summary.good || 0))}`, `Su pagalba ${Math.max(0, Number(summary.help || 0))}`, `Kartoti ${Math.max(0, Number(summary.repeat || 0))}`].join(' · ')
+            : '';
+          return `<article class="p2-student-lesson-card is-past ${expanded ? 'is-expanded' : ''}">
+            <div class="p2-student-lesson-state"><span class="p2-student-lesson-dot" aria-hidden="true"></span><strong>Įvyko</strong></div>
+            <div class="p2-student-lesson-card-main">
+              <div class="p2-student-lesson-card-title"><strong>${escapeHtml(title)}</strong><span class="p2-student-lesson-status is-${escapeHtml(practiceStatus.key)}">${escapeHtml(practiceStatus.label)}</span></div>
+              <p>${escapeHtml(studentLessonWhenLabel(item))} · Room <code>${escapeHtml(item.roomId)}</code></p>
+              <div class="p2-student-lesson-content"><span>Pamokos turinys</span><strong>${escapeHtml(studentPracticeLabel(item))}</strong></div>
+              ${item.lessonId ? `<div class="p2-student-history-progress"><i><b style="width:${percent}%"></b></i><strong>${escapeHtml(studentLessonResultText(item))}</strong>${resultDetails ? `<span>${escapeHtml(resultDetails)}</span>` : ''}</div>` : ''}
+            </div>
+            <div class="p2-student-lesson-card-actions">
+              <button type="button" class="p2-history-detail-toggle ${expanded ? 'is-open' : ''}" data-student-history-toggle="${escapeHtml(item.roomId)}">${expanded ? 'Slėpti detales' : 'Pamokos detalės'}</button>
+              <button type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="teacher">Atidaryti pamoką</button>
               <button class="is-secondary" type="button" data-student-open-room="${escapeHtml(item.roomId)}" data-room-role="student">Mokinio vaizdas</button>
               <button class="is-muted" type="button" data-student-unlink-room="${escapeHtml(item.roomId)}">Pašalinti iš istorijos</button>
             </div>
-          </div>
-          ${renderStudentRoomHistoryDetails(selected, item)}
-        </article>`;
-      }).join('') : `<div class="p2-student-history-empty">Šiam mokiniui dar nepriskirta nė viena pamoka.</div>`;
+            ${renderStudentRoomHistoryDetails(selected, item)}
+          </article>`;
+        }).join('')}
+      </div>` : '';
+
+      const lessonsTimelineMarkup = (runningMarkup || upcomingMarkup || pastMarkup)
+        ? `${runningMarkup}${upcomingMarkup}${pastMarkup}`
+        : `<div class="p2-student-history-empty">Šiam mokiniui dar nėra suplanuotų ar įvykusių pamokų.</div>`;
 
       detailMarkup = `
         <button type="button" class="p2-back-link p2-student-detail-back" data-student-overview>← Visi mokiniai</button>
@@ -3020,10 +3096,9 @@
           </div>
           <p class="p2-student-info-private">Tėčio / mamos / globėjo duomenys matomi tik mokytojui ir į mokinio Room nekopijuojami.</p>
         </section>`}
-        ${selectedCurrentSessionMarkup}
-        <section class="p2-student-history">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Pamokų istorija</span><h3>${history.length} ${history.length === 1 ? 'pamoka' : 'pamokos'}</h3></div></div>
-          <div class="p2-student-history-list">${historyMarkup}</div>
+        <section class="p2-student-history p2-student-lessons">
+          <div class="p2-student-section-heading"><div><span class="p2-label">Pamokos</span><h3>Mokinio pamokos</h3><p>Vykstanti, artimiausios ir įvykusios pamokos vienoje vietoje.</p></div></div>
+          <div class="p2-student-lessons-stack">${lessonsTimelineMarkup}</div>
         </section>`;
     }
 
@@ -3186,6 +3261,18 @@
         ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
+    host.querySelectorAll('[data-student-open-schedule]').forEach(button => button.addEventListener('click', () => {
+      const scheduleId = String(button.dataset.studentOpenSchedule || '').trim();
+      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+      if (!scheduleId || !entry) return;
+      if (studentsModal) studentsModal.hidden = true;
+      ensureScheduleModal();
+      editingScheduleId = scheduleId;
+      scheduleCreateMode = false;
+      scheduleSelectedDay = Number(entry.day || scheduleTodayIndex());
+      scheduleModal.hidden = false;
+      renderScheduleModal();
+    }));
     host.querySelector('[data-student-switch-class-room]')?.addEventListener('click', event => {
       const targetRoom = String(event.currentTarget?.dataset.studentSwitchClassRoom || '').trim().toUpperCase();
       if (!targetRoom) return;

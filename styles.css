@@ -7131,7 +7131,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media(max-width:650px){.p2-history-sync-status.is-warning{align-items:flex-start;flex-direction:column}}
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.5.4 · mokinio kortelė neberodo kito mokinio aktyvios Room informacijos */
+/* P2-SPLIT-P2.5-P4-P1.7.5.5 · mokinio kortelė neberodo kito mokinio aktyvios Room informacijos */
 .p2-student-edit-open{flex:0 0 auto;white-space:nowrap}
 .p2-student-info-card{max-width:1180px;margin:16px auto 0;padding:16px 18px;border:1px solid #e1e7ef;border-radius:16px;background:#fbfcfe}
 .p2-student-info-grid{display:grid;grid-template-columns:minmax(150px,1.3fr) 120px minmax(140px,.8fr) minmax(180px,1.1fr);gap:12px 18px}
@@ -7163,3 +7163,32 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-student-edit-actions button{width:100%}
   .p2-student-current-assignment{grid-template-columns:1fr;gap:4px}
 }
+
+
+/* P2-SPLIT-P2.5-P4-P1.7.5.5 · vieninga mokinio pamokų laiko juosta */
+.p2-student-lessons .p2-student-section-heading p{margin:4px 0 0;color:#7b889a;font-size:11px}
+.p2-student-lessons-stack{margin-top:14px;display:grid;gap:18px}
+.p2-student-lessons-group{display:grid;gap:9px}
+.p2-student-lessons-group-title{display:flex;align-items:center;gap:8px;padding:0 2px;color:#728095;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.055em}
+.p2-student-lessons-group-title strong{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#eef2f7;color:#607087;font-size:10px}
+.p2-student-lesson-card{position:relative;display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:16px;align-items:start;border:1px solid #e1e7ef;border-radius:15px;padding:15px;background:#fff;overflow:hidden}
+.p2-student-lesson-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#cfd7e2}
+.p2-student-lesson-card.is-running{border-color:#bcdcca;background:#f9fdfb;box-shadow:0 8px 24px rgba(42,101,68,.07)}
+.p2-student-lesson-card.is-running:before{background:#4f9a68}
+.p2-student-lesson-card.is-upcoming{border-color:#cad9ee;background:#fbfdff}
+.p2-student-lesson-card.is-upcoming:before{background:#6e8eb8}
+.p2-student-lesson-card.is-past:before{background:#aab4c2}
+.p2-student-lesson-card.is-expanded{box-shadow:0 8px 24px rgba(34,55,82,.06)}
+.p2-student-lesson-state{display:flex;align-items:center;gap:7px;min-height:28px;color:#68778b;font-size:10px;text-transform:uppercase;letter-spacing:.045em}
+.p2-student-lesson-state strong{font-size:10px}
+.p2-student-lesson-dot{width:9px;height:9px;border-radius:50%;background:#aab4c2;box-shadow:0 0 0 4px #f1f4f7}
+.p2-student-lesson-card.is-running .p2-student-lesson-state{color:#39784e}.p2-student-lesson-card.is-running .p2-student-lesson-dot{background:#4f9a68;box-shadow:0 0 0 4px #e8f5ed}
+.p2-student-lesson-card.is-upcoming .p2-student-lesson-state{color:#526f97}.p2-student-lesson-card.is-upcoming .p2-student-lesson-dot{background:#6e8eb8;box-shadow:0 0 0 4px #edf3fb}
+.p2-student-lesson-card-main{min-width:0}
+.p2-student-lesson-card-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:28px}.p2-student-lesson-card-title>strong{color:#26354a;font-size:14px}.p2-student-lesson-card-title>span:not(.p2-student-lesson-status){color:#718095;font-size:10px}
+.p2-student-lesson-card-main>p{margin:2px 0 9px;color:#8390a0;font-size:10px}.p2-student-lesson-card-main code{font-size:10px}
+.p2-student-lesson-content{display:flex;align-items:baseline;gap:8px;margin:4px 0 9px}.p2-student-lesson-content span{color:#8a96a6;font-size:9px;text-transform:uppercase;letter-spacing:.04em}.p2-student-lesson-content strong{color:#526176;font-size:11px}
+.p2-student-lesson-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:340px}.p2-student-lesson-card-actions button{border:1px solid #d9e1eb;background:#fff;border-radius:9px;padding:8px 10px;color:#526176;font-size:10px;cursor:pointer}.p2-student-lesson-card-actions button:hover{background:#f5f8fb}.p2-student-lesson-card-actions button.p2-primary{border-color:#526bd7;background:#526bd7;color:#fff}.p2-student-lesson-card-actions button.is-muted{color:#8b6570;border-color:#eadde0}.p2-student-lesson-card-actions button.p2-history-detail-toggle{border-color:#cbd8e8;background:#f7faff;color:#385876;font-weight:700}
+.p2-student-lesson-card>.p2-student-history-detail{grid-column:1/-1;margin:0 -15px -15px;border-top:1px solid #e4eaf2}
+.p2-student-assign-row.is-in-lesson-card{margin-top:10px}
+@media(max-width:900px){.p2-student-lesson-card{grid-template-columns:1fr}.p2-student-lesson-state{min-height:auto}.p2-student-lesson-card-actions{justify-content:flex-start;max-width:none}}
