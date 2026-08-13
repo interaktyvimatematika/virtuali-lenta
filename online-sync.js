@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.2';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -1040,6 +1040,34 @@ function cleanLessonSummary(value) {
   };
 }
 
+function cleanStudentHistoryProgress(value) {
+  if (!value || typeof value !== 'object') return null;
+  try {
+    const copy = JSON.parse(JSON.stringify(value));
+    const taskStates = copy.taskStates && typeof copy.taskStates === 'object' ? copy.taskStates : {};
+    const entries = Object.entries(taskStates).slice(0, 500);
+    copy.taskStates = Object.fromEntries(entries);
+    copy.schemaVersion = P2_DATA_SCHEMA_VERSION;
+    if (copy.assignmentKey) copy.assignmentKey = safeAssignmentKey(copy.assignmentKey) || null;
+    if (copy.currentTaskId) copy.currentTaskId = String(copy.currentTaskId).slice(0, 80);
+    copy.updatedAt = Math.max(0, Number(copy.updatedAt || Date.now()));
+    const encoded = JSON.stringify(copy);
+    return encoded.length <= 120000 ? copy : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function firebaseGetWithTimeout(targetRef, timeoutMs = 6000) {
+  let timer = null;
+  return Promise.race([
+    get(targetRef),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('history-timeout')), timeoutMs);
+    })
+  ]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
 function subscribeP2StudentProfile() {
   roomOnValue(p2StudentProfileRef, snapshot => {
     const value = snapshot.val();
@@ -1371,7 +1399,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.5.1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.5.2 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1467,26 +1495,43 @@ window.addEventListener('p2:students-request', async event => {
         return;
       }
       try {
-        // Sąmoningai skaitome tik P2 pratybų šaką. Lentos workspace gali būti
-        // labai didelis, todėl mokinio kortelės istorijos peržiūra jo nekrauna.
-        const snapshot = await get(ref(db, `p772Rooms/${targetRoom}/p2`));
-        const raw = snapshot.val() || {};
+        // P1.7.5.2: turinio snapshot jau yra mokinio istorijoje, todėl iš senos
+        // Room nebesiunčiame visos /p2 šakos. Perskaitome tik kompaktišką
+        // dabartinio priskyrimo progress objektą ir turime griežtą 6 s ribą.
+        const progressSnap = await firebaseGetWithTimeout(ref(db, `p772Rooms/${targetRoom}/p2/student/progress`), 6000);
+        const progressValue = cleanStudentHistoryProgress(progressSnap.val());
+        const assignments = lessonRecord?.assignments && typeof lessonRecord.assignments === 'object' ? lessonRecord.assignments : {};
+        const currentKey = safeAssignmentKey(lessonRecord?.currentAssignmentKey || lessonRecord?.assignmentKey || progressValue?.assignmentKey || Object.keys(assignments)[0]);
+        const assignmentValue = currentKey && assignments[currentKey] && typeof assignments[currentKey] === 'object' ? assignments[currentKey] : null;
+
         window.dispatchEvent(new CustomEvent('p2:student-room-history', {
           detail: {
             studentId,
             roomId: targetRoom,
             data: {
-              assignment: raw?.student?.assignment || null,
-              progress: raw?.student?.progress || null,
-              history: raw?.history && typeof raw.history === 'object' ? raw.history : {},
+              assignment: assignmentValue,
+              progress: progressValue,
+              history: {},
               fetchedAt: Date.now()
             }
           }
         }));
+
+        // Sėkmingai perskaityta individuali eiga išsaugoma mokytojo profilyje.
+        // Kitas tos pačios pamokos atidarymas dėl to nebepriklauso nuo senos Room.
+        if (progressValue && currentKey) {
+          const cacheUpdates = {
+            [`students/${studentId}/lessons/${targetRoom}/latestProgress`]: progressValue,
+            [`students/${studentId}/lessons/${targetRoom}/assignments/${currentKey}/latestProgress`]: progressValue,
+            [`students/${studentId}/lessons/${targetRoom}/assignments/${currentKey}/lastProgressAt`]: Date.now()
+          };
+          update(teacherProfileRef, cacheUpdates).catch(error => console.warn('Nepavyko išsaugoti pamokos eigos cache', error));
+        }
       } catch (error) {
-        console.error('Mokinio pamokos istorijos skaitymo klaida', error);
+        const timedOut = String(error?.message || '') === 'history-timeout';
+        if (!timedOut) console.error('Mokinio pamokos istorijos skaitymo klaida', error);
         window.dispatchEvent(new CustomEvent('p2:student-room-history', {
-          detail: { studentId, roomId: targetRoom, error: 'Nepavyko perskaityti šios pamokos eigos.' }
+          detail: { studentId, roomId: targetRoom, error: timedOut ? 'Room neatsakė per 6 sekundes. Rodoma išsaugota pamokos suvestinė.' : 'Nepavyko perskaityti individualių šios pamokos atsakymų. Rodoma išsaugota suvestinė.' }
         }));
       }
       return;
@@ -1815,12 +1860,14 @@ window.addEventListener('p2:students-request', async event => {
       const existing = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom] || {};
       const now = Date.now();
       const summary = cleanLessonSummary(detail.summary);
+      const progressSnapshot = cleanStudentHistoryProgress(detail.progressSnapshot);
       const updates = {
         [`students/${studentId}/lessons/${targetRoom}/schemaVersion`]: P2_DATA_SCHEMA_VERSION,
         [`students/${studentId}/lessons/${targetRoom}/updatedAt`]: now,
         [`students/${studentId}/lessons/${targetRoom}/summary`]: summary,
         [`students/${studentId}/updatedAt`]: now
       };
+      if (progressSnapshot) updates[`students/${studentId}/lessons/${targetRoom}/latestProgress`] = progressSnapshot;
       if (detail.lessonId) {
         const lessonId = String(detail.lessonId).slice(0, 80);
         const assignmentKey = safeAssignmentKey(detail.assignmentKey) || safeAssignmentKey(existing.currentAssignmentKey) || `LEGACY-${Number(detail.assignedAt || existing.createdAt || now)}-${lessonId}`.slice(0, 96);
@@ -1850,12 +1897,14 @@ window.addEventListener('p2:students-request', async event => {
             contentSnapshot: metadata.contentSnapshot,
             assignedAt: Number(detail.assignedAt || 0) || null,
             archivedMetadataAt: now,
-            latestSummary: summary
+            latestSummary: summary,
+            ...(progressSnapshot ? { latestProgress: progressSnapshot } : {})
           };
         } else {
           // Metaduomenys nekeičiami; gyvai atnaujinama tik eigos santrauka.
           updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}/latestSummary`] = summary;
           updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}/lastProgressAt`] = now;
+          if (progressSnapshot) updates[`students/${studentId}/lessons/${targetRoom}/assignments/${assignmentKey}/latestProgress`] = progressSnapshot;
         }
       }
       await update(teacherProfileRef, updates);

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.2';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -634,6 +634,8 @@
   let studentCreateOpen = false;
   let expandedStudentHistoryRoomId = '';
   const studentRoomHistoryCache = new Map();
+  const studentRoomHistoryRequestTimers = new Map();
+  const STUDENT_HISTORY_TIMEOUT_MS = 6500;
   let studentDbSnapshotTimer = null;
   let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
   let roomStudentProfile = null;
@@ -2614,13 +2616,16 @@
       const combinedAssignment = { ...metadata, ...assignmentRecord };
       if ((!combinedAssignment.contentSnapshot || typeof combinedAssignment.contentSnapshot !== 'object') && metadata.contentSnapshot) combinedAssignment.contentSnapshot = metadata.contentSnapshot;
       if ((!Array.isArray(combinedAssignment.taskIds) || !combinedAssignment.taskIds.length) && Array.isArray(metadata.taskIds)) combinedAssignment.taskIds = metadata.taskIds;
+      const storedProgress = metadata.latestProgress && typeof metadata.latestProgress === 'object'
+        ? metadata.latestProgress
+        : (metadata.progressSnapshot && typeof metadata.progressSnapshot === 'object' ? metadata.progressSnapshot : null);
       const identity = key || `${combinedAssignment.lessonId || lesson?.lessonId || 'lesson'}-${combinedAssignment.assignedAt || extra.archivedAt || runs.length}`;
       if (seen.has(identity)) return;
       seen.add(identity);
       runs.push({
         assignmentKey: key,
         assignment: combinedAssignment,
-        progress: progressValue && typeof progressValue === 'object' ? progressValue : null,
+        progress: progressValue && typeof progressValue === 'object' ? progressValue : storedProgress,
         archivedAt: Number(extra.archivedAt || 0),
         current: Boolean(extra.current)
       });
@@ -2637,7 +2642,10 @@
     // Labai seniems įrašams bent parodome išsaugotą turinio snapshot metaduomenį,
     // net jei Room eigos duomenys nebepasiekiami.
     if (!runs.length) {
-      for (const [key, metadata] of Object.entries(metadataByKey)) addRun(metadata, null, { assignmentKey: key });
+      for (const [key, metadata] of Object.entries(metadataByKey)) {
+        const storedProgress = metadata?.latestProgress && typeof metadata.latestProgress === 'object' ? metadata.latestProgress : null;
+        addRun(metadata, storedProgress, { assignmentKey: key });
+      }
     }
     return runs.sort((a, b) => Number(b.assignment?.assignedAt || b.archivedAt || 0) - Number(a.assignment?.assignedAt || a.archivedAt || 0));
   }
@@ -2646,15 +2654,24 @@
     const assignmentRecord = run?.assignment && typeof run.assignment === 'object' ? run.assignment : {};
     const snapshot = assignmentRecord.contentSnapshot && typeof assignmentRecord.contentSnapshot === 'object' ? assignmentRecord.contentSnapshot : null;
     const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
-    const states = run?.progress?.taskStates && typeof run.progress.taskStates === 'object' ? run.progress.taskStates : {};
-    const stats = historicalProgressStats(run?.progress, tasks);
+    const hasProgress = Boolean(run?.progress && typeof run.progress === 'object');
+    const states = hasProgress && run.progress.taskStates && typeof run.progress.taskStates === 'object' ? run.progress.taskStates : {};
+    const latestSummary = assignmentRecord.latestSummary && typeof assignmentRecord.latestSummary === 'object' ? assignmentRecord.latestSummary : {};
+    const stats = hasProgress ? historicalProgressStats(run.progress, tasks) : {
+      good: Math.max(0, Number(latestSummary.good || latestSummary.solved || 0)),
+      help: Math.max(0, Number(latestSummary.help || 0)),
+      repeat: Math.max(0, Number(latestSummary.repeat || 0)),
+      started: 0,
+      finished: Math.max(0, Number(latestSummary.finished || 0)),
+      taskCount: tasks.length || Math.max(0, Number(latestSummary.taskCount || assignmentRecord.taskCount || 0))
+    };
     const title = assignmentRecord.title || snapshot?.shortTitle || snapshot?.title || lesson?.title || 'Pratybos';
     const version = Math.max(1, Number(assignmentRecord.contentVersion || snapshot?.contentVersion || lesson?.contentVersion || 1));
     const assignedAt = Number(assignmentRecord.assignedAt || 0);
-    const runMeta = [run.current ? 'Dabartinis priskyrimas' : 'Istorinis priskyrimas', `turinio v${version}`, assignedAt ? `priskirta ${formatStudentDate(assignedAt)}` : ''].filter(Boolean).join(' · ');
+    const runMeta = [assignedAt ? formatStudentDate(assignedAt) : '', `turinio v${version}`, run.assignmentKey ? `ID ${run.assignmentKey}` : ''].filter(Boolean).join(' · ');
 
     let tasksMarkup = '';
-    if (tasks.length) {
+    if (tasks.length && hasProgress) {
       tasksMarkup = `<div class="p2-history-task-table">${tasks.map((task, index) => {
         const state = states[task?.id] && typeof states[task.id] === 'object' ? states[task.id] : {};
         const status = historicalTaskStatus(state);
@@ -2668,11 +2685,13 @@
           <div class="p2-history-task-result"><span class="p2-history-task-status is-${escapeHtml(status.key)}">${escapeHtml(status.label)}</span><small>${attempts ? `${attempts} ${attempts === 1 ? 'bandymas' : 'bandymai'}` : 'Be bandymų'}${state.hintUsed ? ' · naudota pagalba' : ''}</small></div>
         </article>`;
       }).join('')}</div>`;
+    } else if (tasks.length) {
+      tasksMarkup = `<div class="p2-history-answer-pending"><strong>Užduočių turinys jau pasiekiamas.</strong><span>Individualūs mokinio atsakymai saugomi atskirai ir tikrinami fone. Kol kas rodoma išsaugota pamokos suvestinė.</span></div>`;
     } else {
       tasksMarkup = `<div class="p2-history-no-snapshot"><strong>Užduočių tekstai šiame įraše neišsaugoti.</strong><span>Rezultato santrauka liko istorijoje, tačiau senam priskyrimui nėra turinio snapshot.</span></div>`;
     }
 
-    const summaryMarkup = tasks.length ? `<div class="p2-history-run-stats">
+    const summaryMarkup = (tasks.length || stats.taskCount) ? `<div class="p2-history-run-stats">
       <div><span>Savarankiškai</span><strong>${stats.good}</strong></div>
       <div><span>Su pagalba</span><strong>${stats.help}</strong></div>
       <div><span>Kartoti</span><strong>${stats.repeat}</strong></div>
@@ -2686,23 +2705,54 @@
     </section>`;
   }
 
+  function storedStudentRoomHistoryPayload(lesson) {
+    const metadataByKey = lesson?.assignments && typeof lesson.assignments === 'object' ? lesson.assignments : {};
+    const keys = Object.keys(metadataByKey);
+    const currentKey = String(lesson?.currentAssignmentKey || lesson?.assignmentKey || keys[0] || '').trim();
+    const currentMetadata = currentKey && metadataByKey[currentKey] && typeof metadataByKey[currentKey] === 'object' ? metadataByKey[currentKey] : null;
+    const currentProgress = currentMetadata?.latestProgress && typeof currentMetadata.latestProgress === 'object'
+      ? currentMetadata.latestProgress
+      : (lesson?.latestProgress && typeof lesson.latestProgress === 'object' ? lesson.latestProgress : null);
+    const history = {};
+    for (const [key, metadata] of Object.entries(metadataByKey)) {
+      if (key === currentKey || !metadata || typeof metadata !== 'object') continue;
+      history[key] = {
+        assignment: metadata,
+        progress: metadata.latestProgress && typeof metadata.latestProgress === 'object' ? metadata.latestProgress : null,
+        archivedAt: Number(metadata.archivedMetadataAt || metadata.assignedAt || 0)
+      };
+    }
+    return {
+      assignment: currentMetadata,
+      progress: currentProgress,
+      history,
+      fetchedAt: Number(currentProgress?.updatedAt || currentMetadata?.lastProgressAt || lesson?.updatedAt || 0),
+      stored: true
+    };
+  }
+
   function renderStudentRoomHistoryDetails(student, lesson) {
     if (!student || !lesson || expandedStudentHistoryRoomId !== lesson.roomId) return '';
     const key = studentHistoryCacheKey(student.id, lesson.roomId);
     const cached = studentRoomHistoryCache.get(key);
-    if (!cached || cached.loading) {
-      return `<div class="p2-student-history-detail is-loading"><span class="p2-history-loader" aria-hidden="true"></span><div><strong>Įkeliama pamokos eiga…</strong><small>Skaitomi tik šios pamokos pratybų duomenys. Lentos piešiniai čia nekraunami.</small></div></div>`;
-    }
-    if (cached.error) {
-      return `<div class="p2-student-history-detail is-error"><div><strong>Nepavyko įkelti pamokos eigos.</strong><small>${escapeHtml(cached.error)}</small></div><button type="button" data-student-history-retry="${escapeHtml(lesson.roomId)}">Bandyti dar kartą</button></div>`;
-    }
-    const payload = cached.data || {};
+    const storedPayload = storedStudentRoomHistoryPayload(lesson);
+    const payload = cached?.data && typeof cached.data === 'object' ? cached.data : storedPayload;
     const runs = studentRoomPracticeRuns(lesson, payload);
     const boardHint = `<div class="p2-history-board-hint"><div><span aria-hidden="true">✎</span><div><strong>Lentos sprendimas saugomas Room ${escapeHtml(lesson.roomId)}</strong><small>Atidarius lentą pamatysi būtent šios pamokos mokinio rašytą sprendimą.</small></div></div><button type="button" data-student-open-room="${escapeHtml(lesson.roomId)}" data-room-role="teacher">Atidaryti lentos sprendimą</button></div>`;
-    if (!lesson.lessonId && !runs.length) {
-      return `<div class="p2-student-history-detail">${boardHint}<div class="p2-history-no-snapshot"><strong>Šioje pamokoje pratybos nebuvo priskirtos.</strong><span>Istorijoje lieka pati lenta ir pamokos ryšys su mokiniu.</span></div></div>`;
+
+    let syncStatus = '';
+    if (cached?.fetching) {
+      syncStatus = `<div class="p2-history-sync-status is-checking"><span class="p2-history-loader" aria-hidden="true"></span><div><strong>Tikrinamos individualių atsakymų detalės…</strong><small>Tikrinimas baigsis ne vėliau kaip po 6 sekundžių. Pamokos suvestinė jau rodoma žemiau.</small></div></div>`;
+    } else if (cached?.error) {
+      syncStatus = `<div class="p2-history-sync-status is-warning"><div><strong>Rodoma išsaugota pamokos suvestinė.</strong><small>${escapeHtml(cached.error)}</small></div><button type="button" data-student-history-retry="${escapeHtml(lesson.roomId)}">Tikrinti dar kartą</button></div>`;
+    } else if (cached?.data && !cached.provisional) {
+      syncStatus = `<div class="p2-history-sync-status is-ready"><span aria-hidden="true">✓</span><div><strong>Pamokos eiga įkelta.</strong><small>Individualūs atsakymai ir bandymai yra atnaujinti.</small></div></div>`;
     }
-    return `<div class="p2-student-history-detail">${boardHint}${runs.length ? runs.map((run, index) => renderHistoricalPracticeRun(run, lesson, index)).join('') : `<div class="p2-history-no-snapshot"><strong>Pratybų eigos duomenų šiame Room nerasta.</strong><span>Pamokos santrauka vis tiek lieka mokinio istorijoje.</span></div>`}</div>`;
+
+    if (!lesson.lessonId && !runs.length) {
+      return `<div class="p2-student-history-detail">${boardHint}${syncStatus}<div class="p2-history-no-snapshot"><strong>Šioje pamokoje pratybos nebuvo priskirtos.</strong><span>Istorijoje lieka pati lenta ir pamokos ryšys su mokiniu.</span></div></div>`;
+    }
+    return `<div class="p2-student-history-detail">${boardHint}${syncStatus}${runs.length ? runs.map((run, index) => renderHistoricalPracticeRun(run, lesson, index)).join('') : `<div class="p2-history-no-snapshot"><strong>Pratybų eigos duomenų šiame įraše nerasta.</strong><span>Pamokos santrauka vis tiek lieka mokinio istorijoje.</span></div>`}</div>`;
   }
 
   function requestStudentRoomHistory(studentId, roomId, force = false) {
@@ -2713,10 +2763,10 @@
     const existing = studentRoomHistoryCache.get(key);
     if (!force && existing && (existing.fetching || (existing.data && !existing.provisional))) return;
 
-    // P1.7.5.1: jei tai šiuo metu atidaryta to paties mokinio Room,
-    // pirmą pratybų vaizdą galime parodyti iš jau naršyklėje esančios būsenos.
-    // Pilnas Room p2/history vis tiek tyliai perskaitomas fone ir po to pakeičia
-    // šį laikiną cache įrašą.
+    const student = teacherStudentDb.students?.[normalizedStudentId] || null;
+    const lesson = student?.lessons?.[normalizedRoomId] || null;
+    const storedPayload = storedStudentRoomHistoryPayload(lesson);
+
     const currentRoom = String(currentRoomId() || '').trim().toUpperCase();
     const currentStudent = currentRoom ? linkedStudentIdForRoom(currentRoom) : '';
     const canSeedFromLiveState = !force
@@ -2725,36 +2775,44 @@
       && assignment && typeof assignment === 'object'
       && progress && typeof progress === 'object';
 
-    if (canSeedFromLiveState && !(existing && existing.data)) {
+    const seededData = canSeedFromLiveState
+      ? { assignment, progress, history: storedPayload.history || {}, fetchedAt: Date.now(), stored: false }
+      : (existing?.data || storedPayload);
+
+    studentRoomHistoryCache.set(key, {
+      loading: false,
+      fetching: true,
+      provisional: true,
+      error: '',
+      data: seededData
+    });
+
+    const previousTimer = studentRoomHistoryRequestTimers.get(key);
+    if (previousTimer) window.clearTimeout(previousTimer);
+    const timer = window.setTimeout(() => {
+      const current = studentRoomHistoryCache.get(key);
+      if (!current?.fetching) return;
       studentRoomHistoryCache.set(key, {
+        ...current,
         loading: false,
-        fetching: true,
+        fetching: false,
         provisional: true,
-        error: '',
-        data: { assignment, progress, history: {}, fetchedAt: Date.now() }
+        error: 'Room neatsakė per 6 sekundes. Gali naudoti jau rodomą išsaugotą suvestinę arba bandyti dar kartą.'
       });
-    } else {
-      studentRoomHistoryCache.set(key, {
-        loading: !(existing && existing.data),
-        fetching: true,
-        provisional: Boolean(existing?.provisional),
-        error: '',
-        data: existing?.data || null
-      });
-    }
+      studentRoomHistoryRequestTimers.delete(key);
+      if (selectedStudentId === normalizedStudentId && expandedStudentHistoryRoomId === normalizedRoomId) renderStudentsModal();
+    }, STUDENT_HISTORY_TIMEOUT_MS);
+    studentRoomHistoryRequestTimers.set(key, timer);
+
     requestStudentDb({ action: 'get-room-history', studentId: normalizedStudentId, roomId: normalizedRoomId });
   }
 
-  function prefetchStudentRoomHistories(student, limit = 3) {
+  function prefetchStudentRoomHistories(student, limit = 1) {
     if (!student?.id) return;
     const lessons = lessonHistoryForStudent(student).slice(0, Math.max(0, Number(limit) || 0));
-    lessons.forEach((lesson, index) => {
+    lessons.forEach(lesson => {
       const roomId = String(lesson?.roomId || '').trim().toUpperCase();
-      if (!roomId) return;
-      // Naujausią pamoką pradedame skaityti iš karto; kitas kelias trumpai
-      // išskaidome, kad jos neužgožtų mokinio kortelės pirmo atvaizdavimo.
-      if (index === 0) requestStudentRoomHistory(student.id, roomId);
-      else window.setTimeout(() => requestStudentRoomHistory(student.id, roomId), index * 60);
+      if (roomId) requestStudentRoomHistory(student.id, roomId);
     });
   }
 
@@ -2991,7 +3049,7 @@
       expandedStudentHistoryRoomId = '';
       studentCreateOpen = false;
       const selectedStudent = teacherStudentDb.students?.[selectedStudentId];
-      if (selectedStudent) prefetchStudentRoomHistories(selectedStudent, 3);
+      if (selectedStudent) prefetchStudentRoomHistories(selectedStudent, 1);
       renderStudentsModal();
     }));
 
@@ -3537,7 +3595,16 @@
         taskIds: Array.isArray(assignment?.taskIds) ? assignment.taskIds : activeLesson().tasks.map(task => task.id),
         contentSnapshot: assignment?.contentSnapshot || lessonContentSnapshot(activeLesson()),
         schemaVersion: P2_DATA_SCHEMA_VERSION,
-        summary
+        summary,
+        progressSnapshot: state ? {
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
+          assignmentKey: String(assignment?.assignmentKey || state.assignmentKey || ''),
+          currentTaskId: state.currentTaskId || null,
+          status: state.status || 'not_started',
+          startedAt: Number(state.startedAt || 0) || null,
+          updatedAt: Number(state.updatedAt || Date.now()),
+          taskStates: state.taskStates && typeof state.taskStates === 'object' ? state.taskStates : {}
+        } : null
       });
     }, 450);
   }
@@ -3587,12 +3654,19 @@
     const roomId = String(detail.roomId || '').trim().toUpperCase();
     if (!studentId || !roomId) return;
     const key = studentHistoryCacheKey(studentId, roomId);
+    const timer = studentRoomHistoryRequestTimers.get(key);
+    if (timer) window.clearTimeout(timer);
+    studentRoomHistoryRequestTimers.delete(key);
+    const existing = studentRoomHistoryCache.get(key);
     if (detail.error) {
-      const existing = studentRoomHistoryCache.get(key);
-      // Jei dabartinės Room duomenis jau parodėme iš gyvos būsenos, vien fono
-      // atnaujinimo klaida neturi išmesti vartotojo atgal į klaidos ekraną.
-      if (existing?.data) studentRoomHistoryCache.set(key, { ...existing, loading: false, fetching: false, error: '', provisional: true });
-      else studentRoomHistoryCache.set(key, { loading: false, fetching: false, provisional: false, error: String(detail.error), data: null });
+      studentRoomHistoryCache.set(key, {
+        ...(existing || {}),
+        loading: false,
+        fetching: false,
+        provisional: true,
+        error: String(detail.error),
+        data: existing?.data || storedStudentRoomHistoryPayload(teacherStudentDb.students?.[studentId]?.lessons?.[roomId])
+      });
     } else {
       studentRoomHistoryCache.set(key, { loading: false, fetching: false, provisional: false, error: '', data: detail.data && typeof detail.data === 'object' ? detail.data : {} });
     }
