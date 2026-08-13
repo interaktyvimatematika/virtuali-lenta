@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2706,11 +2706,56 @@
   }
 
   function requestStudentRoomHistory(studentId, roomId, force = false) {
-    const key = studentHistoryCacheKey(studentId, roomId);
+    const normalizedStudentId = String(studentId || '').trim();
+    const normalizedRoomId = String(roomId || '').trim().toUpperCase();
+    if (!normalizedStudentId || !normalizedRoomId) return;
+    const key = studentHistoryCacheKey(normalizedStudentId, normalizedRoomId);
     const existing = studentRoomHistoryCache.get(key);
-    if (!force && existing && (existing.loading || existing.data)) return;
-    studentRoomHistoryCache.set(key, { loading: true, error: '', data: null });
-    requestStudentDb({ action: 'get-room-history', studentId, roomId });
+    if (!force && existing && (existing.fetching || (existing.data && !existing.provisional))) return;
+
+    // P1.7.5.1: jei tai šiuo metu atidaryta to paties mokinio Room,
+    // pirmą pratybų vaizdą galime parodyti iš jau naršyklėje esančios būsenos.
+    // Pilnas Room p2/history vis tiek tyliai perskaitomas fone ir po to pakeičia
+    // šį laikiną cache įrašą.
+    const currentRoom = String(currentRoomId() || '').trim().toUpperCase();
+    const currentStudent = currentRoom ? linkedStudentIdForRoom(currentRoom) : '';
+    const canSeedFromLiveState = !force
+      && normalizedRoomId === currentRoom
+      && currentStudent === normalizedStudentId
+      && assignment && typeof assignment === 'object'
+      && progress && typeof progress === 'object';
+
+    if (canSeedFromLiveState && !(existing && existing.data)) {
+      studentRoomHistoryCache.set(key, {
+        loading: false,
+        fetching: true,
+        provisional: true,
+        error: '',
+        data: { assignment, progress, history: {}, fetchedAt: Date.now() }
+      });
+    } else {
+      studentRoomHistoryCache.set(key, {
+        loading: !(existing && existing.data),
+        fetching: true,
+        provisional: Boolean(existing?.provisional),
+        error: '',
+        data: existing?.data || null
+      });
+    }
+    requestStudentDb({ action: 'get-room-history', studentId: normalizedStudentId, roomId: normalizedRoomId });
+  }
+
+  function prefetchStudentRoomHistories(student, limit = 3) {
+    if (!student?.id) return;
+    const lessons = lessonHistoryForStudent(student).slice(0, Math.max(0, Number(limit) || 0));
+    lessons.forEach((lesson, index) => {
+      const roomId = String(lesson?.roomId || '').trim().toUpperCase();
+      if (!roomId) return;
+      // Naujausią pamoką pradedame skaityti iš karto; kitas kelias trumpai
+      // išskaidome, kad jos neužgožtų mokinio kortelės pirmo atvaizdavimo.
+      if (index === 0) requestStudentRoomHistory(student.id, roomId);
+      else window.setTimeout(() => requestStudentRoomHistory(student.id, roomId), index * 60);
+    });
   }
 
   function renderStudentsModal() {
@@ -2945,6 +2990,8 @@
       selectedStudentId = button.dataset.studentSelect;
       expandedStudentHistoryRoomId = '';
       studentCreateOpen = false;
+      const selectedStudent = teacherStudentDb.students?.[selectedStudentId];
+      if (selectedStudent) prefetchStudentRoomHistories(selectedStudent, 3);
       renderStudentsModal();
     }));
 
@@ -3540,8 +3587,15 @@
     const roomId = String(detail.roomId || '').trim().toUpperCase();
     if (!studentId || !roomId) return;
     const key = studentHistoryCacheKey(studentId, roomId);
-    if (detail.error) studentRoomHistoryCache.set(key, { loading: false, error: String(detail.error), data: null });
-    else studentRoomHistoryCache.set(key, { loading: false, error: '', data: detail.data && typeof detail.data === 'object' ? detail.data : {} });
+    if (detail.error) {
+      const existing = studentRoomHistoryCache.get(key);
+      // Jei dabartinės Room duomenis jau parodėme iš gyvos būsenos, vien fono
+      // atnaujinimo klaida neturi išmesti vartotojo atgal į klaidos ekraną.
+      if (existing?.data) studentRoomHistoryCache.set(key, { ...existing, loading: false, fetching: false, error: '', provisional: true });
+      else studentRoomHistoryCache.set(key, { loading: false, fetching: false, provisional: false, error: String(detail.error), data: null });
+    } else {
+      studentRoomHistoryCache.set(key, { loading: false, fetching: false, provisional: false, error: '', data: detail.data && typeof detail.data === 'object' ? detail.data : {} });
+    }
     if (selectedStudentId === studentId && expandedStudentHistoryRoomId === roomId) renderStudentsModal();
   });
 

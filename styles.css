@@ -6867,7 +6867,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 
 /* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · duomenų saugos / atsarginės kopijos kortelė */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · duomenų saugos / atsarginės kopijos kortelė */
 .p2-student-backup-box {
   margin: 12px 0 8px;
   padding: 12px;
@@ -6881,7 +6881,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-backup-box span { font-size: 11px; line-height: 1.4; color: #64748b; }
 .p2-student-backup-box button { width: 100%; justify-content: center; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
 .p2-students-body { grid-template-columns:340px minmax(0,1fr); }
 .p2-students-list-pane { gap:12px; }
 .p2-student-create { display:grid; gap:9px; }
@@ -6933,7 +6933,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-create .p2-student-create-toggle { width:100%; }
 .p2-student-create > .p2-student-create-form { width:100%; box-sizing:border-box; display:grid; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
 .p2-students-panel{width:min(1260px,96vw)}
 .p2-students-body{grid-template-columns:255px minmax(0,1fr)}
 .p2-students-list-pane{padding:18px 14px 14px;gap:12px}
@@ -6978,7 +6978,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media(max-width:850px){.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{max-height:none;border-right:0;border-bottom:1px solid #e8edf4}.p2-student-side-summary,.p2-student-db-id{display:none}.p2-student-backup-box{margin-top:0}.p2-student-detail-pane{padding:16px}.p2-student-overview-grid{grid-template-columns:1fr}.p2-students-overview-head{align-items:flex-start;flex-direction:column}.p2-student-create-page-grid{grid-template-columns:1fr}.p2-student-create-page-footer{flex-direction:column-reverse}.p2-student-create-page-footer button{width:100%}}
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
 .p2-students-body{display:block;min-height:0}
 .p2-student-detail-pane-full{width:100%;height:100%;box-sizing:border-box;padding:22px 30px 30px;background:#fff;overflow:auto}
 .p2-students-overview{max-width:1180px;margin:0 auto;gap:16px}
@@ -7006,7 +7006,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-student-backup-inline{width:100%}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · globėjo laukai vienoje dinaminėje eilutėje */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · globėjo laukai vienoje dinaminėje eilutėje */
 .p2-student-create-page-grid{
   display:grid;
   grid-template-columns:minmax(0,1fr) 140px;
@@ -7044,7 +7044,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-guardian-row .p2-create-guardian-name,.p2-guardian-row .p2-edit-guardian-name{flex:1 1 auto;width:100%}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinio kortelės pamokų istorija ir užduočių peržiūra */
+/* P2-SPLIT-P2.5-P4-P1.7.5.1 · mokinio kortelės pamokų istorija ir užduočių peržiūra */
 .p2-student-history-item{display:block;padding:0;overflow:hidden}
 .p2-student-history-summary-row{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
 .p2-student-history-item.is-expanded{border-color:#cbd8e8;box-shadow:0 8px 24px rgba(34,55,82,.06)}
