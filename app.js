@@ -459,10 +459,13 @@
   let saveTimer = null;
   let toastTimer = null;
   let drawingContext = null;
+  let committedCanvas = null;
+  let committedContext = null;
   let drawingActive = false;
   let activeStroke = null;
   let remoteLiveStrokes = [];
-  let lastCanvasSize = { width: 0, height: 0 };
+  let canvasViewport = null;
+  let canvasViewportRaf = 0;
   let editorDirty = false;
   let editorLoading = false;
   let pendingAiImport = null;
@@ -518,6 +521,20 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  const BOARD_WORLD_MIN_WIDTH = 2400;
+  const BOARD_WORLD_MIN_HEIGHT = 1700;
+  // P3-P1.1: DOM pasaulis plečiamas dalimis. 30 000 px riba yra tik techninė vieno
+  // pasaulio segmento apsauga nuo naršyklės milžiniško elemento / canvas limito;
+  // vartotojui erdvė plečiasi automatiškai tik priartėjus prie krašto.
+  const BOARD_WORLD_MAX_WIDTH = 30000;
+  const BOARD_WORLD_MAX_HEIGHT = 30000;
+  const BOARD_WORLD_EDGE_SCREEN_MARGIN = 150;
+  // P3-P1.1: piešimo bitmapas apima tik matomą lentos sritį su nedideliu
+  // rezervu aplink ją. Taip jo raiška nepriklauso nuo viso virtualaus pasaulio dydžio.
+  const BOARD_CANVAS_OVERSCAN_SCREEN = 320;
+  const BOARD_CANVAS_REPOSITION_GUARD_SCREEN = 110;
+  const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
+
   function clampCameraZoom(value) {
     return Math.max(0.2, Math.min(1.8, Number(value) || 0.72));
   }
@@ -527,8 +544,10 @@
       zoom: clampCameraZoom(camera?.zoom),
       scrollLeft: Math.max(0, Number(camera?.scrollLeft) || 0),
       scrollTop: Math.max(0, Number(camera?.scrollTop) || 0),
-      worldWidth: Math.max(1800, Math.min(4200, Number(camera?.worldWidth) || 2400)),
-      worldHeight: Math.max(1200, Math.min(3000, Number(camera?.worldHeight) || 1700))
+      worldWidth: Math.max(BOARD_WORLD_MIN_WIDTH, Math.min(BOARD_WORLD_MAX_WIDTH, Number(camera?.worldWidth) || BOARD_WORLD_MIN_WIDTH)),
+      worldHeight: Math.max(BOARD_WORLD_MIN_HEIGHT, Math.min(BOARD_WORLD_MAX_HEIGHT, Number(camera?.worldHeight) || BOARD_WORLD_MIN_HEIGHT)),
+      worldOriginX: Math.max(0, Number(camera?.worldOriginX) || 0),
+      worldOriginY: Math.max(0, Number(camera?.worldOriginY) || 0)
     };
   }
 
@@ -539,6 +558,189 @@
 
   function currentBoardZoom() {
     return clampCameraZoom(state?.camera?.zoom);
+  }
+
+  function boardGeometrySnapshot() {
+    const camera = normalizeCamera(state?.camera || {});
+    return {
+      schemaVersion: 1,
+      worldWidth: camera.worldWidth,
+      worldHeight: camera.worldHeight,
+      worldOriginX: camera.worldOriginX,
+      worldOriginY: camera.worldOriginY
+    };
+  }
+
+  function normalizeBoardGeometry(geometry) {
+    const camera = normalizeCamera({
+      ...state?.camera,
+      worldWidth: geometry?.worldWidth,
+      worldHeight: geometry?.worldHeight,
+      worldOriginX: geometry?.worldOriginX,
+      worldOriginY: geometry?.worldOriginY
+    });
+    return {
+      schemaVersion: 1,
+      worldWidth: camera.worldWidth,
+      worldHeight: camera.worldHeight,
+      worldOriginX: camera.worldOriginX,
+      worldOriginY: camera.worldOriginY
+    };
+  }
+
+  function remapNormalizedPoint(point, oldWidth, oldHeight, newWidth, newHeight, offsetX, offsetY) {
+    if (!point || typeof point !== 'object') return;
+    const oldX = Number(point.x) || 0;
+    const oldY = Number(point.y) || 0;
+    point.x = Math.max(0, Math.min(1, (oldX * oldWidth + offsetX) / Math.max(1, newWidth)));
+    point.y = Math.max(0, Math.min(1, (oldY * oldHeight + offsetY) / Math.max(1, newHeight)));
+  }
+
+  function remapBoardStateForWorldResize(oldWidth, oldHeight, newWidth, newHeight, offsetX = 0, offsetY = 0) {
+    if (!(oldWidth > 0 && oldHeight > 0 && newWidth > 0 && newHeight > 0)) return;
+    const remapStroke = stroke => (stroke?.points || []).forEach(point => remapNormalizedPoint(point, oldWidth, oldHeight, newWidth, newHeight, offsetX, offsetY));
+    state.drawing.forEach(remapStroke);
+    remoteLiveStrokes.forEach(remapStroke);
+    if (activeStroke) remapStroke(activeStroke);
+
+    for (const note of state.notes) {
+      note.x = (Number(note.x || 0) * oldWidth + offsetX) / newWidth;
+      note.y = (Number(note.y || 0) * oldHeight + offsetY) / newHeight;
+    }
+
+    for (const image of state.boardImages) {
+      image.x = (Number(image.x || 0) * oldWidth + offsetX) / newWidth;
+      image.y = (Number(image.y || 0) * oldHeight + offsetY) / newHeight;
+      image.width = Number(image.width || 0) * oldWidth / newWidth;
+      image.height = Number(image.height || 0) * oldHeight / newHeight;
+    }
+
+    for (const instance of [...state.boardTasks, ...state.boardPractices]) {
+      instance.x = (Number(instance.x || 0) * oldWidth + offsetX) / newWidth;
+      instance.y = (Number(instance.y || 0) * oldHeight + offsetY) / newHeight;
+      instance.width = Number(instance.width || 0) * oldWidth / newWidth;
+      instance.height = Number(instance.height || 0) * oldHeight / newHeight;
+    }
+
+    if (state.window && state.window.x !== null && state.window.y !== null) {
+      state.window.x = (Number(state.window.x || 0) * oldWidth + offsetX) / newWidth;
+      state.window.y = (Number(state.window.y || 0) * oldHeight + offsetY) / newHeight;
+      if (state.window.width) state.window.width = Number(state.window.width) * oldWidth / newWidth;
+      if (state.window.height) state.window.height = Number(state.window.height) * oldHeight / newHeight;
+    }
+  }
+
+  function expandBoardWorld(request = {}, options = {}) {
+    if (!refs.board || state.practiceOnly?.active || drawingActive) return null;
+    state.camera = normalizeCamera(state.camera);
+    const oldWidth = state.camera.worldWidth;
+    const oldHeight = state.camera.worldHeight;
+    let left = Math.max(0, Number(request.left) || 0);
+    let right = Math.max(0, Number(request.right) || 0);
+    let top = Math.max(0, Number(request.top) || 0);
+    let bottom = Math.max(0, Number(request.bottom) || 0);
+
+    const widthCapacity = Math.max(0, BOARD_WORLD_MAX_WIDTH - oldWidth);
+    const heightCapacity = Math.max(0, BOARD_WORLD_MAX_HEIGHT - oldHeight);
+    if (left + right > widthCapacity) {
+      const scale = widthCapacity / Math.max(1, left + right);
+      left *= scale; right *= scale;
+    }
+    if (top + bottom > heightCapacity) {
+      const scale = heightCapacity / Math.max(1, top + bottom);
+      top *= scale; bottom *= scale;
+    }
+    left = Math.round(left); right = Math.round(right); top = Math.round(top); bottom = Math.round(bottom);
+    if (!(left || right || top || bottom)) return null;
+
+    const newWidth = oldWidth + left + right;
+    const newHeight = oldHeight + top + bottom;
+    const zoom = currentBoardZoom();
+    const oldScrollLeft = refs.board.scrollLeft;
+    const oldScrollTop = refs.board.scrollTop;
+
+    remapBoardStateForWorldResize(oldWidth, oldHeight, newWidth, newHeight, left, top);
+    state.camera.worldWidth = newWidth;
+    state.camera.worldHeight = newHeight;
+    state.camera.worldOriginX = Math.max(0, Number(state.camera.worldOriginX) || 0) + left;
+    state.camera.worldOriginY = Math.max(0, Number(state.camera.worldOriginY) || 0) + top;
+    state.camera.scrollLeft = oldScrollLeft + left * zoom;
+    state.camera.scrollTop = oldScrollTop + top * zoom;
+
+    applyBoardCamera({ restoreScroll: true });
+    resizeCanvas({ force: true });
+    layoutBoardObjects();
+    initializePracticeWindow();
+    if (options.save !== false) scheduleSave();
+    return { left, right, top, bottom, oldWidth, oldHeight, newWidth, newHeight };
+  }
+
+  function boardExpansionChunk(axis = 'x') {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const viewport = axis === 'x' ? refs.board.clientWidth : refs.board.clientHeight;
+    const minimum = axis === 'x' ? 1200 : 900;
+    return Math.round(Math.max(minimum, viewport / zoom * 0.9));
+  }
+
+  function expandBoardForScrollIntent(deltaX = 0, deltaY = 0) {
+    if (state.practiceOnly?.active || drawingActive) return null;
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const margin = BOARD_WORLD_EDGE_SCREEN_MARGIN;
+    const scaledWidth = world.width * zoom;
+    const scaledHeight = world.height * zoom;
+    const maxLeft = Math.max(0, scaledWidth - refs.board.clientWidth);
+    const maxTop = Math.max(0, scaledHeight - refs.board.clientHeight);
+    const request = {};
+    if (deltaX < 0 && refs.board.scrollLeft <= margin) request.left = boardExpansionChunk('x');
+    if (deltaX > 0 && maxLeft - refs.board.scrollLeft <= margin) request.right = boardExpansionChunk('x');
+    if (deltaY < 0 && refs.board.scrollTop <= margin) request.top = boardExpansionChunk('y');
+    if (deltaY > 0 && maxTop - refs.board.scrollTop <= margin) request.bottom = boardExpansionChunk('y');
+    return expandBoardWorld(request);
+  }
+
+  let infiniteBoardEdgeTimer = null;
+  function scheduleBoardEdgeExpansion() {
+    clearTimeout(infiniteBoardEdgeTimer);
+    infiniteBoardEdgeTimer = window.setTimeout(() => {
+      if (drawingActive || state.practiceOnly?.active) return;
+      const zoom = Math.max(0.001, currentBoardZoom());
+      const world = getBoardWorldRect();
+      const maxLeft = Math.max(0, world.width * zoom - refs.board.clientWidth);
+      const maxTop = Math.max(0, world.height * zoom - refs.board.clientHeight);
+      const margin = 28;
+      const request = {};
+      // Plėtimą nuo scroll įvykio atliekame tik pasiekus tikrą kraštą. Taip naujai
+      // atidaryta lenta savaime neauga vien todėl, kad jos pradinis scroll yra 0.
+      if (refs.board.scrollLeft > 0 && refs.board.scrollLeft <= margin) request.left = boardExpansionChunk('x');
+      if (maxLeft > 0 && maxLeft - refs.board.scrollLeft <= margin) request.right = boardExpansionChunk('x');
+      if (refs.board.scrollTop > 0 && refs.board.scrollTop <= margin) request.top = boardExpansionChunk('y');
+      if (maxTop > 0 && maxTop - refs.board.scrollTop <= margin) request.bottom = boardExpansionChunk('y');
+      expandBoardWorld(request);
+    }, 90);
+  }
+
+  function applyIncomingBoardGeometry(rawGeometry) {
+    const next = normalizeBoardGeometry(rawGeometry || {});
+    state.camera = normalizeCamera(state.camera);
+    const previous = boardGeometrySnapshot();
+    if (previous.worldWidth === next.worldWidth && previous.worldHeight === next.worldHeight
+      && previous.worldOriginX === next.worldOriginX && previous.worldOriginY === next.worldOriginY) return;
+
+    const deltaOriginX = next.worldOriginX - previous.worldOriginX;
+    const deltaOriginY = next.worldOriginY - previous.worldOriginY;
+    const oldScrollLeft = refs.board.scrollLeft;
+    const oldScrollTop = refs.board.scrollTop;
+    state.camera.worldWidth = next.worldWidth;
+    state.camera.worldHeight = next.worldHeight;
+    state.camera.worldOriginX = next.worldOriginX;
+    state.camera.worldOriginY = next.worldOriginY;
+    state.camera.scrollLeft = Math.max(0, oldScrollLeft + deltaOriginX * currentBoardZoom());
+    state.camera.scrollTop = Math.max(0, oldScrollTop + deltaOriginY * currentBoardZoom());
+    applyBoardCamera({ restoreScroll: true });
+    resizeCanvas({ force: true });
+    layoutBoardObjects();
+    initializePracticeWindow();
   }
 
   function taskRequiresMixedNumber(task) {
@@ -742,10 +944,15 @@
     return true;
   }
 
-  function scheduleSave() {
+  let saveShouldNotifyShared = false;
+
+  function scheduleSave(options = {}) {
     refs.saveState.textContent = 'Saugoma…';
+    if (options.notifyShared !== false) saveShouldNotifyShared = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
+      const notifyShared = saveShouldNotifyShared;
+      saveShouldNotifyShared = false;
       try {
         state.packageData = practicePackage;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -754,8 +961,9 @@
         refs.saveState.textContent = 'Neišsaugota vietoje';
         console.error('Nepavyko išsaugoti vietinės kopijos:', error);
       }
-      // Net jei didesnė nuotrauka viršytų localStorage kvotą, online lenta vis tiek turi sinchronizuotis.
-      window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
+      // Piešimo brūkšniai online režime siunčiami tiesiogiai per p772:live-stroke/end,
+      // todėl vien dėl jų nebeskanuojame ir neserializuojame visos bendros lentos būsenos.
+      if (notifyShared) window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
     }, 180);
   }
 
@@ -8442,6 +8650,44 @@ KOKYBĖS REIKALAVIMAI:
 
   let cameraApplying = false;
   let cameraScrollTimer = null;
+  const roomBoardViews = new Map();
+
+  function rememberBoardViewForRoom(roomId) {
+    const id = String(roomId || '').trim().toUpperCase();
+    if (!id || !refs.board) return;
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const camera = normalizeCamera(state.camera);
+    roomBoardViews.set(id, {
+      zoom,
+      logicalLeft: refs.board.scrollLeft / zoom - camera.worldOriginX,
+      logicalTop: refs.board.scrollTop / zoom - camera.worldOriginY
+    });
+  }
+
+  function restoreBoardViewForRoom(roomId) {
+    const id = String(roomId || '').trim().toUpperCase();
+    if (!id || !refs.board) return;
+    const saved = roomBoardViews.get(id) || null;
+    const camera = normalizeCamera(state.camera);
+    if (saved?.zoom) state.camera.zoom = clampCameraZoom(saved.zoom);
+    const zoom = currentBoardZoom();
+    applyBoardCamera();
+    requestAnimationFrame(() => {
+      const logicalLeft = Number.isFinite(saved?.logicalLeft) ? saved.logicalLeft : 0;
+      const logicalTop = Number.isFinite(saved?.logicalTop) ? saved.logicalTop : 0;
+      refs.board.scrollLeft = Math.max(0, (camera.worldOriginX + logicalLeft) * zoom);
+      refs.board.scrollTop = Math.max(0, (camera.worldOriginY + logicalTop) * zoom);
+      state.camera.scrollLeft = refs.board.scrollLeft;
+      state.camera.scrollTop = refs.board.scrollTop;
+    });
+  }
+
+  window.addEventListener('p2:room-switch-start', event => {
+    rememberBoardViewForRoom(event.detail?.fromRoom);
+  });
+  window.addEventListener('p2:room-switch-complete', event => {
+    restoreBoardViewForRoom(event.detail?.roomId);
+  });
 
   function applyBoardCamera(options = {}) {
     state.camera = normalizeCamera(state.camera);
@@ -8491,6 +8737,7 @@ KOKYBĖS REIKALAVIMAI:
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
       cameraApplying = false;
+      resizeCanvas({ force: true });
       layoutBoardObjects();
       refreshMathFieldRendering(refs.boardWorld);
       if (state.practiceOnly?.active) refreshMathFieldRendering(refs.practiceOnlyHost);
@@ -8504,17 +8751,53 @@ KOKYBĖS REIKALAVIMAI:
     scheduleSave();
   }
 
-  function fitWholeBoard() {
+  function boardContentBounds() {
     const world = getBoardWorldRect();
-    const availableWidth = Math.max(1, refs.board.clientWidth - 30);
-    const availableHeight = Math.max(1, refs.board.clientHeight - 30);
-    state.camera.zoom = clampCameraZoom(Math.min(availableWidth / world.width, availableHeight / world.height));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const include = (left, top, right = left, bottom = top) => {
+      if (![left, top, right, bottom].every(Number.isFinite)) return;
+      minX = Math.min(minX, left); minY = Math.min(minY, top);
+      maxX = Math.max(maxX, right); maxY = Math.max(maxY, bottom);
+    };
+    for (const stroke of state.drawing) {
+      for (const point of stroke?.points || []) include(point.x * world.width, point.y * world.height);
+    }
+    for (const note of state.notes) {
+      const element = refs.objectsLayer.querySelector(`[data-note-id="${CSS.escape(String(note.id))}"]`);
+      const left = note.x * world.width, top = note.y * world.height;
+      include(left, top, left + Math.max(110, note.width || 420), top + Math.max(54, element?.offsetHeight || 90));
+    }
+    for (const image of state.boardImages) include(image.x * world.width, image.y * world.height, (image.x + image.width) * world.width, (image.y + image.height) * world.height);
+    for (const task of state.boardTasks) { const r = boardTaskPixelRect(task, world); include(r.x, r.y, r.x + r.width, r.y + r.height); }
+    for (const practice of state.boardPractices) { const r = boardPracticePixelRect(practice, world); include(r.x, r.y, r.x + r.width, r.y + r.height); }
+    if (!state.window.shelved && state.window.x !== null && state.window.y !== null) {
+      const left = state.window.x * world.width, top = state.window.y * world.height;
+      const width = Math.max(360, Number(state.window.width || 0) * world.width || refs.practiceWindow.offsetWidth || 650);
+      const height = Math.max(180, Number(state.window.height || 0) * world.height || refs.practiceWindow.offsetHeight || 730);
+      include(left, top, left + width, top + height);
+    }
+    return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+  }
+
+  function fitWholeBoard() {
+    const bounds = boardContentBounds();
+    if (!bounds) {
+      setBoardZoom(0.72, { preserveCenter: true });
+      return;
+    }
+    const padding = 80;
+    const contentWidth = Math.max(240, bounds.maxX - bounds.minX + padding * 2);
+    const contentHeight = Math.max(180, bounds.maxY - bounds.minY + padding * 2);
+    const availableWidth = Math.max(1, refs.board.clientWidth);
+    const availableHeight = Math.max(1, refs.board.clientHeight);
+    const targetZoom = clampCameraZoom(Math.min(availableWidth / contentWidth, availableHeight / contentHeight, 1.25));
+    state.camera.zoom = targetZoom;
     applyBoardCamera();
     requestAnimationFrame(() => {
-      refs.board.scrollLeft = 0;
-      refs.board.scrollTop = 0;
-      state.camera.scrollLeft = 0;
-      state.camera.scrollTop = 0;
+      refs.board.scrollLeft = Math.max(0, (bounds.minX + bounds.maxX) / 2 * targetZoom - availableWidth / 2);
+      refs.board.scrollTop = Math.max(0, (bounds.minY + bounds.maxY) / 2 * targetZoom - availableHeight / 2);
+      state.camera.scrollLeft = refs.board.scrollLeft;
+      state.camera.scrollTop = refs.board.scrollTop;
       scheduleSave();
     });
   }
@@ -8621,27 +8904,42 @@ KOKYBĖS REIKALAVIMAI:
       if (cameraApplying) return;
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
+      scheduleCanvasViewportRefresh();
       clearTimeout(cameraScrollTimer);
       cameraScrollTimer = window.setTimeout(scheduleSave, 140);
+      scheduleBoardEdgeExpansion();
     }, { passive: true });
 
     refs.board.addEventListener('wheel', event => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
-      const rect = refs.board.getBoundingClientRect();
-      const factor = event.deltaY < 0 ? 1.1 : 0.9;
-      setBoardZoom(currentBoardZoom() * factor, {
-        anchorViewportX: event.clientX - rect.left,
-        anchorViewportY: event.clientY - rect.top
-      });
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const rect = refs.board.getBoundingClientRect();
+        const factor = event.deltaY < 0 ? 1.1 : 0.9;
+        setBoardZoom(currentBoardZoom() * factor, {
+          anchorViewportX: event.clientX - rect.left,
+          anchorViewportY: event.clientY - rect.top
+        });
+        return;
+      }
+      // Paprastas ratukas lieka natūralus scroll. Jei vartotojas bando važiuoti
+      // už esamo pasaulio krašto, prieš naršyklės scroll įvykį pridedame naujos erdvės.
+      expandBoardForScrollIntent(event.deltaX, event.deltaY);
     }, { passive: false });
 
     let pan = null;
+    let mousePan = null;
     const touchPoints = new Map();
     let pinch = null;
     const isBoardBackground = target => target === refs.board || target === refs.boardStage || target === refs.boardWorld || target === refs.canvas || target === refs.objectsLayer;
     refs.board.addEventListener('pointerdown', event => {
-      if (event.pointerType !== 'touch' || state.activeTool !== 'select' || state.practiceOnly?.active) return;
+      if (state.activeTool === 'pan' && !state.practiceOnly?.active && event.button === 0) {
+        event.preventDefault();
+        mousePan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: refs.board.scrollLeft, top: refs.board.scrollTop };
+        document.body.classList.add('is-board-panning');
+        try { refs.board.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
+      if (event.pointerType !== 'touch' || !['select', 'pan'].includes(state.activeTool) || state.practiceOnly?.active) return;
       touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (touchPoints.size === 1 && isBoardBackground(event.target)) {
         pan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: refs.board.scrollLeft, top: refs.board.scrollTop };
@@ -8658,6 +8956,21 @@ KOKYBĖS REIKALAVIMAI:
       }
     }, true);
     refs.board.addEventListener('pointermove', event => {
+      if (mousePan && mousePan.pointerId === event.pointerId) {
+        event.preventDefault();
+        let targetLeft = mousePan.left - (event.clientX - mousePan.startX);
+        let targetTop = mousePan.top - (event.clientY - mousePan.startY);
+        const dxIntent = targetLeft < refs.board.scrollLeft ? -1 : targetLeft > refs.board.scrollLeft ? 1 : 0;
+        const dyIntent = targetTop < refs.board.scrollTop ? -1 : targetTop > refs.board.scrollTop ? 1 : 0;
+        const expansion = expandBoardForScrollIntent(dxIntent, dyIntent);
+        if (expansion?.left) { mousePan.left += expansion.left * currentBoardZoom(); targetLeft += expansion.left * currentBoardZoom(); }
+        if (expansion?.top) { mousePan.top += expansion.top * currentBoardZoom(); targetTop += expansion.top * currentBoardZoom(); }
+        refs.board.scrollLeft = Math.max(0, targetLeft);
+        refs.board.scrollTop = Math.max(0, targetTop);
+        state.camera.scrollLeft = refs.board.scrollLeft;
+        state.camera.scrollTop = refs.board.scrollTop;
+        return;
+      }
       if (!touchPoints.has(event.pointerId)) return;
       touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (touchPoints.size >= 2 && pinch) {
@@ -8667,11 +8980,24 @@ KOKYBĖS REIKALAVIMAI:
         setBoardZoom(pinch.zoom * distance / pinch.distance, { anchorViewportX: pinch.midX, anchorViewportY: pinch.midY });
       } else if (pan && pan.pointerId === event.pointerId) {
         event.preventDefault();
-        refs.board.scrollLeft = pan.left - (event.clientX - pan.startX);
-        refs.board.scrollTop = pan.top - (event.clientY - pan.startY);
+        let targetLeft = pan.left - (event.clientX - pan.startX);
+        let targetTop = pan.top - (event.clientY - pan.startY);
+        const expansion = expandBoardForScrollIntent(targetLeft < refs.board.scrollLeft ? -1 : targetLeft > refs.board.scrollLeft ? 1 : 0,
+          targetTop < refs.board.scrollTop ? -1 : targetTop > refs.board.scrollTop ? 1 : 0);
+        if (expansion?.left) { pan.left += expansion.left * currentBoardZoom(); targetLeft += expansion.left * currentBoardZoom(); }
+        if (expansion?.top) { pan.top += expansion.top * currentBoardZoom(); targetTop += expansion.top * currentBoardZoom(); }
+        refs.board.scrollLeft = Math.max(0, targetLeft);
+        refs.board.scrollTop = Math.max(0, targetTop);
+        state.camera.scrollLeft = refs.board.scrollLeft;
+        state.camera.scrollTop = refs.board.scrollTop;
       }
     }, { capture: true, passive: false });
     const endTouch = event => {
+      if (mousePan?.pointerId === event.pointerId) {
+        mousePan = null;
+        document.body.classList.remove('is-board-panning');
+        try { refs.board.releasePointerCapture(event.pointerId); } catch (_) {}
+      }
       touchPoints.delete(event.pointerId);
       if (pan?.pointerId === event.pointerId) pan = null;
       if (touchPoints.size < 2) pinch = null;
@@ -8696,26 +9022,119 @@ KOKYBĖS REIKALAVIMAI:
     scheduleSave();
   }
 
-  function resizeCanvas() {
-    const rect = getBoardWorldRect();
-    const dpr = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1));
-    if (Math.round(rect.width) === lastCanvasSize.width && Math.round(rect.height) === lastCanvasSize.height) return;
-    lastCanvasSize = { width: Math.round(rect.width), height: Math.round(rect.height) };
-    refs.canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    refs.canvas.height = Math.max(1, Math.round(rect.height * dpr));
-    refs.canvas.style.width = `${rect.width}px`;
-    refs.canvas.style.height = `${rect.height}px`;
+  function configureCanvasContext(context, backingScale, viewport = canvasViewport) {
+    if (!context || !viewport) return;
+    context.setTransform(
+      backingScale, 0, 0, backingScale,
+      -viewport.left * backingScale, -viewport.top * backingScale
+    );
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+  }
+
+  function clearPhysicalCanvas(context, canvas) {
+    if (!context || !canvas) return;
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+  }
+
+  function visibleBoardWorldRect() {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const left = Math.max(0, refs.board.scrollLeft / zoom);
+    const top = Math.max(0, refs.board.scrollTop / zoom);
+    const width = Math.max(1, refs.board.clientWidth / zoom);
+    const height = Math.max(1, refs.board.clientHeight / zoom);
+    return {
+      left, top, width, height,
+      right: Math.min(world.width, left + width),
+      bottom: Math.min(world.height, top + height)
+    };
+  }
+
+  function desiredCanvasViewport() {
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const visible = visibleBoardWorldRect();
+    const overscan = BOARD_CANVAS_OVERSCAN_SCREEN / zoom;
+    const left = Math.max(0, visible.left - overscan);
+    const top = Math.max(0, visible.top - overscan);
+    const right = Math.min(world.width, visible.right + overscan);
+    const bottom = Math.min(world.height, visible.bottom + overscan);
+    return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top), right, bottom };
+  }
+
+  function canvasViewportStillCoversVisible() {
+    if (!canvasViewport) return false;
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const world = getBoardWorldRect();
+    const visible = visibleBoardWorldRect();
+    const guard = BOARD_CANVAS_REPOSITION_GUARD_SCREEN / zoom;
+    const leftOk = canvasViewport.left <= 0.01 || canvasViewport.left <= visible.left - guard;
+    const topOk = canvasViewport.top <= 0.01 || canvasViewport.top <= visible.top - guard;
+    const rightOk = canvasViewport.right >= world.width - 0.01 || canvasViewport.right >= visible.right + guard;
+    const bottomOk = canvasViewport.bottom >= world.height - 0.01 || canvasViewport.bottom >= visible.bottom + guard;
+    return leftOk && topOk && rightOk && bottomOk && Math.abs((canvasViewport.zoom || 0) - zoom) < 0.0001;
+  }
+
+  function resizeCanvas(options = {}) {
+    if (!refs.canvas || !refs.board) return;
+    const force = options === true || Boolean(options?.force);
+    if (!force && canvasViewportStillCoversVisible()) return;
+
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const viewport = desiredCanvasViewport();
+    const deviceDpr = Math.max(1, Math.min(BOARD_CANVAS_MAX_DEVICE_DPR, window.devicePixelRatio || 1));
+    // Kadangi visas boardWorld mastelis keičiamas CSS zoom/transform būdu, bitmapui
+    // reikia deviceDpr * zoom pikselių vienam pasaulio vienetui. Taip fizinis bitmapo
+    // dydis išlieka maždaug ekrano dydžio, net kai virtualus pasaulis yra milžiniškas.
+    const backingScale = Math.max(0.2, deviceDpr * zoom);
+    viewport.zoom = zoom;
+    viewport.backingScale = backingScale;
+    canvasViewport = viewport;
+
+    refs.canvas.style.left = `${viewport.left}px`;
+    refs.canvas.style.top = `${viewport.top}px`;
+    refs.canvas.style.width = `${viewport.width}px`;
+    refs.canvas.style.height = `${viewport.height}px`;
+    refs.canvas.width = Math.max(1, Math.round(viewport.width * backingScale));
+    refs.canvas.height = Math.max(1, Math.round(viewport.height * backingScale));
     drawingContext = refs.canvas.getContext('2d');
-    drawingContext.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawingContext.lineCap = 'round';
-    drawingContext.lineJoin = 'round';
+    configureCanvasContext(drawingContext, backingScale, viewport);
+
+    if (!committedCanvas) committedCanvas = document.createElement('canvas');
+    committedCanvas.width = refs.canvas.width;
+    committedCanvas.height = refs.canvas.height;
+    committedContext = committedCanvas.getContext('2d');
+    configureCanvasContext(committedContext, backingScale, viewport);
+
+    rebuildCommittedCanvas();
     redrawCanvas();
     clampWindowToBoard();
   }
 
+  function scheduleCanvasViewportRefresh(options = {}) {
+    if (canvasViewportRaf) return;
+    canvasViewportRaf = requestAnimationFrame(() => {
+      canvasViewportRaf = 0;
+      resizeCanvas(options);
+    });
+  }
+
   function pointFromEvent(event) {
+    const world = getBoardWorldRect();
     const rect = refs.canvas.getBoundingClientRect();
-    return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
+    const viewport = canvasViewport || { left: 0, top: 0, width: world.width, height: world.height };
+    const localX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+    const localY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0;
+    const worldX = viewport.left + localX * viewport.width;
+    const worldY = viewport.top + localY * viewport.height;
+    return {
+      x: Math.max(0, Math.min(1, worldX / Math.max(1, world.width))),
+      y: Math.max(0, Math.min(1, worldY / Math.max(1, world.height)))
+    };
   }
 
   function createStrokeId() {
@@ -8724,9 +9143,59 @@ KOKYBĖS REIKALAVIMAI:
 
   function emitLiveStroke(phase, stroke = activeStroke) {
     if (!stroke) return;
+    // CustomEvent apdorojamas sinchroniškai. Nekopijuojame viso augančio points masyvo
+    // per kiekvieną pointermove; online sluoksnis kopiją pasidaro tik realiai siųsdamas.
     window.dispatchEvent(new CustomEvent('p772:live-stroke', {
-      detail: { phase, stroke: deepClone(stroke) }
+      detail: { phase, stroke }
     }));
+  }
+
+  function drawStrokeSegment(context, stroke, fromPoint, toPoint, rect = getBoardWorldRect()) {
+    if (!context || !stroke || !fromPoint || !toPoint) return;
+    context.save();
+    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
+    context.strokeStyle = '#27364f';
+    context.lineWidth = stroke.width;
+    context.beginPath();
+    context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
+    context.lineTo(toPoint.x * rect.width, toPoint.y * rect.height);
+    context.stroke();
+    context.restore();
+  }
+
+  function drawStrokePoint(context, stroke, point, rect = getBoardWorldRect()) {
+    if (!point) return;
+    const epsilon = 0.01 / Math.max(1, rect.width);
+    drawStrokeSegment(context, stroke, point, { x: point.x + epsilon, y: point.y }, rect);
+  }
+
+  function drawStrokeToContext(context, stroke, rect = getBoardWorldRect()) {
+    if (!context || !stroke?.points?.length) return;
+    context.save();
+    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
+    context.strokeStyle = '#27364f';
+    context.lineWidth = stroke.width;
+    context.beginPath();
+    stroke.points.forEach((point, index) => {
+      const x = point.x * rect.width;
+      const y = point.y * rect.height;
+      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    });
+    if (stroke.points.length === 1) context.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
+    context.stroke();
+    context.restore();
+  }
+
+  function rebuildCommittedCanvas() {
+    if (!committedContext || !committedCanvas) return;
+    const rect = getBoardWorldRect();
+    clearPhysicalCanvas(committedContext, committedCanvas);
+    for (const stroke of state.drawing) drawStrokeToContext(committedContext, stroke, rect);
+  }
+
+  function paintCommittedStroke(stroke) {
+    if (!committedContext) return;
+    drawStrokeToContext(committedContext, stroke, getBoardWorldRect());
   }
 
   function startDrawing(event) {
@@ -8740,15 +9209,21 @@ KOKYBĖS REIKALAVIMAI:
       width: state.activeTool === 'eraser' ? 22 : 2.6,
       points: [pointFromEvent(event)]
     };
-    redrawCanvas();
+    // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
+    drawStrokePoint(drawingContext, activeStroke, activeStroke.points[0]);
     emitLiveStroke('start');
   }
 
   function continueDrawing(event) {
     if (!drawingActive || !activeStroke) return;
     event.preventDefault();
-    activeStroke.points.push(pointFromEvent(event));
-    redrawCanvas();
+    const previousPoint = activeStroke.points[activeStroke.points.length - 1];
+    const nextPoint = pointFromEvent(event);
+    activeStroke.points.push(nextPoint);
+    // Ankstesnė versija čia kiekvienam pointermove išvalydavo canvas ir iš naujo
+    // perpiešdavo visą state.drawing. Ilgesnėje pamokoje tai tapdavo O(visos lentos)
+    // darbu kiekvienam rašiklio judesiui, todėl linija pradėdavo vytis žymeklį.
+    drawStrokeSegment(drawingContext, activeStroke, previousPoint, nextPoint);
     emitLiveStroke('update');
   }
 
@@ -8758,37 +9233,30 @@ KOKYBĖS REIKALAVIMAI:
     drawingActive = false;
     activeStroke = null;
     state.drawing.push(committedStroke);
-    redrawCanvas();
+    // Pagrindiniame canvas brūkšnys jau nupieštas segmentais. Įdedame jį tik į
+    // statinį cache, kad būsimi nuotoliniai atnaujinimai nereikalautų senų brūkšnių redraw.
+    paintCommittedStroke(committedStroke);
     emitLiveStroke('end', committedStroke);
     try { refs.canvas.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
-    scheduleSave();
+    scheduleSave({ notifyShared: !window.__p772DirectDrawingSyncReady });
   }
 
   function redrawCanvas() {
-    if (!drawingContext) return;
+    if (!drawingContext || !refs.canvas) return;
     const rect = getBoardWorldRect();
-    drawingContext.clearRect(0, 0, rect.width, rect.height);
-    for (const stroke of state.drawing) drawStroke(stroke);
-    for (const stroke of remoteLiveStrokes) drawStroke(stroke);
-    if (activeStroke) drawStroke(activeStroke);
+    clearPhysicalCanvas(drawingContext, refs.canvas);
+    if (committedCanvas) {
+      drawingContext.save();
+      drawingContext.setTransform(1, 0, 0, 1, 0, 0);
+      drawingContext.drawImage(committedCanvas, 0, 0);
+      drawingContext.restore();
+    }
+    for (const stroke of remoteLiveStrokes) drawStrokeToContext(drawingContext, stroke, rect);
+    if (activeStroke) drawStrokeToContext(drawingContext, activeStroke, rect);
   }
 
   function drawStroke(stroke) {
-    if (!drawingContext || !stroke.points.length) return;
-    const rect = getBoardWorldRect();
-    drawingContext.save();
-    drawingContext.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    drawingContext.strokeStyle = '#27364f';
-    drawingContext.lineWidth = stroke.width;
-    drawingContext.beginPath();
-    stroke.points.forEach((point, index) => {
-      const x = point.x * rect.width;
-      const y = point.y * rect.height;
-      if (index === 0) drawingContext.moveTo(x, y); else drawingContext.lineTo(x, y);
-    });
-    if (stroke.points.length === 1) drawingContext.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
-    drawingContext.stroke();
-    drawingContext.restore();
+    drawStrokeToContext(drawingContext, stroke, getBoardWorldRect());
   }
 
   function mixedEditorFromNode(node) {
@@ -11348,7 +11816,8 @@ KOKYBĖS REIKALAVIMAI:
       boardImages: deepClone(state.boardImages),
       boardTasks: deepClone(state.boardTasks),
       boardPractices: deepClone(state.boardPractices),
-      window: deepClone(state.window)
+      window: deepClone(state.window),
+      boardGeometry: boardGeometrySnapshot()
     };
   }
 
@@ -11413,9 +11882,18 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function applyOnlineSharedPart(part, value) {
+    if (part === 'boardGeometry') {
+      applyIncomingBoardGeometry(value && typeof value === 'object' ? value : {});
+      try {
+        state.packageData = practicePackage;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (_) {}
+      return;
+    }
     if (part === 'drawing') {
       state.drawing = Array.isArray(value) ? value.filter(Boolean) : [];
       ensureSharedIds();
+      rebuildCommittedCanvas();
       redrawCanvas();
       return;
     }
@@ -11588,7 +12066,10 @@ KOKYBĖS REIKALAVIMAI:
     state = defaultState();
     editorDirty = false;
     refs.practiceWindow.removeAttribute('style');
+    applyBoardCamera({ restoreScroll: true });
+    resizeCanvas();
     renderBoardObjects();
+    rebuildCommittedCanvas();
     redrawCanvas();
     setTool('select');
     setMode(onlineAccessRole === 'teacher' ? 'teacher' : 'student', { force: true, allowEmpty: true });
@@ -11600,7 +12081,7 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointerup', stopDrawing);
   refs.canvas.addEventListener('pointercancel', stopDrawing);
 
-  new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas(); layoutBoardObjects(); }).observe(refs.board);
+  new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas({ force: true }); layoutBoardObjects(); }).observe(refs.board);
   window.addEventListener('beforeunload', () => {
     try {
       state.packageData = practicePackage;

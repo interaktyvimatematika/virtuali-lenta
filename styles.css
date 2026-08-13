@@ -62,8 +62,8 @@ button { -webkit-tap-highlight-color: transparent; }
   background-size: 100px 100px,100px 100px,20px 20px,20px 20px;
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
 }
-#drawingCanvas, .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
-#drawingCanvas { z-index: 1; touch-action: none; }
+.objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+#drawingCanvas { position: absolute; left: 0; top: 0; z-index: 1; touch-action: none; }
 .objects-layer { z-index: 2; pointer-events: none; }
 .practice-window {
   position: absolute; z-index: 5; left: 50%; top: 50%; width: min(760px,calc(100% - 44px)); height: min(720px,calc(100% - 44px));
@@ -176,6 +176,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .toast.is-visible { opacity: 1; transform: translate(-50%,0); }
 body[data-tool="pen"] #drawingCanvas, body[data-tool="eraser"] #drawingCanvas { cursor: crosshair; z-index: 8; }
 body[data-tool="pen"] .practice-window, body[data-tool="eraser"] .practice-window { pointer-events: none; }
+body[data-tool="pan"] #drawingCanvas { cursor: grab; z-index: 8; }
+body[data-tool="pan"].is-board-panning #drawingCanvas { cursor: grabbing; }
+body[data-tool="pan"] .practice-window, body[data-tool="pan"] .objects-layer > * { pointer-events: none !important; }
 @media (max-width: 1050px) {
   .topbar { grid-template-columns: 1fr auto; gap: 10px; padding: 9px 11px; }
   .brand { display: none; }
@@ -6502,31 +6505,27 @@ body.p2-shell .p2-teacher-simple-answer small {
 }
 
 
-/* P2-SPLIT-P2.4.7.19.3 — LaTeX fragmentai 5 klasės sąlygose ir pasirinkimuose */
-body.p2-shell math-field.p2-inline-math {
-  display:inline-block;
-  width:auto;
-  min-width:0;
-  min-height:0;
-  margin:0 .06em;
+/* P2-SPLIT-P2.4.7.19.4.5 — statinis inline LaTeX teksto sąlygose */
+body.p2-shell math-span.p2-inline-math {
+  display:inline;
+  margin:0;
   padding:0;
   border:0;
   background:transparent;
-  vertical-align:-0.14em;
-  font-size:1.08em;
-  line-height:1;
+  color:inherit;
+  font-size:1em;
+  line-height:inherit;
+  vertical-align:baseline;
   white-space:nowrap;
 }
-body.p2-shell .p2-choice math-field.p2-inline-math {
-  font-size:1.14em;
-}
-body.p2-shell .p2-preview-choice math-field.p2-inline-math,
-body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
-  font-size:1.12em;
+body.p2-shell .p2-choice math-span.p2-inline-math,
+body.p2-shell .p2-preview-choice math-span.p2-inline-math,
+body.p2-shell .p2-teacher-answer-key math-span.p2-inline-math {
+  font-size:1em;
 }
 
 
-/* P2-SPLIT-P2.4.7.19.3 · paveikslėliai bendroje lentoje */
+/* P2-SPLIT-P2.4.7.19.4 · paveikslėliai bendroje lentoje */
 .board-image-object {
   position: absolute;
   margin: 0;
@@ -6620,7 +6619,7 @@ body.p2-shell .p2-teacher-answer-key math-field.p2-inline-math {
   .board-image-object.is-active-object .board-image-resize { opacity: 1; }
 }
 
-/* P2-SPLIT-P2.4.7.19.3 — Bibliotekos modalas visada slenkamas vertikaliai */
+/* P2-SPLIT-P2.4.7.19.4 — Bibliotekos modalas visada slenkamas vertikaliai */
 body.p2-shell .p2-library-panel {
   display:grid;
   grid-template-rows:auto minmax(0,1fr);
@@ -6638,3 +6637,232 @@ body.p2-shell .p2-library-panel > .p2-library-body {
   body.p2-shell .p2-library-panel { max-height:calc(100dvh - 20px); }
   body.p2-shell .p2-library-body { padding-top:22px; padding-bottom:22px; }
 }
+
+
+/* P2-SPLIT-P2.5-P2 — mokinių duomenų bazė ir pamokų istorija */
+.p2-students-modal[hidden]{display:none!important}
+.p2-students-modal{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:24px}
+.p2-students-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.44);backdrop-filter:blur(3px)}
+.p2-students-panel{position:relative;width:min(1180px,96vw);height:min(820px,92vh);background:#fff;border:1px solid rgba(148,163,184,.34);border-radius:24px;box-shadow:0 28px 80px rgba(15,23,42,.22);overflow:hidden;display:flex;flex-direction:column}
+.p2-students-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;border-bottom:1px solid #e8edf4;background:linear-gradient(180deg,#fff,#fbfcfe)}
+.p2-students-header h2{margin:3px 0 4px;font-size:24px;color:#172033}.p2-students-header p{margin:0;color:#6b778c;font-size:13px}
+.p2-students-header>button{border:0;background:#f1f4f8;color:#5a677a;border-radius:12px;width:38px;height:38px;font-size:23px;cursor:pointer}
+.p2-students-body{min-height:0;flex:1;display:grid;grid-template-columns:300px minmax(0,1fr)}
+.p2-students-list-pane{min-height:0;padding:18px 14px 14px;border-right:1px solid #e8edf4;background:#f8fafc;display:flex;flex-direction:column;gap:14px}
+.p2-student-create>label{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#778398;margin:0 4px 7px}.p2-student-create>div{display:flex;gap:7px}
+.p2-student-create input{min-width:0;flex:1;border:1px solid #d7dee9;border-radius:11px;padding:10px 11px;font:inherit;background:#fff;outline:none}.p2-student-create input:focus{border-color:#7d8fa8;box-shadow:0 0 0 3px rgba(100,116,139,.1)}
+.p2-student-create button{width:42px;border:0;border-radius:11px;background:#263447;color:#fff;font-size:20px;cursor:pointer}
+.p2-students-list{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:7px}.p2-student-list-item{width:100%;border:1px solid transparent;background:transparent;border-radius:14px;padding:10px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;color:#273348}.p2-student-list-item:hover{background:#fff;border-color:#e0e6ef}.p2-student-list-item.is-active{background:#fff;border-color:#cfd8e5;box-shadow:0 4px 15px rgba(15,23,42,.05)}
+.p2-student-list-item>span:last-child{min-width:0;display:grid;gap:2px}.p2-student-list-item strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}.p2-student-list-item small{color:#7a8799;font-size:11px}
+.p2-student-avatar{width:36px;height:36px;flex:0 0 auto;border-radius:12px;background:#e7edf5;color:#334155;display:grid;place-items:center;font-weight:800}.p2-student-avatar.is-large{width:50px;height:50px;border-radius:16px;font-size:18px}
+.p2-students-empty{padding:18px 10px;text-align:center;color:#7d8899;display:grid;gap:5px;font-size:12px}.p2-students-empty strong{color:#536174;font-size:13px}
+.p2-student-db-id{margin-top:auto;padding:10px;border-top:1px solid #e5eaf1;display:grid;gap:4px}.p2-student-db-id span{font-size:10px;color:#8a95a6}.p2-student-db-id code{font-size:10px;color:#66758a;word-break:break-all}
+.p2-student-detail-pane{min-width:0;overflow:auto;padding:22px 24px 28px;background:#fff}.p2-student-detail-empty{height:100%;min-height:320px;display:grid;place-items:center;align-content:center;text-align:center;color:#8490a1}.p2-student-detail-empty>span{font-size:38px}.p2-student-detail-empty h3{margin:8px 0 3px;color:#445165}.p2-student-detail-empty p{margin:0;max-width:380px;font-size:13px}
+.p2-student-card-head{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid #edf0f5}.p2-student-card-head>div:nth-child(2){min-width:0;flex:1}.p2-student-card-head h3{font-size:21px;margin:2px 0;color:#1f2937}.p2-student-card-head p{margin:0;color:#8792a3;font-size:11px}.p2-student-danger{border:1px solid #edd4d6;background:#fff;color:#9b4c54;border-radius:10px;padding:8px 10px;cursor:pointer;font-size:11px}
+.p2-student-edit-card{margin-top:16px;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(240px,1.6fr) auto;gap:10px;align-items:end;padding:14px;border:1px solid #e6ebf2;border-radius:16px;background:#fbfcfe}.p2-student-edit-card label,.p2-student-assign-row label{display:grid;gap:6px;color:#6b778c;font-size:11px;font-weight:700}.p2-student-edit-card input,.p2-student-edit-card textarea,.p2-student-assign-row select{border:1px solid #d8e0eb;border-radius:10px;padding:9px 10px;background:#fff;font:inherit;color:#263447;outline:none}.p2-student-edit-card textarea{resize:vertical;min-height:38px;max-height:90px}.p2-student-edit-card button{height:38px}
+.p2-student-current-session,.p2-student-history{margin-top:18px;border:1px solid #e3e9f1;border-radius:17px;padding:16px}.p2-student-current-session.is-linked{border-color:#ccd9e8;background:#fbfdff}.p2-student-section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.p2-student-section-heading h3{margin:3px 0 0;color:#243044;font-size:16px}.p2-student-link-warning{margin-top:10px;padding:9px 11px;border-radius:10px;background:#fff8e8;border:1px solid #f2deb0;color:#80652d;font-size:11px}
+.p2-student-assign-row{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:10px;align-items:end;margin-top:13px}.p2-student-assign-row button{height:39px}.p2-student-current-help{margin:10px 0 0;color:#7f8a9a;font-size:11px;line-height:1.45}
+.p2-student-history-list{margin-top:12px;display:grid;gap:9px}.p2-student-history-item{border:1px solid #e7ebf1;border-radius:13px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}.p2-student-history-item.is-current{border-color:#cbd8e8;background:#fbfdff}.p2-student-history-title{display:flex;align-items:center;gap:8px}.p2-student-history-title strong{color:#29364a;font-size:13px}.p2-student-history-title span{font-size:9px;text-transform:uppercase;letter-spacing:.06em;background:#e8f1fc;color:#496983;border-radius:999px;padding:3px 6px}.p2-student-history-main p{margin:4px 0 7px;color:#8a95a4;font-size:10px}.p2-student-history-main code{font-size:10px}.p2-student-history-progress{display:flex;align-items:center;gap:9px;color:#657286;font-size:10px}.p2-student-history-progress i{display:block;width:120px;height:5px;border-radius:99px;background:#e8edf3;overflow:hidden}.p2-student-history-progress b{display:block;height:100%;background:#71859e;border-radius:inherit}.p2-student-history-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;max-width:290px}.p2-student-history-actions button{border:1px solid #d9e1eb;background:#fff;border-radius:9px;padding:7px 9px;color:#526176;font-size:10px;cursor:pointer}.p2-student-history-actions button:hover{background:#f5f8fb}.p2-student-history-actions button.is-muted{color:#8b6570;border-color:#eadde0}.p2-student-history-empty{padding:18px;text-align:center;color:#8a95a4;font-size:12px}
+@media(max-width:850px){.p2-students-modal{padding:10px}.p2-students-panel{width:100%;height:96vh;border-radius:18px}.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{border-right:0;border-bottom:1px solid #e8edf4;max-height:250px}.p2-student-detail-pane{padding:16px}.p2-student-edit-card{grid-template-columns:1fr}.p2-student-assign-row{grid-template-columns:1fr}.p2-student-history-item{grid-template-columns:1fr}.p2-student-history-actions{justify-content:flex-start;max-width:none}}
+
+
+/* P2-SPLIT-P2.5-P2 — grįžimas iš istorinės pamokos tame pačiame skirtuke */
+.p2-history-return-button{white-space:nowrap}
+.p2-history-return-button>span:first-child{font-size:15px;line-height:1}
+@media(max-width:1100px){.p2-history-return-button>span:last-child{display:none}}
+
+
+/* P2-SPLIT-P2.5-P2 — mokinio istorijos navigacija nebeardo pagrindinio topbar */
+body.p2-shell.p2-student-history-nav-active .app{
+  grid-template-rows:var(--p2-topbar-height) 38px minmax(0,1fr);
+}
+.p2-history-return-bar{
+  min-width:0;
+  height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:4px 14px;
+  border-bottom:1px solid #e3e8f0;
+  background:#f8fafc;
+  color:#536174;
+  z-index:19;
+}
+.p2-history-return-context{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+}
+.p2-history-return-context>span{color:#63758c;font-size:13px;line-height:1}
+.p2-history-return-context strong{color:#46566b;font-size:11px}
+.p2-history-return-context code{
+  max-width:110px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  padding:3px 6px;
+  border-radius:7px;
+  background:#edf2f7;
+  color:#52647b;
+  font-size:10px;
+}
+.p2-history-return-button{
+  flex:0 0 auto;
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:0 10px;
+  border:1px solid #d7dfe9;
+  border-radius:9px;
+  background:#fff;
+  color:#40526a;
+  font:inherit;
+  font-size:11px;
+  font-weight:750;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.p2-history-return-button:hover{background:#f3f6fa}
+.p2-history-return-button>span:first-child{font-size:14px;line-height:1}
+@media(max-width:700px){
+  .p2-history-return-bar{padding-inline:8px}
+  .p2-history-return-context strong{display:none}
+  .p2-history-return-button>span:last-child{display:none}
+  .p2-history-return-button{width:30px;padding:0;justify-content:center}
+}
+
+/* P2-SPLIT-P2.5-P2 — keli mokiniai vienoje pamokoje, kiekvienas savo Room */
+.p2-lesson-student-tabs[hidden]{display:none!important}
+body.p2-shell.p2-lesson-student-tabs-active .app{
+  grid-template-rows:var(--p2-topbar-height) 42px minmax(0,1fr);
+}
+body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
+  grid-template-rows:var(--p2-topbar-height) 42px 38px minmax(0,1fr);
+}
+.p2-lesson-student-tabs{
+  min-width:0;height:42px;display:flex;align-items:center;gap:10px;padding:5px 14px;
+  border-bottom:1px solid #e3e8f0;background:#f8fafc;z-index:20;overflow:hidden;
+}
+.p2-lesson-tabs-label{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#7b8799;white-space:nowrap}
+.p2-lesson-tabs-scroll{min-width:0;display:flex;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.p2-lesson-tabs-scroll::-webkit-scrollbar{display:none}
+.p2-lesson-student-tab{flex:0 0 auto;height:31px;border:1px solid #dce3ed;background:#fff;color:#536176;border-radius:10px;padding:3px 10px 3px 5px;display:flex;align-items:center;gap:7px;font:inherit;font-size:11px;font-weight:750;cursor:pointer;white-space:nowrap}
+.p2-lesson-student-tab:hover{background:#f2f6fb;border-color:#cfd9e7}
+.p2-lesson-student-tab.is-active{background:#eef3ff;border-color:#c6d2f0;color:#3954a2;box-shadow:0 1px 3px rgba(35,55,105,.08)}
+.p2-lesson-tab-avatar{width:23px;height:23px;border-radius:7px;background:#e7edf6;color:#506078;display:grid;place-items:center;font-size:10px;font-weight:850}
+.p2-lesson-student-tab.is-active .p2-lesson-tab-avatar{background:#dce6ff;color:#36529f}
+.p2-student-class-info{margin-top:11px;padding:10px 12px;border:1px solid #dce5f0;background:#f7faff;border-radius:11px;color:#5f6e82;font-size:11px;line-height:1.5}
+.p2-student-class-info strong{color:#34445a}.p2-student-class-info code{font-size:10px;color:#5b6d83}
+.p2-student-current-actions{margin-top:12px;display:flex;justify-content:flex-end}
+@media(max-width:760px){
+  .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
+}
+
+/* P2-SPLIT-P2.5-P4-P1.2 · savaitinis pamokų tvarkaraštis */
+body[data-online-role="student"] #scheduleButton { display:none !important; }
+.p2-schedule-modal[hidden] { display:none !important; }
+.p2-schedule-modal { position:fixed; inset:0; z-index:2150; display:grid; place-items:center; padding:18px; }
+.p2-schedule-backdrop { position:absolute; inset:0; background:rgba(24,32,52,.48); backdrop-filter:blur(3px); }
+.p2-schedule-panel { position:relative; width:min(1580px, calc(100vw - 36px)); height:min(900px, calc(100vh - 36px)); display:grid; grid-template-rows:auto minmax(0,1fr); overflow:hidden; background:#f7f9fc; border:1px solid #dfe5ef; border-radius:24px; box-shadow:0 30px 90px rgba(22,31,52,.22); }
+.p2-schedule-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:20px 22px 18px; background:#fff; border-bottom:1px solid #e5e9f1; }
+.p2-schedule-header h2 { margin:4px 0 4px; font-size:25px; letter-spacing:-.025em; }
+.p2-schedule-header p { max-width:840px; margin:0; color:#727d90; font-size:12px; line-height:1.55; }
+.p2-schedule-header > button { width:38px; height:38px; flex:0 0 auto; border:1px solid #dfe5ef; border-radius:12px; background:#fff; color:#687488; font-size:24px; line-height:1; cursor:pointer; }
+.p2-schedule-header > button:hover { background:#f4f6fa; color:#2f3b52; }
+.p2-schedule-body { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 340px; }
+.p2-schedule-week-pane { min-width:0; min-height:0; overflow:auto; padding:18px; }
+.p2-schedule-week-toolbar { position:sticky; top:-18px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:-18px -18px 16px; padding:14px 18px; background:rgba(247,249,252,.96); border-bottom:1px solid #e6eaf1; backdrop-filter:blur(8px); }
+.p2-schedule-week-toolbar > div { display:grid; gap:2px; }
+.p2-schedule-week-toolbar strong { font-size:15px; }
+.p2-schedule-week-grid { display:grid; grid-template-columns:repeat(7,minmax(185px,1fr)); gap:10px; min-width:1360px; align-items:start; }
+.p2-schedule-day { min-height:360px; overflow:hidden; background:#fff; border:1px solid #e2e7ef; border-radius:16px; box-shadow:0 6px 18px rgba(41,53,78,.035); }
+.p2-schedule-day.is-today { border-color:#b9c7fa; box-shadow:0 7px 22px rgba(70,94,190,.08); }
+.p2-schedule-day.is-selected { border-color:#748bea; box-shadow:0 0 0 2px rgba(82,105,210,.10),0 8px 24px rgba(70,94,190,.09); }
+.p2-schedule-day > header[data-schedule-select-day] { cursor:pointer; }
+.p2-schedule-day.is-selected > header { background:#eef2ff; }
+.p2-schedule-card.has-conflict { border-color:#e7b66f; background:#fffaf1; }
+.p2-schedule-conflict { color:#a86a16 !important; font-weight:800; }
+.p2-schedule-day > header { min-height:58px; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:3px 8px; padding:10px 12px; background:#fafbfe; border-bottom:1px solid #ebeff5; }
+.p2-schedule-day.is-today > header { background:#f4f6ff; }
+.p2-schedule-day > header > span { width:28px; height:28px; display:grid; place-items:center; grid-row:1 / span 2; border-radius:9px; background:#eef2f8; color:#61708a; font-size:11px; font-weight:900; }
+.p2-schedule-day.is-today > header > span { background:#dfe6ff; color:#4561c5; }
+.p2-schedule-day > header strong { min-width:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.p2-schedule-day > header b { justify-self:start; color:#536bd0; font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+.p2-schedule-day-list { display:grid; align-content:start; gap:8px; padding:9px; }
+.p2-schedule-day-empty { display:grid; place-items:center; min-height:90px; padding:14px; color:#a0a8b6; font-size:11px; text-align:center; }
+.p2-schedule-card { display:grid; gap:8px; padding:10px; border:1px solid #e4e8f0; border-radius:13px; background:#fff; transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.p2-schedule-card:hover { border-color:#cad3e5; box-shadow:0 7px 18px rgba(37,52,81,.07); }
+.p2-schedule-card.is-editing { border-color:#8598e7; box-shadow:0 0 0 2px rgba(83,107,208,.1); }
+.p2-schedule-card.is-started { border-color:#b9dfcc; background:#fbfefc; }
+.p2-schedule-card-time { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.p2-schedule-card-time strong { color:#25314a; font-size:17px; letter-spacing:-.02em; }
+.p2-schedule-card-time span { color:#8b95a6; font-size:9px; font-weight:700; }
+.p2-schedule-card-copy { display:grid; gap:6px; min-width:0; }
+.p2-schedule-card-copy h4 { margin:0; color:#2e3850; font-size:11px; line-height:1.35; }
+.p2-schedule-card-copy p { margin:0; color:#778295; font-size:9px; line-height:1.35; }
+.p2-schedule-card-copy small { color:#36835f; font-size:9px; font-weight:800; }
+.p2-schedule-card-students { display:flex; flex-wrap:wrap; gap:4px; }
+.p2-schedule-card-students span { max-width:100%; padding:4px 7px; overflow:hidden; border-radius:999px; background:#eef2ff; color:#4f63bd; font-size:9px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.p2-schedule-card-students em { color:#a0a8b6; font-size:9px; font-style:normal; }
+.p2-schedule-card-actions { display:flex; gap:5px; }
+.p2-schedule-card-actions button { min-width:0; flex:1 1 0; padding:7px 8px; border:1px solid #dce2eb; border-radius:9px; background:#fff; color:#5c687d; font:inherit; font-size:9px; font-weight:800; cursor:pointer; }
+.p2-schedule-card-actions button:hover:not(:disabled) { background:#f5f7fb; }
+.p2-schedule-card-actions button.is-primary { border-color:#667cd7; background:#667cd7; color:#fff; }
+.p2-schedule-card-actions button.is-primary:hover:not(:disabled) { background:#536bd0; }
+.p2-schedule-card-actions button:disabled { opacity:.45; cursor:not-allowed; }
+.p2-schedule-editor-pane { min-width:0; min-height:0; overflow:auto; padding:20px; background:#fff; border-left:1px solid #e1e6ee; }
+.p2-schedule-editor-head { margin-bottom:16px; }
+.p2-schedule-editor-head h3 { margin:4px 0 0; font-size:18px; letter-spacing:-.02em; }
+.p2-schedule-form { display:grid; gap:13px; }
+.p2-schedule-form label { display:grid; gap:6px; min-width:0; }
+.p2-schedule-form label > span, .p2-schedule-students-field legend { color:#647086; font-size:10px; font-weight:800; }
+.p2-schedule-form label small { color:#a0a8b5; font-size:9px; font-weight:600; }
+.p2-schedule-form input, .p2-schedule-form select { width:100%; min-width:0; height:39px; box-sizing:border-box; padding:0 11px; border:1px solid #dce2eb; border-radius:10px; background:#fff; color:#25314a; font:inherit; font-size:12px; outline:none; }
+.p2-schedule-form input:focus, .p2-schedule-form select:focus { border-color:#8ea0e9; box-shadow:0 0 0 3px rgba(83,107,208,.09); }
+.p2-schedule-form-row.two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.p2-schedule-students-field { min-width:0; margin:2px 0 0; padding:0; border:0; }
+.p2-schedule-students-field > div { display:grid; gap:6px; max-height:240px; margin-top:7px; overflow:auto; }
+.p2-schedule-student-check { grid-template-columns:auto auto minmax(0,1fr) !important; align-items:center; gap:8px !important; padding:8px 9px; border:1px solid #e2e7ef; border-radius:11px; cursor:pointer; }
+.p2-schedule-student-check:hover { background:#f8f9fc; }
+.p2-schedule-student-check input { width:16px; height:16px; margin:0; accent-color:#5b72d2; }
+.p2-schedule-student-check .p2-student-avatar { width:26px; height:26px; font-size:10px; }
+.p2-schedule-student-check strong { min-width:0; overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.p2-schedule-no-students { padding:12px; border:1px dashed #d8dee9; border-radius:11px; color:#8b95a5; font-size:10px; line-height:1.5; }
+.p2-schedule-form-actions { display:flex; align-items:center; justify-content:space-between; gap:9px; padding-top:4px; }
+.p2-schedule-form-actions button { min-height:38px; }
+
+@media (max-width: 1050px) {
+  .p2-schedule-panel { width:calc(100vw - 20px); height:calc(100vh - 20px); border-radius:18px; }
+  .p2-schedule-body { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; }
+  .p2-schedule-editor-pane { max-height:46vh; border-left:0; border-top:1px solid #e1e6ee; }
+}
+
+
+/* P2-SPLIT-P2.5-P4-P1.2 · pamoka kaip atskiras tvarkaraščio objektas */
+.p2-schedule-editor-note { margin:7px 0 0; color:#7b8799; font-size:10px; line-height:1.5; }
+.p2-schedule-form-actions-single { justify-content:flex-end; }
+.p2-schedule-open-box { display:grid; gap:11px; padding:13px; border:1px solid #dce3ef; border-radius:13px; background:#f8faff; }
+.p2-schedule-open-box.is-running { border-color:#bee1cf; background:#f7fcf9; }
+.p2-schedule-open-box > div { display:grid; gap:4px; }
+.p2-schedule-open-box strong { color:#344158; font-size:12px; }
+.p2-schedule-open-box span { color:#788498; font-size:10px; line-height:1.45; }
+.p2-schedule-open-box button { width:100%; min-height:40px; }
+.p2-schedule-run-note { margin:-4px 0 0; padding:9px 10px; border-radius:10px; background:#fff8e8; color:#8a6b2d; font-size:9px; line-height:1.5; }
+.p2-schedule-card[data-schedule-card] { cursor:pointer; }
+.p2-schedule-card[data-schedule-card]:active { transform:translateY(1px); }
+
+
+/* P2-SPLIT-P2.5-P4-P1.5 · tvarkaraščio redaktorius atveriamas tik pagal poreikį */
+.p2-schedule-body.is-editor-closed { grid-template-columns:minmax(0,1fr); }
+.p2-schedule-editor-pane[hidden] { display:none !important; }
+.p2-schedule-editor-head { position:relative; padding-right:34px; }
+.p2-schedule-editor-close { position:absolute; top:-5px; right:-4px; width:30px; height:30px; display:grid; place-items:center; padding:0; border:1px solid #dfe5ef; border-radius:9px; background:#fff; color:#687488; font:inherit; font-size:18px; line-height:1; cursor:pointer; }
+.p2-schedule-editor-close:hover { background:#f4f6fa; color:#2f3b52; }
+@media (max-width:1050px) { .p2-schedule-body.is-editor-closed { grid-template-rows:minmax(0,1fr); } }
+
+/* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
