@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.3';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -632,6 +632,7 @@
   let studentSearchQuery = '';
   let studentGradeFilter = 'all';
   let studentCreateOpen = false;
+  let studentEditOpen = false;
   let expandedStudentHistoryRoomId = '';
   const studentRoomHistoryCache = new Map();
   const studentRoomHistoryRequestTimers = new Map();
@@ -2824,7 +2825,7 @@
     const visibleStudents = filteredStudentList(students);
     const roomId = currentRoomId();
     const linkedStudentId = linkedStudentIdForRoom(roomId);
-    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
+    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) { selectedStudentId = null; studentEditOpen = false; }
     const selected = selectedStudentId ? teacherStudentDb.students[selectedStudentId] : null;
     const history = selected ? lessonHistoryForStudent(selected) : [];
     const currentLesson = selected?.lessons?.[roomId] || null;
@@ -2931,6 +2932,11 @@
       const guardianLabel = studentGuardianLabel(selected);
       const cardMeta = [selectedGrade ? `${selectedGrade} klasė` : 'Klasė nenurodyta', guardianLabel ? `${guardianLabel} · tik mokytojui` : '', `Sukurta ${formatStudentDate(selected.createdAt, true)}`].filter(Boolean).join(' · ');
       const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === defaultLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
+      const relationDisplay = selectedRelation === 'mama' ? 'Mama' : selectedRelation === 'tėtis' ? 'Tėtis' : selectedRelation === 'kita' ? (String(selected.guardianCustomRelation || '').trim() || 'Kita') : 'Nenurodyta';
+      const guardianNameDisplay = String(selected.guardianName || '').trim() || 'Nenurodytas';
+      const currentLessonCatalogItem = currentLesson?.lessonId ? lessonForId(currentLesson.lessonId) : null;
+      const currentLessonTitle = currentLessonCatalogItem?.shortTitle || currentLesson?.title || (currentLesson?.lessonId ? currentLesson.lessonId : 'Tik lenta');
+      const currentLessonTaskCount = Math.max(0, Number(currentLessonCatalogItem?.taskCount || currentLesson?.taskCount || 0));
       const historyMarkup = history.length ? history.map(item => {
         const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
         const summary = item.summary && typeof item.summary === 'object' ? item.summary : {};
@@ -2967,9 +2973,9 @@
         <div class="p2-student-card-head">
           <div class="p2-student-avatar is-large" aria-hidden="true">${escapeHtml(String(selected.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</div>
           <div><span class="p2-label">Mokinio kortelė</span><h3>${escapeHtml(selected.name || 'Mokinys')}</h3><p>${escapeHtml(cardMeta)}</p></div>
-          <button class="p2-student-danger" type="button" data-student-delete>Pašalinti mokinį</button>
+          ${studentEditOpen ? '' : '<button class="p2-secondary p2-student-edit-open" type="button" data-student-edit-open>Redaguoti informaciją</button>'}
         </div>
-        <section class="p2-student-edit-card">
+        ${studentEditOpen ? `<section class="p2-student-edit-card is-active">
           <div class="p2-student-edit-grid">
             <label class="p2-edit-student-name"><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
             <label class="p2-student-grade-field p2-edit-grade"><span>Klasė</span><select id="p2StudentGradeEdit">${gradeOptions(selectedGrade)}</select></label>
@@ -2980,8 +2986,17 @@
             </div>
             <label class="p2-student-notes-field"><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
           </div>
-          <div class="p2-student-edit-footer"><span>Tėčio / mamos / globėjo duomenys saugomi tik mokytojo mokinių bazėje ir į mokinio Room nekopijuojami.</span><button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button></div>
-        </section>
+          <div class="p2-student-edit-footer"><span>Tėčio / mamos / globėjo duomenys saugomi tik mokytojo mokinių bazėje ir į mokinio Room nekopijuojami.</span><div class="p2-student-edit-actions"><button type="button" class="p2-student-danger" data-student-delete>Pašalinti mokinį</button><button type="button" class="p2-secondary" data-student-edit-cancel>Atšaukti</button><button type="button" class="p2-primary" data-student-save>Įrašyti pakeitimus</button></div></div>
+        </section>` : `<section class="p2-student-info-card">
+          <div class="p2-student-info-grid">
+            <div class="p2-student-info-item"><span>Vardas</span><strong>${escapeHtml(selected.name || '—')}</strong></div>
+            <div class="p2-student-info-item"><span>Klasė</span><strong>${selectedGrade ? `${selectedGrade} klasė` : 'Nenurodyta'}</strong></div>
+            <div class="p2-student-info-item"><span>Ryšys</span><strong>${escapeHtml(relationDisplay)}</strong></div>
+            <div class="p2-student-info-item"><span>Tėčio / mamos / globėjo vardas</span><strong>${escapeHtml(guardianNameDisplay)}</strong></div>
+            <div class="p2-student-info-item is-notes"><span>Pastabos</span><strong>${escapeHtml(String(selected.notes || '').trim() || 'Pastabų nėra')}</strong></div>
+          </div>
+          <p class="p2-student-info-private">Tėčio / mamos / globėjo duomenys matomi tik mokytojui ir į mokinio Room nekopijuojami.</p>
+        </section>`}
         <section class="p2-student-current-session ${currentLesson || selectedClassParticipant ? 'is-linked' : ''}">
           <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(studentTeacherLabel(currentLinkedStudent, students))} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
           ${linkedToOther ? (selectedClassParticipant
@@ -2990,10 +3005,12 @@
             : ''}
           ${linkedToOther && selectedClassParticipant
             ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(studentTeacherLabel(selected, students))}</button></div>`
-            : `<div class="p2-student-assign-row">
-                <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
-                <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką')}</button>
-              </div>`}
+            : currentLesson?.lessonId && !linkedToOther
+              ? `<div class="p2-student-current-assignment"><span>Priskirtos pratybos</span><strong>${escapeHtml(currentLessonTitle)}${currentLessonTaskCount ? ` · ${currentLessonTaskCount} užd.` : ''}</strong></div>`
+              : `<div class="p2-student-assign-row">
+                  <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
+                  <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Priskirti pratybas' : 'Priskirti šią pamoką')}</button>
+                </div>`}
           <p class="p2-student-current-help">Kiekvienas mokinys turi savo Room, lentą ir pratybų eigą. Tos pačios pamokos mokinius mokytojas perjungia viršuje esančiais vardiniais skirtukais.</p>
         </section>
         <section class="p2-student-history">
@@ -3014,6 +3031,7 @@
       selectedStudentId = null;
       expandedStudentHistoryRoomId = '';
       studentCreateOpen = true;
+      studentEditOpen = false;
       renderStudentsModal();
       studentsModal?.querySelector('#p2NewStudentName')?.focus();
     }));
@@ -3021,6 +3039,7 @@
       selectedStudentId = null;
       expandedStudentHistoryRoomId = '';
       studentCreateOpen = false;
+      studentEditOpen = false;
       renderStudentsModal();
     }));
 
@@ -3030,6 +3049,7 @@
       studentSearchQuery = value;
       selectedStudentId = null;
       studentCreateOpen = false;
+      studentEditOpen = false;
       renderStudentsModal();
       const next = studentsModal?.querySelector('#p2StudentSearch');
       if (next) {
@@ -3041,6 +3061,7 @@
       studentGradeFilter = String(event.currentTarget?.value || 'all');
       selectedStudentId = null;
       studentCreateOpen = false;
+      studentEditOpen = false;
       renderStudentsModal();
     });
 
@@ -3048,6 +3069,7 @@
       selectedStudentId = button.dataset.studentSelect;
       expandedStudentHistoryRoomId = '';
       studentCreateOpen = false;
+      studentEditOpen = false;
       const selectedStudent = teacherStudentDb.students?.[selectedStudentId];
       if (selectedStudent) prefetchStudentRoomHistories(selectedStudent, 1);
       renderStudentsModal();
@@ -3097,6 +3119,17 @@
     host.querySelector('[data-student-add]')?.addEventListener('click', addStudent);
     host.querySelector('#p2NewStudentName')?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addStudent(); } });
 
+    host.querySelector('[data-student-edit-open]')?.addEventListener('click', () => {
+      if (!selectedStudentId || !selected) return;
+      studentEditOpen = true;
+      renderStudentsModal();
+      studentsModal?.querySelector('#p2StudentNameEdit')?.focus();
+    });
+    host.querySelector('[data-student-edit-cancel]')?.addEventListener('click', () => {
+      studentEditOpen = false;
+      renderStudentsModal();
+    });
+
     const editRelation = host.querySelector('#p2StudentGuardianRelationEdit');
     const syncEditGuardianCustom = () => {
       const field = host.querySelector('[data-guardian-custom-field]');
@@ -3121,11 +3154,13 @@
         guardianName,
         notes: host.querySelector('#p2StudentNotesEdit')?.value || ''
       });
+      studentEditOpen = false;
     });
     host.querySelector('[data-student-delete]')?.addEventListener('click', () => {
       if (!selectedStudentId || !selected) return;
       if (!window.confirm(`Pašalinti mokinį „${selected.name || 'Mokinys'}“ iš mokinių bazės? Senos Room lentos nebus ištrintos.`)) return;
       requestStudentDb({ action: 'delete', studentId: selectedStudentId });
+      studentEditOpen = false;
       selectedStudentId = null;
     });
     host.querySelector('[data-student-link-current]')?.addEventListener('click', () => {
@@ -3676,7 +3711,7 @@
   window.addEventListener('p2:students-state', event => {
     teacherStudentDb = normalizeTeacherStudentDb(event.detail);
     queueLegacyAssignmentBackfills();
-    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
+    if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) { selectedStudentId = null; studentEditOpen = false; }
     updateStudentIdentityLabels();
     renderLessonStudentTabs();
 
