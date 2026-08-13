@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.5';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5.6';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -919,6 +919,109 @@ function emitTeacherProfile() {
     }
   }));
 }
+
+// P1.7.5.6 vienkartinis vartotojo paprašytas duomenų pataisymas.
+// Svarbu: būsimos pamokos saugomos TIK scheduleEntries. Mokinio kortelė jų
+// nekopijuoja į atskirą struktūrą, todėl šis įrašas iš karto matysis ir
+// Tvarkaraštyje, ir Adomo kortelėje. Kitame patvirtintame build'e šį
+// vienkartinį migracijos bloką galima pašalinti; profilyje lieka markeris.
+const P1756_TARGET_PROFILE_ID = 'T-VDU4BBHJAWNDRHAPPH';
+const P1756_TARGET_STUDENT_ID = 's_msrqctow_eb68cwy';
+const P1756_SCHEDULE_MIGRATION_KEY = 'p1756_adomas_thursday_1930_80';
+let p1756ScheduleMigrationRunning = false;
+let p1756ScheduleConflictShown = false;
+
+async function applyP1756RequestedScheduleOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== P1756_TARGET_PROFILE_ID) return;
+  if (p1756ScheduleMigrationRunning) return;
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[P1756_SCHEDULE_MIGRATION_KEY]?.status === 'done') return;
+
+  let studentId = teacherProfileCache.students?.[P1756_TARGET_STUDENT_ID] ? P1756_TARGET_STUDENT_ID : '';
+  if (!studentId) {
+    const candidates = Object.entries(teacherProfileCache.students || {}).filter(([, student]) => {
+      const name = cleanStudentName(student?.name).toLocaleLowerCase('lt-LT');
+      return name === 'adomas' && safeStudentGrade(student?.grade) === 8;
+    });
+    if (candidates.length === 1) studentId = candidates[0][0];
+  }
+  if (!studentId) return;
+
+  const targetDay = 4;
+  const targetStart = '19:30';
+  const targetDuration = 80;
+  const entries = Object.entries(teacherProfileCache.scheduleEntries || {});
+  const sameStart = entries.find(([, entry]) => safeScheduleDay(entry?.day) === targetDay && safeScheduleTime(entry?.start) === targetStart) || null;
+  const sameStartId = sameStart?.[0] || '';
+  const sameStartEntry = sameStart?.[1] || null;
+  const sameStartStudents = sameStartEntry?.studentIds && typeof sameStartEntry.studentIds === 'object'
+    ? Object.keys(sameStartEntry.studentIds).filter(id => sameStartEntry.studentIds[id]) : [];
+
+  // Jei 19:30 kortelė jau priklauso kitam mokiniui, automatiškai jos
+  // nesujungiame į grupinę pamoką. Paliekame duomenis nepaliestus ir aiškiai
+  // pranešame apie konfliktą.
+  if (sameStartEntry && sameStartStudents.some(id => id !== studentId)) {
+    if (!p1756ScheduleConflictShown) {
+      p1756ScheduleConflictShown = true;
+      bridge.showToast?.('Ketvirtadienio 19:30 laikas jau priskirtas kitam mokiniui. Adomo laikas automatiškai nekeistas.');
+    }
+    return;
+  }
+
+  const conflict = findScheduleConflict(targetDay, targetStart, targetDuration, sameStartId);
+  if (conflict) {
+    if (!p1756ScheduleConflictShown) {
+      p1756ScheduleConflictShown = true;
+      bridge.showToast?.(`Adomo 19:30–20:50 laikas kertasi su kita pamoka (${safeScheduleTime(conflict.start)}).`);
+    }
+    return;
+  }
+
+  p1756ScheduleMigrationRunning = true;
+  try {
+    const now = Date.now();
+    const scheduleId = sameStartId || newScheduleId();
+    const updates = {};
+    if (sameStartEntry) {
+      updates[`scheduleEntries/${scheduleId}/schemaVersion`] = P2_DATA_SCHEMA_VERSION;
+      updates[`scheduleEntries/${scheduleId}/day`] = targetDay;
+      updates[`scheduleEntries/${scheduleId}/start`] = targetStart;
+      updates[`scheduleEntries/${scheduleId}/durationMinutes`] = targetDuration;
+      updates[`scheduleEntries/${scheduleId}/studentIds/${studentId}`] = true;
+      updates[`scheduleEntries/${scheduleId}/updatedAt`] = now;
+    } else {
+      updates[`scheduleEntries/${scheduleId}`] = {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        day: targetDay,
+        start: targetStart,
+        durationMinutes: targetDuration,
+        label: '',
+        studentIds: { [studentId]: true },
+        lessonId: '',
+        practiceTitle: '',
+        taskCount: 0,
+        contentVersion: null,
+        contentHash: '',
+        taskIds: [],
+        contentSnapshot: null,
+        attemptPolicy: null,
+        createdAt: now,
+        updatedAt: now
+      };
+    }
+    updates[`meta/migrations/${P1756_SCHEDULE_MIGRATION_KEY}`] = {
+      status: 'done', scheduleId, studentId, day: targetDay, start: targetStart, durationMinutes: targetDuration, appliedAt: now
+    };
+    await update(teacherProfileRef, updates);
+    bridge.showToast?.('Adomui priskirta: ketvirtadienis 19:30–20:50.');
+  } catch (error) {
+    console.error('P1.7.5.6 Adomo tvarkaraščio migracijos klaida', error);
+    bridge.showToast?.('Nepavyko automatiškai priskirti Adomo pamokos laiko.');
+  } finally {
+    p1756ScheduleMigrationRunning = false;
+  }
+}
 if (teacherProfileRef) {
   onValue(teacherProfileRef, snapshot => {
     const value = snapshot.val() || {};
@@ -942,6 +1045,7 @@ if (teacherProfileRef) {
       update(teacherProfileRef, metaUpdates).catch(error => console.warn('Nepavyko papildyti duomenų schemos metaduomenų', error));
     }
     emitTeacherProfile();
+    applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
@@ -1399,7 +1503,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.5.5 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.5.6 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
