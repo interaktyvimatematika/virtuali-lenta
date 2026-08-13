@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -678,6 +678,54 @@
       taskIds: snapshot.taskIds,
       contentSnapshot: snapshot
     } : { schemaVersion: P2_DATA_SCHEMA_VERSION };
+  }
+
+  // P1.7.3.1: senų, dar iki turinio versijavimo pradėtų priskyrimų backfill.
+  // Čia tik paruošiame katalogo metaduomenis; realų Firebase įrašymą ir
+  // saugumo patikras atlieka online-sync.js. Vieną Room per puslapio sesiją
+  // siunčiame daugiausia vieną kartą, kad profile onValue nesukeltų ciklo.
+  const legacyAssignmentBackfillQueuedRooms = new Set();
+
+  function queueLegacyAssignmentBackfills() {
+    if (role() !== 'teacher') return;
+    for (const [studentId, student] of Object.entries(teacherStudentDb.students || {})) {
+      const lessons = student?.lessons && typeof student.lessons === 'object' ? student.lessons : {};
+      for (const [roomId, recordRaw] of Object.entries(lessons)) {
+        const record = recordRaw && typeof recordRaw === 'object' ? recordRaw : {};
+        const lesson = lessonForId(record.lessonId);
+        if (!lesson) continue;
+        const linkedStudentId = String(teacherStudentDb.roomLinks?.[roomId]?.studentId || '').trim();
+        if (linkedStudentId && linkedStudentId !== studentId) continue;
+        const currentKey = String(record.currentAssignmentKey || record.assignmentKey || '').trim();
+        const archived = currentKey && record.assignments && typeof record.assignments === 'object'
+          ? record.assignments[currentKey]
+          : null;
+        const missingMetadata = !record.schemaVersion
+          || !currentKey
+          || !record.contentVersion
+          || !record.contentHash
+          || !Array.isArray(record.taskIds)
+          || !record.taskIds.length
+          || !archived
+          || typeof archived !== 'object'
+          || !archived.contentSnapshot;
+        if (!missingMetadata || legacyAssignmentBackfillQueuedRooms.has(roomId)) continue;
+        legacyAssignmentBackfillQueuedRooms.add(roomId);
+        window.dispatchEvent(new CustomEvent('p2:students-request', {
+          detail: {
+            action: 'backfill-legacy-assignment',
+            studentId,
+            roomId,
+            lessonId: lesson.id,
+            title: record.title || lesson.shortTitle || lesson.title,
+            taskCount: Number(record.taskCount || lesson.taskCount) || lesson.taskCount,
+            assignedAt: Number(record.createdAt || 0) || null,
+            summary: record.summary && typeof record.summary === 'object' ? record.summary : null,
+            ...assignmentContentDetail(lesson)
+          }
+        }));
+      }
+    }
   }
 
   function activeLesson() {
@@ -3012,6 +3060,7 @@
 
   window.addEventListener('p2:students-state', event => {
     teacherStudentDb = normalizeTeacherStudentDb(event.detail);
+    queueLegacyAssignmentBackfills();
     if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) selectedStudentId = null;
     updateStudentIdentityLabels();
     renderLessonStudentTabs();

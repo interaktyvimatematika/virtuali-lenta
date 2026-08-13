@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3.1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -1348,7 +1348,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.3 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.3.1 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1409,6 +1409,115 @@ window.addEventListener('p2:students-request', async event => {
     }
     const targetRoom = safeRoom(detail.roomId);
     if (!targetRoom) return;
+    if (detail.action === 'backfill-legacy-assignment') {
+      const existingLessonRecord = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom];
+      const linkedStudentId = safeStudentId(teacherProfileCache.roomLinks?.[targetRoom]?.studentId);
+      const recordBelongsToStudent = existingLessonRecord && typeof existingLessonRecord === 'object'
+        && safeRoom(existingLessonRecord.roomId || targetRoom) === targetRoom;
+      if (linkedStudentId && linkedStudentId !== studentId) return;
+      if (!linkedStudentId && !recordBelongsToStudent) return;
+
+      const lessonId = String(detail.lessonId || existingLessonRecord?.lessonId || '').trim().slice(0, 80);
+      if (!lessonId) return;
+      const targetAssignmentRef = ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`);
+      const targetProgressRef = ref(db, `p772Rooms/${targetRoom}/p2/student/progress`);
+      const assignmentSnap = await get(targetAssignmentRef);
+      const current = assignmentSnap.val();
+      // Neatkuriame jau atšaukto priskyrimo ir niekada nekeičiame kito rinkinio.
+      if (!current || typeof current !== 'object' || String(current.lessonId || '') !== lessonId) return;
+
+      const metadata = assignmentContentMetadata(detail, current);
+      const assignmentKey = safeAssignmentKey(current.assignmentKey) || assignmentKeyFor(current, lessonId);
+      const snapshotTaskCount = Number(metadata.contentSnapshot?.taskCount || 0);
+      const currentTaskCount = Number(current.taskCount || detail.taskCount || 0);
+      const snapshotCompatible = !snapshotTaskCount || !currentTaskCount || snapshotTaskCount === currentTaskCount;
+      const assignmentUpdates = {};
+      if (!current.schemaVersion) assignmentUpdates.schemaVersion = P2_DATA_SCHEMA_VERSION;
+      if (!current.assignmentKey) assignmentUpdates.assignmentKey = assignmentKey;
+      if (snapshotCompatible) {
+        if (!current.contentVersion) assignmentUpdates.contentVersion = metadata.contentVersion;
+        if (!current.contentHash && metadata.contentHash) assignmentUpdates.contentHash = metadata.contentHash;
+        if ((!Array.isArray(current.taskIds) || !current.taskIds.length) && metadata.taskIds.length) assignmentUpdates.taskIds = metadata.taskIds;
+        if ((!current.contentSnapshot || typeof current.contentSnapshot !== 'object') && metadata.contentSnapshot) assignmentUpdates.contentSnapshot = metadata.contentSnapshot;
+      }
+      if (Object.keys(assignmentUpdates).length) {
+        assignmentUpdates.metadataBackfilledAt = Date.now();
+        assignmentUpdates.metadataBackfilledFromBuild = BUILD;
+        await update(targetAssignmentRef, assignmentUpdates);
+      }
+
+      const progressSnap = await get(targetProgressRef);
+      const currentProgress = progressSnap.val();
+      if (currentProgress && typeof currentProgress === 'object') {
+        const progressUpdates = {};
+        if (!currentProgress.schemaVersion) progressUpdates.schemaVersion = P2_DATA_SCHEMA_VERSION;
+        if (!currentProgress.assignmentKey) progressUpdates.assignmentKey = assignmentKey;
+        if (snapshotCompatible && !currentProgress.assignmentContentVersion) {
+          progressUpdates.assignmentContentVersion = assignmentUpdates.contentVersion || current.contentVersion || metadata.contentVersion;
+        }
+        if (Object.keys(progressUpdates).length) await update(targetProgressRef, progressUpdates);
+      }
+
+      // Papildome ir mokinio istorijos indeksą, tačiau neliečiame jo progreso datos
+      // ar rezultatų. Snapshot saugomas prie konkretaus assignmentKey, todėl
+      // ateities katalogo pakeitimai neperrašys šios istorinės versijos.
+      const record = existingLessonRecord && typeof existingLessonRecord === 'object' ? existingLessonRecord : {};
+      const profileUpdates = {};
+      const basePath = `students/${studentId}/lessons/${targetRoom}`;
+      if (!record.schemaVersion) profileUpdates[`${basePath}/schemaVersion`] = P2_DATA_SCHEMA_VERSION;
+      if (!record.assignmentKey) profileUpdates[`${basePath}/assignmentKey`] = assignmentKey;
+      if (!record.currentAssignmentKey) profileUpdates[`${basePath}/currentAssignmentKey`] = assignmentKey;
+      if (!record.lessonId) profileUpdates[`${basePath}/lessonId`] = lessonId;
+      if (!record.title) profileUpdates[`${basePath}/title`] = String(detail.title || current.title || 'Pamoka').slice(0, 140);
+      if (!record.taskCount) profileUpdates[`${basePath}/taskCount`] = Math.max(0, Math.min(500, currentTaskCount));
+      if (snapshotCompatible) {
+        if (!record.contentVersion) profileUpdates[`${basePath}/contentVersion`] = assignmentUpdates.contentVersion || current.contentVersion || metadata.contentVersion;
+        if (!record.contentHash && (assignmentUpdates.contentHash || current.contentHash || metadata.contentHash)) {
+          profileUpdates[`${basePath}/contentHash`] = assignmentUpdates.contentHash || current.contentHash || metadata.contentHash;
+        }
+        if ((!Array.isArray(record.taskIds) || !record.taskIds.length) && metadata.taskIds.length) {
+          profileUpdates[`${basePath}/taskIds`] = metadata.taskIds;
+        }
+      }
+      const archived = record.assignments?.[assignmentKey];
+      const archivePath = `${basePath}/assignments/${assignmentKey}`;
+      const summary = cleanLessonSummary(detail.summary || record.summary);
+      if (!archived || typeof archived !== 'object') {
+        profileUpdates[archivePath] = {
+          schemaVersion: P2_DATA_SCHEMA_VERSION,
+          assignmentKey,
+          lessonId,
+          title: String(detail.title || record.title || current.title || 'Pamoka').slice(0, 140),
+          taskCount: Math.max(0, Math.min(500, currentTaskCount)),
+          contentVersion: snapshotCompatible ? (assignmentUpdates.contentVersion || current.contentVersion || metadata.contentVersion) : Math.max(1, Number(current.contentVersion) || 1),
+          contentHash: snapshotCompatible ? (assignmentUpdates.contentHash || current.contentHash || metadata.contentHash || '') : String(current.contentHash || ''),
+          taskIds: snapshotCompatible ? metadata.taskIds : (Array.isArray(current.taskIds) ? current.taskIds : []),
+          contentSnapshot: snapshotCompatible ? (assignmentUpdates.contentSnapshot || current.contentSnapshot || metadata.contentSnapshot || null) : (current.contentSnapshot || null),
+          assignedAt: Number(current.assignedAt || detail.assignedAt || record.createdAt || 0) || null,
+          archivedMetadataAt: Date.now(),
+          metadataBackfilledFromBuild: BUILD,
+          latestSummary: summary
+        };
+      } else {
+        if (!archived.schemaVersion) profileUpdates[`${archivePath}/schemaVersion`] = P2_DATA_SCHEMA_VERSION;
+        if (snapshotCompatible && !archived.contentVersion) profileUpdates[`${archivePath}/contentVersion`] = assignmentUpdates.contentVersion || current.contentVersion || metadata.contentVersion;
+        if (snapshotCompatible && !archived.contentHash && metadata.contentHash) profileUpdates[`${archivePath}/contentHash`] = metadata.contentHash;
+        if (snapshotCompatible && (!Array.isArray(archived.taskIds) || !archived.taskIds.length) && metadata.taskIds.length) profileUpdates[`${archivePath}/taskIds`] = metadata.taskIds;
+        if (snapshotCompatible && (!archived.contentSnapshot || typeof archived.contentSnapshot !== 'object') && metadata.contentSnapshot) profileUpdates[`${archivePath}/contentSnapshot`] = metadata.contentSnapshot;
+      }
+      if (Object.keys(profileUpdates).length) {
+        profileUpdates[`${basePath}/metadataBackfilledAt`] = Date.now();
+        profileUpdates[`${basePath}/metadataBackfilledFromBuild`] = BUILD;
+        await update(teacherProfileRef, profileUpdates);
+      }
+      await update(ref(db, `p772Rooms/${targetRoom}/p2/meta`), {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        lastCompatibleBuild: BUILD,
+        metadataBackfilledAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      return;
+    }
     if (detail.action === 'unlink-room') {
       const link = teacherProfileCache.roomLinks?.[targetRoom] || {};
       const updates = { [`students/${studentId}/lessons/${targetRoom}`]: null };
