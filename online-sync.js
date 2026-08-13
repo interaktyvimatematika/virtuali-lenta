@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.6';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -847,11 +847,12 @@ function scheduleClockMinutes(value) {
   const total = Math.max(0, Math.min(24 * 60, Math.round(Number(value) || 0)));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
-function safeScheduleMode(value) {
-  const mode = String(value || '').trim().toLowerCase();
-  return ['weekly', 'single', 'intro', 'final'].includes(mode) ? mode : 'weekly';
+function safeAttendanceMode(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'weekly') return 'recurring';
+  if (raw === 'single') return 'dates';
+  return ['recurring', 'dates', 'intro', 'final'].includes(raw) ? raw : 'recurring';
 }
-function scheduleModeForEntry(entry) { return safeScheduleMode(entry?.scheduleMode); }
 function validScheduleDateKey(value) {
   const text = String(value || '').trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
@@ -859,54 +860,126 @@ function validScheduleDateKey(value) {
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
   return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3]) ? text : '';
 }
-function scheduleDayFromDateKey(value) {
+function scheduleDateFromKey(value) {
   const text = validScheduleDateKey(value);
-  if (!text) return 0;
+  if (!text) return null;
   const [y, m, d] = text.split('-').map(Number);
-  const day = new Date(y, m - 1, d, 12).getDay();
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+function scheduleAddDays(value, days) {
+  const date = scheduleDateFromKey(value);
+  if (!date) return '';
+  date.setDate(date.getDate() + Number(days || 0));
+  return localDateKey(date);
+}
+function scheduleDayFromDateKey(value) {
+  const date = scheduleDateFromKey(value);
+  if (!date) return 0;
+  const day = date.getDay();
   return day === 0 ? 7 : day;
 }
-function scheduleExactDate(entry) { return validScheduleDateKey(entry?.date); }
-function scheduleStartDate(entry) { return validScheduleDateKey(entry?.startDate); }
-function scheduleEndDate(entry) { return validScheduleDateKey(entry?.endDate); }
-function scheduleEntryOccursOnDate(entry, dateKeyRaw) {
+function newScheduleTimeVersionId() {
+  return `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+function newScheduleAssignmentId() {
+  return `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+function scheduleTimeVersionsForEntry(entry) {
+  const raw = entry?.timeVersions && typeof entry.timeVersions === 'object' ? entry.timeVersions : {};
+  const list = Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
+    .filter(item => validScheduleDateKey(item.effectiveFrom) && Number(item.day) >= 1 && Number(item.day) <= 7)
+    .map(item => ({ ...item, day: safeScheduleDay(item.day), start: safeScheduleTime(item.start), durationMinutes: safeScheduleDuration(item.durationMinutes), effectiveFrom: validScheduleDateKey(item.effectiveFrom), createdAt: Math.max(0, Number(item.createdAt || 0)) }));
+  if (!list.length || Number(entry?.slotModelVersion || 0) < 2) {
+    const legacyDate = validScheduleDateKey(entry?.startDate) || validScheduleDateKey(entry?.date) || '2000-01-01';
+    const legacy = {
+      id: '__legacy__', effectiveFrom: legacyDate,
+      day: safeScheduleDay(entry?.day || scheduleDayFromDateKey(entry?.date)),
+      start: safeScheduleTime(entry?.start), durationMinutes: safeScheduleDuration(entry?.durationMinutes),
+      createdAt: Math.max(0, Number(entry?.createdAt || 0))
+    };
+    if (!list.some(item => item.effectiveFrom === legacy.effectiveFrom && item.day === legacy.day && item.start === legacy.start)) list.push(legacy);
+  }
+  return list.sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom) || a.createdAt - b.createdAt);
+}
+function scheduleSlotTimeForDate(entry, dateKeyRaw) {
   const dateKey = validScheduleDateKey(dateKeyRaw);
-  if (!dateKey) return false;
-  if (scheduleModeForEntry(entry) !== 'weekly') return scheduleExactDate(entry) === dateKey;
-  if (safeScheduleDay(entry?.day) !== scheduleDayFromDateKey(dateKey)) return false;
-  const from = scheduleStartDate(entry);
-  const to = scheduleEndDate(entry);
-  if (from && dateKey < from) return false;
-  if (to && dateKey > to) return false;
-  return true;
+  if (!dateKey) return null;
+  if (Number(entry?.slotModelVersion || 0) < 2) {
+    const legacyMode = String(entry?.scheduleMode || '').trim().toLowerCase();
+    const legacyDate = validScheduleDateKey(entry?.date);
+    if (legacyMode && legacyMode !== 'weekly' && legacyDate && legacyDate !== dateKey) return null;
+  }
+  if (validScheduleDateKey(entry?.oneOffDate) && entry.oneOffDate !== dateKey) return null;
+  const versions = scheduleTimeVersionsForEntry(entry).filter(item => item.effectiveFrom <= dateKey);
+  return versions.length ? versions[versions.length - 1] : null;
 }
-function scheduleStudentIdsForEntry(entry) {
-  const raw = entry?.studentIds;
-  if (Array.isArray(raw)) return raw.map(safeStudentId).filter(Boolean);
-  if (raw && typeof raw === 'object') return Object.keys(raw).map(safeStudentId).filter(id => id && raw[id]);
-  return [];
+function scheduleSlotOccursOnDate(entry, dateKeyRaw) {
+  const dateKey = validScheduleDateKey(dateKeyRaw);
+  const time = scheduleSlotTimeForDate(entry, dateKey);
+  return Boolean(dateKey && time && time.day === scheduleDayFromDateKey(dateKey));
 }
-function scheduleFinalCutoffForStudent(studentId, recurringEntry) {
+function scheduleAssignmentsForEntry(entry) {
+  const result = [];
+  const raw = entry?.assignments && typeof entry.assignments === 'object' ? entry.assignments : {};
+  for (const [id, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object') continue;
+    const studentId = safeStudentId(value.studentId);
+    if (!studentId) continue;
+    const mode = safeAttendanceMode(value.mode || value.scheduleMode);
+    const assignment = { id, ...value, studentId, mode, createdAt: Math.max(0, Number(value.createdAt || 0)) };
+    result.push(assignment);
+  }
+  const explicit = new Set(result.map(item => item.studentId));
+  const legacyRaw = entry?.studentIds;
+  const legacyIds = Array.isArray(legacyRaw) ? legacyRaw.map(safeStudentId).filter(Boolean)
+    : (legacyRaw && typeof legacyRaw === 'object' ? Object.keys(legacyRaw).map(safeStudentId).filter(id => id && legacyRaw[id]) : []);
+  const legacyMode = safeAttendanceMode(entry?.scheduleMode || 'weekly');
+  for (const studentId of legacyIds) {
+    if (explicit.has(studentId)) continue;
+    const date = validScheduleDateKey(entry?.date);
+    const assignment = { id: `__legacy__${studentId}`, studentId, mode: legacyMode, createdAt: Math.max(0, Number(entry?.createdAt || 0)), legacy: true };
+    if (legacyMode === 'recurring') assignment.startDate = validScheduleDateKey(entry?.startDate) || '2000-01-01';
+    else if (legacyMode === 'dates') assignment.dates = date ? { [date]: true } : {};
+    else assignment.date = date;
+    result.push(assignment);
+  }
+  return result;
+}
+function scheduleFinalCutoffForStudent(studentId, sourceAssignment) {
   const id = safeStudentId(studentId);
   if (!id) return '';
-  const recurringCreatedAt = Math.max(0, Number(recurringEntry?.createdAt || 0));
-  const dates = Object.values(teacherProfileCache.scheduleEntries || {})
-    .filter(entry => entry && typeof entry === 'object' && scheduleModeForEntry(entry) === 'final')
-    .filter(entry => scheduleStudentIdsForEntry(entry).includes(id))
-    .filter(entry => Math.max(0, Number(entry.createdAt || 0)) >= recurringCreatedAt)
-    .map(scheduleExactDate).filter(Boolean).sort();
-  return dates[0] || '';
+  const createdAt = Math.max(0, Number(sourceAssignment?.createdAt || 0));
+  const dates = [];
+  for (const entry of Object.values(teacherProfileCache.scheduleEntries || {})) {
+    for (const assignment of scheduleAssignmentsForEntry(entry)) {
+      if (assignment.studentId !== id || safeAttendanceMode(assignment.mode) !== 'final') continue;
+      if (Math.max(0, Number(assignment.createdAt || 0)) < createdAt) continue;
+      const date = validScheduleDateKey(assignment.date);
+      if (date) dates.push(date);
+    }
+  }
+  return dates.sort()[0] || '';
 }
-function scheduleStudentActiveForDate(entry, studentId, dateKey) {
-  const id = safeStudentId(studentId);
-  if (!id || !scheduleEntryOccursOnDate(entry, dateKey) || !scheduleStudentIdsForEntry(entry).includes(id)) return false;
-  if (scheduleModeForEntry(entry) === 'final') return true;
-  const finalDate = scheduleFinalCutoffForStudent(id, entry);
-  return !finalDate || String(dateKey) < finalDate;
+function scheduleAssignmentOccursOnDate(entry, assignment, dateKeyRaw) {
+  const dateKey = validScheduleDateKey(dateKeyRaw);
+  if (!dateKey || !scheduleSlotOccursOnDate(entry, dateKey)) return false;
+  const mode = safeAttendanceMode(assignment.mode);
+  const cutoff = mode === 'final' ? '' : scheduleFinalCutoffForStudent(assignment.studentId, assignment);
+  if (cutoff && dateKey >= cutoff) return false;
+  if (mode === 'recurring') return dateKey >= (validScheduleDateKey(assignment.startDate) || '2000-01-01');
+  if (mode === 'dates') return Boolean(assignment?.dates && typeof assignment.dates === 'object' && assignment.dates[dateKey]);
+  return validScheduleDateKey(assignment.date) === dateKey;
 }
-function scheduleActiveStudentIdsForDate(entry, dateKey) {
-  const ids = scheduleStudentIdsForEntry(entry).filter(id => teacherProfileCache.students?.[id]);
-  return ids.filter(id => scheduleStudentActiveForDate(entry, id, dateKey));
+function scheduleActiveAssignmentsForDate(entry, dateKey) {
+  const priority = { recurring: 1, dates: 2, intro: 3, final: 4 };
+  const byStudent = new Map();
+  for (const assignment of scheduleAssignmentsForEntry(entry)) {
+    const studentId = safeStudentId(assignment.studentId);
+    if (!studentId || !teacherProfileCache.students?.[studentId] || !scheduleAssignmentOccursOnDate(entry, assignment, dateKey)) continue;
+    const previous = byStudent.get(studentId);
+    if (!previous || (priority[safeAttendanceMode(assignment.mode)] || 0) >= (priority[safeAttendanceMode(previous.mode)] || 0)) byStudent.set(studentId, assignment);
+  }
+  return Array.from(byStudent.values());
 }
 function scheduleTimesOverlap(a, b) {
   const aStart = scheduleTimeMinutes(a?.start);
@@ -915,46 +988,71 @@ function scheduleTimesOverlap(a, b) {
   const bEnd = bStart + safeScheduleDuration(b?.durationMinutes);
   return aStart < bEnd && aEnd > bStart;
 }
-function scheduleDateRangesOverlap(a, b) {
-  const modeA = scheduleModeForEntry(a);
-  const modeB = scheduleModeForEntry(b);
-  if (modeA !== 'weekly' && modeB !== 'weekly') return Boolean(scheduleExactDate(a) && scheduleExactDate(a) === scheduleExactDate(b));
-  if (modeA === 'weekly' && modeB !== 'weekly') return scheduleEntryOccursOnDate(a, scheduleExactDate(b));
-  if (modeA !== 'weekly' && modeB === 'weekly') return scheduleEntryOccursOnDate(b, scheduleExactDate(a));
-  if (safeScheduleDay(a?.day) !== safeScheduleDay(b?.day)) return false;
-  const aStart = scheduleStartDate(a) || '0000-01-01';
-  const bStart = scheduleStartDate(b) || '0000-01-01';
-  const aEnd = scheduleEndDate(a) || '9999-12-31';
-  const bEnd = scheduleEndDate(b) || '9999-12-31';
-  return aStart <= bEnd && bStart <= aEnd;
-}
-function findScheduleConflictEntry(candidate, excludeScheduleId = '') {
-  for (const [id, raw] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
-    if (String(id) === String(excludeScheduleId || '') || !raw || typeof raw !== 'object') continue;
-    if (!scheduleTimesOverlap(candidate, raw) || !scheduleDateRangesOverlap(candidate, raw)) continue;
-    if (scheduleModeForEntry(candidate) === 'final' && scheduleModeForEntry(raw) !== 'final') {
-      const dateKey = scheduleExactDate(candidate);
-      if (!scheduleEntryOccursOnDate(raw, dateKey)) continue;
-      const active = scheduleActiveStudentIdsForDate(raw, dateKey);
-      const selected = scheduleStudentIdsForEntry(candidate);
-      const sameTime = safeScheduleTime(candidate.start) === safeScheduleTime(raw.start) && safeScheduleDuration(candidate.durationMinutes) === safeScheduleDuration(raw.durationMinutes);
-      if (sameTime && active.length && active.every(studentId => selected.includes(studentId))) continue;
+function findScheduleTimeVersionConflict(candidate, excludeScheduleId = '') {
+  const effectiveFrom = validScheduleDateKey(candidate?.effectiveFrom) || localDateKey();
+  for (let offset = 0; offset < 370; offset += 1) {
+    const dateKey = scheduleAddDays(effectiveFrom, offset);
+    if (scheduleDayFromDateKey(dateKey) !== safeScheduleDay(candidate?.day)) continue;
+    for (const [id, raw] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
+      if (String(id) === String(excludeScheduleId || '') || !raw || typeof raw !== 'object' || !scheduleSlotOccursOnDate(raw, dateKey)) continue;
+      const otherTime = scheduleSlotTimeForDate(raw, dateKey);
+      if (scheduleTimesOverlap(candidate, otherTime)) return { id, ...raw, conflictDateKey: dateKey, conflictTime: otherTime };
     }
-    return { id, ...raw };
   }
   return null;
 }
 function findScheduleConflict(day, start, durationMinutes, excludeScheduleId = '') {
-  return findScheduleConflictEntry({ scheduleMode: 'weekly', day, start, durationMinutes, studentIds: {} }, excludeScheduleId);
+  return findScheduleTimeVersionConflict({ effectiveFrom: localDateKey(), day, start, durationMinutes }, excludeScheduleId);
 }
 function scheduleConflictError(conflict) {
-  const label = cleanScheduleLabel(conflict?.label) || ({ weekly: 'nuolatinė pamoka', single: 'pavienė pamoka', intro: 'pažintinė pamoka', final: 'paskutinė pamoka' }[scheduleModeForEntry(conflict)] || 'kita pamoka');
-  const start = safeScheduleTime(conflict?.start);
-  const end = scheduleClockMinutes(scheduleTimeMinutes(start) + safeScheduleDuration(conflict?.durationMinutes));
-  const error = new Error(`Laikas persidengia su „${label}“ (${start}–${end}).`);
+  const label = cleanScheduleLabel(conflict?.label) || 'kitas pamokos laikas';
+  const time = conflict?.conflictTime || scheduleTimeVersionsForEntry(conflict || {}).slice(-1)[0] || {};
+  const start = safeScheduleTime(time.start);
+  const end = scheduleClockMinutes(scheduleTimeMinutes(start) + safeScheduleDuration(time.durationMinutes));
+  const date = validScheduleDateKey(conflict?.conflictDateKey);
+  const error = new Error(`Laikas persidengia su „${label}“${date ? ` ${date}` : ''} (${start}–${end}).`);
   error.code = 'schedule-conflict';
   return error;
 }
+function explicitScheduleSlotPayload(existing = {}) {
+  const now = Date.now();
+  const timeVersions = {};
+  for (const item of scheduleTimeVersionsForEntry(existing)) {
+    const id = item.id === '__legacy__' ? newScheduleTimeVersionId() : String(item.id || newScheduleTimeVersionId());
+    timeVersions[id] = { effectiveFrom: item.effectiveFrom, day: safeScheduleDay(item.day), start: safeScheduleTime(item.start), durationMinutes: safeScheduleDuration(item.durationMinutes), createdAt: Math.max(0, Number(item.createdAt || existing.createdAt || now)) || now };
+  }
+  const assignments = {};
+  for (const item of scheduleAssignmentsForEntry(existing)) {
+    const id = String(item.id || '').startsWith('__legacy__') ? newScheduleAssignmentId() : String(item.id || newScheduleAssignmentId());
+    const mode = safeAttendanceMode(item.mode);
+    const value = { studentId: safeStudentId(item.studentId), mode, createdAt: Math.max(0, Number(item.createdAt || existing.createdAt || now)) || now, updatedAt: now };
+    if (mode === 'recurring') value.startDate = validScheduleDateKey(item.startDate) || '2000-01-01';
+    else if (mode === 'dates') value.dates = Object.fromEntries(Object.keys(item.dates && typeof item.dates === 'object' ? item.dates : {}).map(validScheduleDateKey).filter(Boolean).map(date => [date, true]));
+    else value.date = validScheduleDateKey(item.date);
+    assignments[id] = value;
+  }
+  const currentTime = scheduleSlotTimeForDate(existing, localDateKey()) || Object.values(timeVersions).sort((a,b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).slice(-1)[0] || { day: 1, start: '16:00', durationMinutes: 40 };
+  return {
+    schemaVersion: P2_DATA_SCHEMA_VERSION,
+    slotModelVersion: 2,
+    label: cleanScheduleLabel(existing.label),
+    timeVersions,
+    assignments,
+    lessonId: String(existing.lessonId || '').trim().slice(0, 80),
+    practiceTitle: String(existing.practiceTitle || '').trim().slice(0, 140),
+    taskCount: Math.max(0, Math.min(500, Math.round(Number(existing.taskCount) || 0))),
+    contentVersion: existing.contentVersion || null,
+    contentHash: String(existing.contentHash || '').slice(0, 80),
+    taskIds: Array.isArray(existing.taskIds) ? existing.taskIds.slice(0, 500) : [],
+    contentSnapshot: existing.contentSnapshot || null,
+    attemptPolicy: sanitizeAttemptPolicy(existing.attemptPolicy),
+    oneOffDate: validScheduleDateKey(existing.oneOffDate) || (Number(existing.slotModelVersion || 0) < 2 && String(existing.scheduleMode || '').trim() && String(existing.scheduleMode).trim() !== 'weekly' ? validScheduleDateKey(existing.date) : ''),
+    day: safeScheduleDay(currentTime.day), start: safeScheduleTime(currentTime.start), durationMinutes: safeScheduleDuration(currentTime.durationMinutes),
+    createdAt: Math.max(0, Number(existing.createdAt || now)) || now,
+    updatedAt: now
+  };
+}
+
 function safeDateKey(value) {
   const text = String(value || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
@@ -1043,16 +1141,9 @@ async function applyP1756RequestedScheduleOnce() {
   const sameStartStudents = sameStartEntry?.studentIds && typeof sameStartEntry.studentIds === 'object'
     ? Object.keys(sameStartEntry.studentIds).filter(id => sameStartEntry.studentIds[id]) : [];
 
-  // Jei 19:30 kortelė jau priklauso kitam mokiniui, automatiškai jos
-  // nesujungiame į grupinę pamoką. Paliekame duomenis nepaliestus ir aiškiai
-  // pranešame apie konfliktą.
-  if (sameStartEntry && sameStartStudents.some(id => id !== studentId)) {
-    if (!p1756ScheduleConflictShown) {
-      p1756ScheduleConflictShown = true;
-      bridge.showToast?.('Ketvirtadienio 19:30 laikas jau priskirtas kitam mokiniui. Adomo laikas automatiškai nekeistas.');
-    }
-    return;
-  }
+  // P1.7.7: vienas pamokos laikas gali turėti skirtingus mokinius, todėl
+  // senasis vienkartinis Adomo priskyrimas gali saugiai naudoti jau esamą
+  // ketvirtadienio 19:30 laiko kortelę.
 
   const conflict = findScheduleConflict(targetDay, targetStart, targetDuration, sameStartId);
   if (conflict) {
@@ -1278,62 +1369,41 @@ function scheduleRunRoomEntries(run) {
 async function ensureScheduleRunClassSession(scheduleId, dateKey, run, entry) {
   const roomEntries = scheduleRunRoomEntries(run);
   if (!roomEntries.length) return { classSessionId: '', roomEntries: [] };
-
   let classSessionId = safeClassSessionId(run?.classSessionId);
   if (!classSessionId) classSessionId = newClassSessionId();
   const now = Date.now();
   const existingSession = teacherProfileCache.classSessions?.[classSessionId] || {};
-  const updates = {};
-
-  // P2.5-P4-P1.2: tvarkaraščio paleidimas yra vienos bendros pamokos sesija.
-  // Atkuriame indeksą ir senesniems P4-P1.1 run'ams, jei Firebase listenerio
-  // lenktynė ar ankstesnė versija paliko tik scheduleRuns.rooms žemėlapį.
-  updates[`classSessions/${classSessionId}/createdAt`] = Number(existingSession.createdAt || run?.startedAt || now) || now;
-  updates[`classSessions/${classSessionId}/updatedAt`] = now;
-  updates[`classSessions/${classSessionId}/scheduleId`] = scheduleId;
-  updates[`classSessions/${classSessionId}/scheduleDate`] = dateKey;
-  updates[`classSessions/${classSessionId}/scheduledDay`] = safeScheduleDay(entry?.day);
-  updates[`classSessions/${classSessionId}/scheduledStart`] = safeScheduleTime(entry?.start);
-  updates[`classSessions/${classSessionId}/durationMinutes`] = safeScheduleDuration(entry?.durationMinutes);
-  updates[`classSessions/${classSessionId}/label`] = cleanScheduleLabel(entry?.label);
-  updates[`classSessions/${classSessionId}/scheduleMode`] = scheduleModeForEntry(entry);
-  updates[`scheduleRuns/${scheduleId}/${dateKey}/classSessionId`] = classSessionId;
-
+  const time = scheduleSlotTimeForDate(entry, dateKey) || { day: run?.scheduledDay || entry?.day, start: run?.scheduledStart || entry?.start, durationMinutes: run?.durationMinutes || entry?.durationMinutes };
+  const attendanceModes = run?.attendanceModes && typeof run.attendanceModes === 'object' ? run.attendanceModes : {};
+  const updates = {
+    [`classSessions/${classSessionId}/createdAt`]: Number(existingSession.createdAt || run?.startedAt || now) || now,
+    [`classSessions/${classSessionId}/updatedAt`]: now,
+    [`classSessions/${classSessionId}/scheduleId`]: scheduleId,
+    [`classSessions/${classSessionId}/scheduleDate`]: dateKey,
+    [`classSessions/${classSessionId}/scheduledDay`]: safeScheduleDay(time.day),
+    [`classSessions/${classSessionId}/scheduledStart`]: safeScheduleTime(time.start),
+    [`classSessions/${classSessionId}/durationMinutes`]: safeScheduleDuration(time.durationMinutes),
+    [`classSessions/${classSessionId}/label`]: cleanScheduleLabel(entry?.label),
+    [`classSessions/${classSessionId}/scheduleModelVersion`]: 2,
+    [`scheduleRuns/${scheduleId}/${dateKey}/classSessionId`]: classSessionId
+  };
   const localStudents = { ...(existingSession.students && typeof existingSession.students === 'object' ? existingSession.students : {}) };
   const localRoomLinks = { ...(teacherProfileCache.roomLinks || {}) };
   for (const item of roomEntries) {
     const addedAt = Number(existingSession.students?.[item.studentId]?.addedAt || run?.startedAt || now) || now;
-    updates[`classSessions/${classSessionId}/students/${item.studentId}`] = { roomId: item.roomId, addedAt };
+    const attendanceMode = safeAttendanceMode(attendanceModes[item.studentId] || existingSession.students?.[item.studentId]?.attendanceMode);
+    updates[`classSessions/${classSessionId}/students/${item.studentId}`] = { roomId: item.roomId, addedAt, attendanceMode };
     updates[`roomLinks/${item.roomId}`] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
-    localStudents[item.studentId] = { roomId: item.roomId, addedAt };
+    localStudents[item.studentId] = { roomId: item.roomId, addedAt, attendanceMode };
     localRoomLinks[item.roomId] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
   }
-
   await update(teacherProfileRef, updates);
   teacherProfileCache.classSessions = {
     ...(teacherProfileCache.classSessions || {}),
-    [classSessionId]: {
-      ...existingSession,
-      createdAt: Number(existingSession.createdAt || run?.startedAt || now) || now,
-      updatedAt: now,
-      scheduleId,
-      scheduleDate: dateKey,
-      scheduledDay: safeScheduleDay(entry?.day),
-      scheduledStart: safeScheduleTime(entry?.start),
-      durationMinutes: safeScheduleDuration(entry?.durationMinutes),
-      label: cleanScheduleLabel(entry?.label),
-      scheduleMode: scheduleModeForEntry(entry),
-      students: localStudents
-    }
+    [classSessionId]: { ...existingSession, createdAt: Number(existingSession.createdAt || run?.startedAt || now) || now, updatedAt: now, scheduleId, scheduleDate: dateKey, scheduledDay: safeScheduleDay(time.day), scheduledStart: safeScheduleTime(time.start), durationMinutes: safeScheduleDuration(time.durationMinutes), label: cleanScheduleLabel(entry?.label), scheduleModelVersion: 2, students: localStudents }
   };
   teacherProfileCache.roomLinks = localRoomLinks;
-  teacherProfileCache.scheduleRuns = {
-    ...(teacherProfileCache.scheduleRuns || {}),
-    [scheduleId]: {
-      ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}),
-      [dateKey]: { ...(run || {}), classSessionId }
-    }
-  };
+  teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: { ...(run || {}), classSessionId } } };
   emitTeacherProfile();
   return { classSessionId, roomEntries };
 }
@@ -1342,278 +1412,252 @@ window.addEventListener('p2:schedule-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
   const detail = event.detail || {};
   try {
-    const saveScheduleEntry = async (scheduleId, existing = {}) => {
-      const studentIds = Array.isArray(detail.studentIds)
-        ? Array.from(new Set(detail.studentIds.map(safeStudentId).filter(id => id && teacherProfileCache.students?.[id])))
-        : Object.keys(existing.studentIds && typeof existing.studentIds === 'object' ? existing.studentIds : {})
-            .filter(id => existing.studentIds[id] && teacherProfileCache.students?.[id]);
-      const lessonId = String(detail.lessonId ?? existing.lessonId ?? '').trim().slice(0, 80);
-      const scheduleMode = safeScheduleMode(detail.scheduleMode ?? existing.scheduleMode);
-      const start = safeScheduleTime(detail.start ?? existing.start);
-      const durationMinutes = safeScheduleDuration(detail.durationMinutes ?? existing.durationMinutes);
-      let date = '';
-      let startDate = '';
-      let endDate = '';
-      let day = safeScheduleDay(detail.day ?? existing.day);
-      if (scheduleMode === 'weekly') {
-        startDate = validScheduleDateKey(detail.startDate ?? existing.startDate);
-        endDate = validScheduleDateKey(detail.endDate ?? existing.endDate);
-        if (startDate && endDate && endDate < startDate) throw new Error('Tvarkaraščio pabaigos data ankstesnė už pradžios datą');
-      } else {
-        date = validScheduleDateKey(detail.date ?? existing.date);
-        if (!date) throw new Error('Pamokai reikia konkrečios datos');
-        day = scheduleDayFromDateKey(date);
-      }
-      const contentMeta = lessonId ? assignmentContentMetadata(detail, existing) : null;
+    const cacheSlot = (scheduleId, payload) => {
+      teacherProfileCache.scheduleEntries = { ...(teacherProfileCache.scheduleEntries || {}), [scheduleId]: payload };
+      emitTeacherProfile();
+    };
+    const saveSlot = async (scheduleId, payload, kind, message) => {
+      payload.updatedAt = Date.now();
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/scheduleEntries/${scheduleId}`), payload);
+      cacheSlot(scheduleId, payload);
+      if (message) bridge.showToast?.(message);
+      window.dispatchEvent(new CustomEvent('p2:schedule-saved', { detail: { scheduleId, kind } }));
+      return payload;
+    };
+
+    if (detail.action === 'slot-add') {
+      const effectiveFrom = validScheduleDateKey(detail.effectiveFrom);
+      if (!effectiveFrom) throw new Error('Pasirink, nuo kada galioja pamokos laikas');
+      const day = safeScheduleDay(detail.day);
+      const start = safeScheduleTime(detail.start);
+      const durationMinutes = safeScheduleDuration(detail.durationMinutes);
+      const conflict = findScheduleTimeVersionConflict({ effectiveFrom, day, start, durationMinutes });
+      if (conflict) throw scheduleConflictError(conflict);
+      const scheduleId = newScheduleId();
+      const versionId = newScheduleTimeVersionId();
+      const now = Date.now();
+      const lessonId = String(detail.lessonId || '').trim().slice(0, 80);
+      const contentMeta = lessonId ? assignmentContentMetadata(detail, {}) : null;
       const payload = {
-        schemaVersion: P2_DATA_SCHEMA_VERSION,
-        scheduleMode, date, startDate, endDate, day, start, durationMinutes,
-        label: cleanScheduleLabel(detail.label ?? existing.label),
-        studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
+        schemaVersion: P2_DATA_SCHEMA_VERSION, slotModelVersion: 2,
+        label: cleanScheduleLabel(detail.label),
+        timeVersions: { [versionId]: { effectiveFrom, day, start, durationMinutes, createdAt: now } },
+        assignments: {},
         lessonId,
-        practiceTitle: String(detail.practiceTitle ?? existing.practiceTitle ?? '').trim().slice(0, 140),
-        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount ?? existing.taskCount) || 0))),
+        practiceTitle: String(detail.practiceTitle || '').trim().slice(0, 140),
+        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0))),
         contentVersion: contentMeta?.contentVersion || null,
         contentHash: contentMeta?.contentHash || '',
         taskIds: contentMeta?.taskIds || [],
         contentSnapshot: contentMeta?.contentSnapshot || null,
-        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy ?? existing.attemptPolicy) : null,
-        createdAt: Number(existing.createdAt || 0) || Date.now(),
-        updatedAt: Date.now()
+        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null,
+        oneOffDate: '', day, start, durationMinutes,
+        createdAt: now, updatedAt: now
       };
-      const conflict = findScheduleConflictEntry(payload, scheduleId);
-      if (conflict) throw scheduleConflictError(conflict);
-      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/scheduleEntries/${scheduleId}`), payload);
-      return payload;
-    };
-
-    if (detail.action === 'add' || detail.action === 'update') {
-      const scheduleId = detail.action === 'update' ? safeScheduleId(detail.scheduleId) : newScheduleId();
-      if (!scheduleId) return;
-      const existing = teacherProfileCache.scheduleEntries?.[scheduleId] || {};
-      await saveScheduleEntry(scheduleId, existing);
-      bridge.showToast?.(detail.action === 'update' ? 'Pamoka atnaujinta' : 'Pamoka sukurta');
-      window.dispatchEvent(new CustomEvent('p2:schedule-saved', { detail: { scheduleId, created: detail.action === 'add' } }));
+      await saveSlot(scheduleId, payload, 'slot-add', 'Pamokos laikas sukurtas');
       return;
     }
 
     const scheduleId = safeScheduleId(detail.scheduleId);
     if (!scheduleId) return;
+    const existing = teacherProfileCache.scheduleEntries?.[scheduleId];
+    if (!existing || typeof existing !== 'object') throw new Error('Pamokos laikas nerastas');
 
-    if (detail.action === 'delete') {
-      await update(teacherProfileRef, {
-        [`scheduleEntries/${scheduleId}`]: null,
-        [`scheduleRuns/${scheduleId}`]: null
-      });
-      bridge.showToast?.('Pamoka pašalinta iš tvarkaraščio');
+    if (detail.action === 'slot-delete') {
+      await update(teacherProfileRef, { [`scheduleEntries/${scheduleId}`]: null, [`scheduleRuns/${scheduleId}`]: null });
+      const nextEntries = { ...(teacherProfileCache.scheduleEntries || {}) }; delete nextEntries[scheduleId];
+      const nextRuns = { ...(teacherProfileCache.scheduleRuns || {}) }; delete nextRuns[scheduleId];
+      teacherProfileCache.scheduleEntries = nextEntries; teacherProfileCache.scheduleRuns = nextRuns; emitTeacherProfile();
+      bridge.showToast?.('Pamokos laikas pašalintas');
+      window.dispatchEvent(new CustomEvent('p2:schedule-saved', { detail: { scheduleId, kind: 'slot-delete' } }));
       return;
     }
 
-    if (detail.action === 'update-and-start') {
-      const existing = teacherProfileCache.scheduleEntries?.[scheduleId];
-      if (!existing || typeof existing !== 'object') throw new Error('Tvarkaraščio įrašas nerastas');
-      await saveScheduleEntry(scheduleId, existing);
-      // Vietinį cache papildome naujausia forma, kad nereikėtų laukti Firebase
-      // round-trip prieš kuriant tos pačios pamokos mokinių Room.
-      const studentIds = Array.isArray(detail.studentIds)
-        ? Array.from(new Set(detail.studentIds.map(safeStudentId).filter(id => id && teacherProfileCache.students?.[id])))
-        : [];
+    if (detail.action === 'slot-meta') {
+      const payload = explicitScheduleSlotPayload(existing);
       const lessonId = String(detail.lessonId || '').trim().slice(0, 80);
-      const scheduleMode = safeScheduleMode(detail.scheduleMode ?? existing.scheduleMode);
-      const date = scheduleMode === 'weekly' ? '' : validScheduleDateKey(detail.date ?? existing.date);
-      const startDate = scheduleMode === 'weekly' ? validScheduleDateKey(detail.startDate ?? existing.startDate) : '';
-      const endDate = scheduleMode === 'weekly' ? validScheduleDateKey(detail.endDate ?? existing.endDate) : '';
-      const day = scheduleMode === 'weekly' ? safeScheduleDay(detail.day ?? existing.day) : scheduleDayFromDateKey(date);
-      const entry = {
-        ...existing,
-        scheduleMode, date, startDate, endDate, day, start: safeScheduleTime(detail.start),
-        durationMinutes: safeScheduleDuration(detail.durationMinutes), label: cleanScheduleLabel(detail.label),
-        studentIds: Object.fromEntries(studentIds.map(id => [id, true])),
-        lessonId, practiceTitle: String(detail.practiceTitle || '').trim().slice(0, 140),
-        taskCount: Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0))),
-        ...(lessonId ? assignmentContentMetadata(detail, existing) : {}),
-        attemptPolicy: lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null,
-        schemaVersion: P2_DATA_SCHEMA_VERSION
-      };
-      detail.action = 'start';
-      teacherProfileCache.scheduleEntries = { ...(teacherProfileCache.scheduleEntries || {}), [scheduleId]: entry };
+      const contentMeta = lessonId ? assignmentContentMetadata(detail, payload) : null;
+      payload.label = cleanScheduleLabel(detail.label);
+      payload.lessonId = lessonId;
+      payload.practiceTitle = String(detail.practiceTitle || '').trim().slice(0, 140);
+      payload.taskCount = Math.max(0, Math.min(500, Math.round(Number(detail.taskCount) || 0)));
+      payload.contentVersion = contentMeta?.contentVersion || null;
+      payload.contentHash = contentMeta?.contentHash || '';
+      payload.taskIds = contentMeta?.taskIds || [];
+      payload.contentSnapshot = contentMeta?.contentSnapshot || null;
+      payload.attemptPolicy = lessonId ? sanitizeAttemptPolicy(detail.attemptPolicy) : null;
+      await saveSlot(scheduleId, payload, 'slot-meta', 'Pamokos informacija išsaugota');
+      return;
+    }
+
+    if (detail.action === 'slot-time-add') {
+      const effectiveFrom = validScheduleDateKey(detail.effectiveFrom);
+      if (!effectiveFrom) throw new Error('Pasirink pakeitimo datą');
+      const day = safeScheduleDay(detail.day);
+      const start = safeScheduleTime(detail.start);
+      const durationMinutes = safeScheduleDuration(detail.durationMinutes);
+      const conflict = findScheduleTimeVersionConflict({ effectiveFrom, day, start, durationMinutes }, scheduleId);
+      if (conflict) throw scheduleConflictError(conflict);
+      const payload = explicitScheduleSlotPayload(existing);
+      const versionId = newScheduleTimeVersionId();
+      payload.timeVersions[versionId] = { effectiveFrom, day, start, durationMinutes, createdAt: Date.now() };
+      payload.oneOffDate = '';
+      const todayTime = scheduleSlotTimeForDate(payload, localDateKey()) || Object.values(payload.timeVersions).sort((a,b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).slice(-1)[0];
+      payload.day = safeScheduleDay(todayTime?.day); payload.start = safeScheduleTime(todayTime?.start); payload.durationMinutes = safeScheduleDuration(todayTime?.durationMinutes);
+      await saveSlot(scheduleId, payload, 'slot-time', `Pamokos laikas pakeistas nuo ${effectiveFrom}`);
+      return;
+    }
+
+    if (detail.action === 'assignment-delete') {
+      const assignmentId = String(detail.assignmentId || '').trim();
+      const payload = explicitScheduleSlotPayload(existing);
+      if (!assignmentId || !payload.assignments?.[assignmentId]) throw new Error('Mokinio priskyrimas nerastas');
+      delete payload.assignments[assignmentId];
+      await saveSlot(scheduleId, payload, 'assignment', 'Mokinio priskyrimas pašalintas');
+      return;
+    }
+
+    if (detail.action === 'assignment-add') {
+      const studentId = safeStudentId(detail.studentId);
+      if (!studentId || !teacherProfileCache.students?.[studentId]) throw new Error('Pasirink mokinį');
+      const mode = safeAttendanceMode(detail.mode);
+      const payload = explicitScheduleSlotPayload(existing);
+      if (mode === 'recurring') {
+        const duplicate = Object.values(payload.assignments || {}).find(item => safeStudentId(item?.studentId) === studentId && safeAttendanceMode(item?.mode) === 'recurring');
+        if (duplicate) throw new Error('Šis mokinys jau turi nuolatinį priskyrimą šiam laikui');
+      }
+      const assignmentId = newScheduleAssignmentId();
+      const now = Date.now();
+      const assignment = { studentId, mode, createdAt: now, updatedAt: now };
+      if (mode === 'recurring') {
+        assignment.startDate = validScheduleDateKey(detail.startDate);
+        if (!assignment.startDate) throw new Error('Pasirink, nuo kada mokinys lanko nuolat');
+      } else if (mode === 'dates') {
+        let dates = Array.isArray(detail.dates) ? detail.dates.map(validScheduleDateKey).filter(Boolean) : [];
+        if (!dates.length && validScheduleDateKey(detail.rangeStart) && validScheduleDateKey(detail.rangeEnd)) {
+          const from = detail.rangeStart; const to = detail.rangeEnd; const everyWeeks = Math.max(1, Math.min(12, Math.round(Number(detail.everyWeeks) || 1)));
+          let occurrenceIndex = 0;
+          for (let dateKey = from, guard = 0; dateKey && dateKey <= to && guard < 800; dateKey = scheduleAddDays(dateKey, 1), guard += 1) {
+            if (!scheduleSlotOccursOnDate(payload, dateKey)) continue;
+            if (occurrenceIndex % everyWeeks === 0) dates.push(dateKey);
+            occurrenceIndex += 1;
+          }
+        }
+        dates = Array.from(new Set(dates)).sort();
+        if (!dates.length) throw new Error('Nenurodyta nė viena tinkama pavienės pamokos data');
+        const invalid = dates.find(dateKey => !scheduleSlotOccursOnDate(payload, dateKey));
+        if (invalid) throw new Error(`${invalid} nėra šio pamokos laiko diena`);
+        assignment.dates = Object.fromEntries(dates.map(dateKey => [dateKey, true]));
+      } else {
+        assignment.date = validScheduleDateKey(detail.date);
+        if (!assignment.date) throw new Error('Pasirink pamokos datą');
+        if (!scheduleSlotOccursOnDate(payload, assignment.date)) throw new Error(`${assignment.date} nėra šio pamokos laiko diena`);
+      }
+      payload.assignments[assignmentId] = assignment;
+      await saveSlot(scheduleId, payload, 'assignment', `${cleanStudentName(teacherProfileCache.students?.[studentId]?.name) || 'Mokinys'} priskirtas`);
+      return;
     }
 
     if (detail.action === 'start') {
-      const entry = teacherProfileCache.scheduleEntries?.[scheduleId];
-      if (!entry || typeof entry !== 'object') throw new Error('Tvarkaraščio įrašas nerastas');
-      const dateKey = safeDateKey(detail.dateKey) || localDateKey();
-      if (!scheduleEntryOccursOnDate(entry, dateKey)) throw new Error('Ši pamoka pasirinktai datai nesuplanuota');
+      const dateKey = validScheduleDateKey(detail.dateKey) || localDateKey();
+      if (!scheduleSlotOccursOnDate(existing, dateKey)) throw new Error('Šis pamokos laikas pasirinktą datą nevyksta');
       const existingRun = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey];
       if (existingRun?.rooms && typeof existingRun.rooms === 'object') {
-        const repaired = await ensureScheduleRunClassSession(scheduleId, dateKey, existingRun, entry);
+        const repaired = await ensureScheduleRunClassSession(scheduleId, dateKey, existingRun, existing);
         const firstRoom = repaired.roomEntries[0]?.roomId || Object.values(existingRun.rooms).map(value => safeRoom(value?.roomId || value)).find(Boolean) || '';
-        bridge.showToast?.('Šios datos pamoka jau atidaryta');
-        window.dispatchEvent(new CustomEvent('p2:schedule-started', {
-          detail: {
-            scheduleId, dateKey, firstRoom, existing: true,
-            classSessionId: repaired.classSessionId,
-            rooms: Object.fromEntries(repaired.roomEntries.map(item => [item.studentId, item.roomId]))
-          }
-        }));
+        bridge.showToast?.('Ši pamoka jau atidaryta');
+        window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, firstRoom, existing: true, classSessionId: repaired.classSessionId, rooms: Object.fromEntries(repaired.roomEntries.map(item => [item.studentId, item.roomId])) } }));
         return;
       }
 
-      const studentIds = scheduleActiveStudentIdsForDate(entry, dateKey);
-      if (!studentIds.length) throw new Error('Šiai datai nėra aktyvių mokinių');
-
+      const activeAssignments = scheduleActiveAssignmentsForDate(existing, dateKey);
+      if (!activeAssignments.length) throw new Error('Šiai datai nėra priskirtų mokinių');
+      const time = scheduleSlotTimeForDate(existing, dateKey);
       const classSessionId = newClassSessionId();
       const now = Date.now();
-      const lessonId = String(entry.lessonId || '').trim().slice(0, 80);
-      const practiceTitle = String(entry.practiceTitle || '').trim().slice(0, 140);
-      const taskCount = Math.max(0, Math.min(500, Math.round(Number(entry.taskCount) || 0)));
-      const durationMinutes = safeScheduleDuration(entry.durationMinutes);
+      const lessonId = String(existing.lessonId || '').trim().slice(0, 80);
+      const practiceTitle = String(existing.practiceTitle || '').trim().slice(0, 140);
+      const taskCount = Math.max(0, Math.min(500, Math.round(Number(existing.taskCount) || 0)));
+      const durationMinutes = safeScheduleDuration(time?.durationMinutes);
       const rooms = {};
+      const attendanceModes = {};
       const updates = {
         [`classSessions/${classSessionId}/schemaVersion`]: P2_DATA_SCHEMA_VERSION,
+        [`classSessions/${classSessionId}/scheduleModelVersion`]: 2,
         [`classSessions/${classSessionId}/createdAt`]: now,
         [`classSessions/${classSessionId}/updatedAt`]: now,
         [`classSessions/${classSessionId}/scheduleId`]: scheduleId,
         [`classSessions/${classSessionId}/scheduleDate`]: dateKey,
-        [`classSessions/${classSessionId}/scheduledDay`]: safeScheduleDay(entry.day),
-        [`classSessions/${classSessionId}/scheduledStart`]: safeScheduleTime(entry.start),
+        [`classSessions/${classSessionId}/scheduledDay`]: safeScheduleDay(time?.day),
+        [`classSessions/${classSessionId}/scheduledStart`]: safeScheduleTime(time?.start),
         [`classSessions/${classSessionId}/durationMinutes`]: durationMinutes,
-        [`classSessions/${classSessionId}/label`]: cleanScheduleLabel(entry.label),
-        [`classSessions/${classSessionId}/scheduleMode`]: scheduleModeForEntry(entry)
+        [`classSessions/${classSessionId}/label`]: cleanScheduleLabel(existing.label)
       };
 
-      for (const studentId of studentIds) {
+      for (const activeAssignment of activeAssignments) {
+        const studentId = safeStudentId(activeAssignment.studentId);
+        if (!studentId || !teacherProfileCache.students?.[studentId]) continue;
+        const attendanceMode = safeAttendanceMode(activeAssignment.mode);
+        attendanceModes[studentId] = attendanceMode;
         const targetRoom = newRoomId();
         rooms[studentId] = targetRoom;
         const studentName = cleanStudentName(teacherProfileCache.students?.[studentId]?.name) || 'Mokinys';
         const blank = emptyWorkspace();
-        await set(ref(db, `p772Rooms/${targetRoom}/workspace`), {
-          ...blank,
-          meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
-        });
+        await set(ref(db, `p772Rooms/${targetRoom}/workspace`), { ...blank, meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() } });
         let roomAssignment = null;
         if (lessonId) {
-          const metadata = assignmentContentMetadata(entry, { lessonId, title: practiceTitle, taskCount });
+          const metadata = assignmentContentMetadata(existing, { lessonId, title: practiceTitle, taskCount });
           const assignmentKey = newAssignmentKey(lessonId, now);
-          roomAssignment = {
-            schemaVersion: P2_DATA_SCHEMA_VERSION,
-            assignmentKey,
-            lessonId,
-            title: practiceTitle || 'Pamoka',
-            taskCount,
-            contentVersion: metadata.contentVersion,
-            contentHash: metadata.contentHash,
-            taskIds: metadata.taskIds,
-            contentSnapshot: metadata.contentSnapshot,
-            attemptPolicy: sanitizeAttemptPolicy(entry.attemptPolicy),
-            assignedAt: now,
-            assignedBy: me
-          };
+          roomAssignment = { schemaVersion: P2_DATA_SCHEMA_VERSION, assignmentKey, lessonId, title: practiceTitle || 'Pamoka', taskCount, contentVersion: metadata.contentVersion, contentHash: metadata.contentHash, taskIds: metadata.taskIds, contentSnapshot: metadata.contentSnapshot, attemptPolicy: sanitizeAttemptPolicy(existing.attemptPolicy), assignedAt: now, assignedBy: me };
           await set(ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`), roomAssignment);
-          await set(ref(db, `p772Rooms/${targetRoom}/p2/student/progress`), {
-            schemaVersion: P2_DATA_SCHEMA_VERSION,
-            assignmentId: lessonId,
-            assignmentKey,
-            assignmentContentVersion: roomAssignment.contentVersion,
-            status: 'not_started',
-            currentTaskId: '',
-            taskStates: {},
-            startedAt: null,
-            updatedAt: now
-          });
+          await set(ref(db, `p772Rooms/${targetRoom}/p2/student/progress`), { schemaVersion: P2_DATA_SCHEMA_VERSION, assignmentId: lessonId, assignmentKey, assignmentContentVersion: roomAssignment.contentVersion, status: 'not_started', currentTaskId: '', taskStates: {}, startedAt: null, updatedAt: now });
         }
-        await set(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`), {
-          schemaVersion: P2_DATA_SCHEMA_VERSION,
-          studentId,
-          name: studentName,
-          classSessionId,
-          scheduleId,
-          updatedAt: now
-        });
+        await set(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`), { schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name: studentName, classSessionId, scheduleId, attendanceMode, updatedAt: now });
         await set(ref(db, `p772Rooms/${targetRoom}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, createdWithBuild: BUILD, updatedAt: now });
 
-        const recordTitle = practiceTitle || cleanScheduleLabel(entry.label) || ({ intro: 'Pažintinė pamoka', final: 'Paskutinė pamoka', single: 'Pavienė pamoka', weekly: 'Pamoka' }[scheduleModeForEntry(entry)] || (lessonId ? 'Pamoka' : 'Lentos sesija'));
+        const recordTitle = practiceTitle || cleanScheduleLabel(existing.label) || (lessonId ? 'Pamoka' : 'Lentos sesija');
         const initialSummary = cleanLessonSummary({ taskCount });
         const archiveMeta = roomAssignment ? assignmentArchiveMetadata(roomAssignment, initialSummary) : null;
         updates[`students/${studentId}/lessons/${targetRoom}`] = {
-          schemaVersion: P2_DATA_SCHEMA_VERSION,
-          roomId: targetRoom,
-          classSessionId,
-          scheduleId,
-          scheduleDate: dateKey,
-          scheduledDay: safeScheduleDay(entry.day),
-          scheduledStart: safeScheduleTime(entry.start),
-          scheduleMode: scheduleModeForEntry(entry),
-          durationMinutes,
-          lessonId,
-          title: recordTitle,
-          taskCount,
-          assignmentKey: roomAssignment?.assignmentKey || '',
-          contentVersion: roomAssignment?.contentVersion || null,
-          contentHash: roomAssignment?.contentHash || '',
-          taskIds: roomAssignment?.taskIds || [],
-          currentAssignmentKey: roomAssignment?.assignmentKey || '',
-          assignments: archiveMeta ? { [roomAssignment.assignmentKey]: archiveMeta } : {},
-          createdAt: now,
-          linkedAt: now,
-          updatedAt: now,
-          summary: initialSummary
+          schemaVersion: P2_DATA_SCHEMA_VERSION, roomId: targetRoom, classSessionId, scheduleId, scheduleDate: dateKey,
+          scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes,
+          scheduleMode: attendanceMode, attendanceMode,
+          lessonId, title: recordTitle, taskCount,
+          assignmentKey: roomAssignment?.assignmentKey || '', contentVersion: roomAssignment?.contentVersion || null, contentHash: roomAssignment?.contentHash || '', taskIds: roomAssignment?.taskIds || [], currentAssignmentKey: roomAssignment?.assignmentKey || '', assignments: archiveMeta ? { [roomAssignment.assignmentKey]: archiveMeta } : {},
+          createdAt: now, linkedAt: now, updatedAt: now, summary: initialSummary
         };
         updates[`students/${studentId}/updatedAt`] = now;
         updates[`roomLinks/${targetRoom}`] = { studentId, classSessionId, scheduleId, linkedAt: now };
-        updates[`classSessions/${classSessionId}/students/${studentId}`] = { roomId: targetRoom, addedAt: now };
+        updates[`classSessions/${classSessionId}/students/${studentId}`] = { roomId: targetRoom, addedAt: now, attendanceMode };
       }
 
-      updates[`scheduleRuns/${scheduleId}/${dateKey}`] = {
-        schemaVersion: P2_DATA_SCHEMA_VERSION,
-        classSessionId,
-        startedAt: now,
-        rooms,
-        scheduledStart: safeScheduleTime(entry.start),
-        scheduleMode: scheduleModeForEntry(entry),
-        durationMinutes
-      };
+      if (!Object.keys(rooms).length) throw new Error('Šiai datai nėra galiojančių mokinių');
+      updates[`scheduleRuns/${scheduleId}/${dateKey}`] = { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, classSessionId, startedAt: now, rooms, attendanceModes, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes };
       await update(teacherProfileRef, updates);
 
-      // Firebase profilio onValue paprastai atkeliauja iš karto, bet mokinių
-      // skirtukų nerodome priklausomai nuo callback'ų eilės. Iš žinomų ką tik
-      // sukurtos pamokos duomenų iškart atnaujiname vietinį indeksą.
       const localSessionStudents = {};
       const localRoomLinks = { ...(teacherProfileCache.roomLinks || {}) };
       for (const [studentId, targetRoom] of Object.entries(rooms)) {
-        localSessionStudents[studentId] = { roomId: targetRoom, addedAt: now };
+        localSessionStudents[studentId] = { roomId: targetRoom, addedAt: now, attendanceMode: attendanceModes[studentId] };
         localRoomLinks[targetRoom] = { studentId, classSessionId, scheduleId, linkedAt: now };
       }
-      teacherProfileCache.classSessions = {
-        ...(teacherProfileCache.classSessions || {}),
-        [classSessionId]: {
-          schemaVersion: P2_DATA_SCHEMA_VERSION, createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey,
-          scheduledDay: safeScheduleDay(entry.day), scheduledStart: safeScheduleTime(entry.start),
-          durationMinutes, label: cleanScheduleLabel(entry.label), scheduleMode: scheduleModeForEntry(entry), students: localSessionStudents
-        }
-      };
+      teacherProfileCache.classSessions = { ...(teacherProfileCache.classSessions || {}), [classSessionId]: { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes, label: cleanScheduleLabel(existing.label), students: localSessionStudents } };
       teacherProfileCache.roomLinks = localRoomLinks;
-      teacherProfileCache.scheduleRuns = {
-        ...(teacherProfileCache.scheduleRuns || {}),
-        [scheduleId]: {
-          ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}),
-          [dateKey]: { schemaVersion: P2_DATA_SCHEMA_VERSION, classSessionId, startedAt: now, rooms, scheduledStart: safeScheduleTime(entry.start), scheduleMode: scheduleModeForEntry(entry), durationMinutes }
-        }
-      };
+      teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, classSessionId, startedAt: now, rooms, attendanceModes, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes } } };
       emitTeacherProfile();
-
       const firstRoom = Object.values(rooms)[0] || '';
       bridge.showToast?.('Pamoka atidaryta');
       window.dispatchEvent(new CustomEvent('p2:schedule-started', { detail: { scheduleId, dateKey, classSessionId, firstRoom, rooms } }));
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.6 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.7 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
-    bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
+    bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
   }
 });
+
 
 window.addEventListener('p2:students-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;

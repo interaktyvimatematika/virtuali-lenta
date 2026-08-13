@@ -6763,7 +6763,7 @@ body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
   .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.6 · datos pagrindu veikiantis pamokų tvarkaraštis */
+/* P2-SPLIT-P2.5-P4-P1.7.7 · datos pagrindu veikiantis pamokų tvarkaraštis */
 body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-modal[hidden] { display:none !important; }
 .p2-schedule-modal { position:fixed; inset:0; z-index:2150; display:grid; place-items:center; padding:18px; }
@@ -7194,7 +7194,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-assign-row.is-in-lesson-card{margin-top:10px}
 @media(max-width:900px){.p2-student-lesson-card{grid-template-columns:1fr}.p2-student-lesson-state{min-height:auto}.p2-student-lesson-card-actions{justify-content:flex-start;max-width:none}}
 
-/* P2-SPLIT-P2.5-P4-P1.7.6 · datos, režimai ir savaitės navigacija */
+/* P2-SPLIT-P2.5-P4-P1.7.7 · datos, režimai ir savaitės navigacija */
 .p2-schedule-week-nav{display:flex!important;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .p2-schedule-week-nav .p2-secondary{min-width:38px;padding-inline:10px}
 .p2-schedule-card-mode{justify-self:start;padding:3px 6px;border-radius:999px;background:#eef2f7;color:#647188;font-size:8px;font-weight:900;letter-spacing:.045em;text-transform:uppercase}
@@ -7209,3 +7209,20 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-lesson-status.is-intro{background:#fff6df!important;color:#946d20!important}
 .p2-student-lesson-status.is-final{background:#fff0f0!important;color:#9a5454!important}
 @media(max-width:1200px){.p2-schedule-form-row.three{grid-template-columns:1fr}.p2-schedule-week-toolbar{align-items:flex-start}.p2-schedule-week-nav{justify-content:flex-start}}
+
+/* P2-SPLIT-P2.5-P4-P1.7.7 · pamokos laikas ir mokinio priskyrimai atskirti */
+.p2-schedule-assignment-hint{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:11px 13px;border:1px solid #d8e1f0;border-radius:12px;background:#f7faff;color:#53637a;font-size:10px}
+.p2-schedule-assignment-hint strong{color:#34465f}.p2-schedule-assignment-hint span{color:#7d8999}
+.p2-schedule-card-students span small{margin-left:4px;color:#7a87a0;font-size:8px;font-weight:800}
+.p2-schedule-slot-editor{gap:16px}
+.p2-schedule-editor-section{display:grid;gap:10px;padding:13px;border:1px solid #e2e7ef;border-radius:13px;background:#fbfcfe}
+.p2-schedule-editor-section>h4,.p2-schedule-section-title h4{margin:0;color:#344158;font-size:12px}
+.p2-schedule-section-title{display:flex;align-items:center;justify-content:space-between;gap:10px}.p2-schedule-section-title>span{display:grid;place-items:center;min-width:22px;height:22px;border-radius:999px;background:#eef2f7;color:#607087;font-size:9px;font-weight:900}
+.p2-schedule-current-time{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:10px;background:#fff;border:1px solid #e5eaf1}.p2-schedule-current-time span{color:#8490a0;font-size:9px}.p2-schedule-current-time strong{color:#344158;font-size:10px;text-align:right}
+.p2-schedule-time-history{display:grid;gap:6px}.p2-schedule-time-version{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px;border-radius:9px;background:#fff;border:1px solid #e8ecf2}.p2-schedule-time-version strong{color:#526176;font-size:9px}.p2-schedule-time-version span{color:#7b8798;font-size:9px;text-align:right}.p2-schedule-time-version.is-legacy{border-style:dashed}
+.p2-schedule-change-time{border-top:1px solid #e6ebf2;padding-top:8px}.p2-schedule-change-time summary{cursor:pointer;color:#5068bd;font-size:10px;font-weight:800}.p2-schedule-change-time[open] summary{margin-bottom:10px}
+.p2-schedule-assignments{display:grid;gap:6px}.p2-schedule-assignment-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid #e3e8ef;border-radius:10px;background:#fff}.p2-schedule-assignment-row>div{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}.p2-schedule-assignment-row strong{color:#344158;font-size:10px}.p2-schedule-assignment-row small{color:#8894a4;font-size:9px}.p2-schedule-assignment-row em{color:#9aa4b1;font-size:8px;font-style:normal}.p2-schedule-assignment-row button{padding:6px 8px;border:1px solid #e2dadd;border-radius:8px;background:#fff;color:#8d6570;font-size:9px;cursor:pointer}
+.p2-schedule-assignment-form{display:grid;gap:10px;margin-top:2px;padding:11px;border:1px dashed #d6deea;border-radius:11px;background:#fff}.p2-schedule-assignment-form h5{margin:0;color:#45546a;font-size:10px;text-transform:uppercase;letter-spacing:.045em}.p2-schedule-assignment-form small{color:#8b96a5;font-size:9px;line-height:1.45}
+#p2ScheduleExactDates{display:grid;gap:8px}
+.p2-student-lesson-status.is-recurring{background:#eef3ff!important;color:#5067bc!important}.p2-student-lesson-status.is-dates{background:#f3f1fb!important;color:#6b5e91!important}.p2-student-lesson-status.is-intro{background:#fff6df!important;color:#946d20!important}.p2-student-lesson-status.is-final{background:#fff0f0!important;color:#9a5454!important}
+@media(max-width:650px){.p2-schedule-assignment-hint,.p2-schedule-current-time,.p2-schedule-time-version,.p2-schedule-assignment-row{align-items:flex-start;flex-direction:column}.p2-schedule-current-time strong,.p2-schedule-time-version span{text-align:left}}
