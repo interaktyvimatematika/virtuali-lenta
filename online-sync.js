@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -881,6 +881,29 @@ function localDateKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 function cleanStudentName(value) { return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80); }
+function safeStudentGrade(value) {
+  const grade = Math.round(Number(value) || 0);
+  return grade >= 1 && grade <= 12 ? grade : 0;
+}
+function cleanGuardianRelation(value) {
+  const relation = String(value || '').trim().toLocaleLowerCase('lt-LT');
+  return relation === 'mama' || relation === 'tėtis' || relation === 'kita' ? relation : '';
+}
+function cleanGuardianCustomRelation(value) { return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 40); }
+function cleanGuardianName(value) { return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 80); }
+function normalizedGuardianFields(detail = {}) {
+  let guardianRelation = cleanGuardianRelation(detail.guardianRelation);
+  let guardianCustomRelation = cleanGuardianCustomRelation(detail.guardianCustomRelation);
+  let guardianName = cleanGuardianName(detail.guardianName);
+  if (!guardianRelation || !guardianName || (guardianRelation === 'kita' && !guardianCustomRelation)) {
+    guardianRelation = '';
+    guardianCustomRelation = '';
+    guardianName = '';
+  } else if (guardianRelation !== 'kita') {
+    guardianCustomRelation = '';
+  }
+  return { guardianRelation, guardianCustomRelation, guardianName };
+}
 function cleanStudentNotes(value) { return String(value || '').trim().slice(0, 600); }
 function emitTeacherProfile() {
   if (!teacherProfileId) return;
@@ -1348,7 +1371,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.3.1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.4 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1362,10 +1385,25 @@ window.addEventListener('p2:students-request', async event => {
     if (detail.action === 'add') {
       const name = cleanStudentName(detail.name);
       if (!name) return;
+      const grade = safeStudentGrade(detail.grade);
+      const guardian = normalizedGuardianFields(detail);
       const studentId = newStudentId();
-      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), {
-        schemaVersion: P2_DATA_SCHEMA_VERSION, name, notes: '', createdAt: Date.now(), updatedAt: Date.now(), lessons: {}
-      });
+      const now = Date.now();
+      const record = {
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        name,
+        notes: '',
+        createdAt: now,
+        updatedAt: now,
+        lessons: {}
+      };
+      if (grade) record.grade = grade;
+      if (guardian.guardianRelation) {
+        record.guardianRelation = guardian.guardianRelation;
+        record.guardianName = guardian.guardianName;
+        if (guardian.guardianCustomRelation) record.guardianCustomRelation = guardian.guardianCustomRelation;
+      }
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), record);
       bridge.showToast?.(`Mokinys „${name}“ sukurtas`);
       return;
     }
@@ -1374,8 +1412,17 @@ window.addEventListener('p2:students-request', async event => {
     if (detail.action === 'update') {
       const name = cleanStudentName(detail.name);
       if (!name) return;
+      const grade = safeStudentGrade(detail.grade);
+      const guardian = normalizedGuardianFields(detail);
       await update(ref(db, `p772TeacherProfiles/${teacherProfileId}/students/${studentId}`), {
-        schemaVersion: P2_DATA_SCHEMA_VERSION, name, notes: cleanStudentNotes(detail.notes), updatedAt: Date.now()
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        name,
+        grade: grade || null,
+        guardianRelation: guardian.guardianRelation || null,
+        guardianCustomRelation: guardian.guardianCustomRelation || null,
+        guardianName: guardian.guardianName || null,
+        notes: cleanStudentNotes(detail.notes),
+        updatedAt: Date.now()
       });
       const linkedRooms = Object.entries(teacherProfileCache.roomLinks || {})
         .filter(([, link]) => link?.studentId === studentId)

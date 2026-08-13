@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.3.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -629,6 +629,9 @@
   let scheduleCreateMode = false;
   let scheduleSelectedDay = 0;
   let selectedStudentId = null;
+  let studentSearchQuery = '';
+  let studentGradeFilter = 'all';
+  let studentCreateOpen = false;
   let studentDbSnapshotTimer = null;
   let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
   let roomStudentProfile = null;
@@ -2144,10 +2147,90 @@
     };
   }
 
+  function studentGradeValue(value) {
+    const grade = Math.round(Number(value) || 0);
+    return grade >= 1 && grade <= 12 ? grade : 0;
+  }
+
+  function studentGuardianRelation(value) {
+    const relation = String(value || '').trim().toLocaleLowerCase('lt-LT');
+    return relation === 'mama' || relation === 'tėtis' || relation === 'kita' ? relation : '';
+  }
+
+  function studentGuardianLabel(student) {
+    const relation = studentGuardianRelation(student?.guardianRelation);
+    const name = String(student?.guardianName || '').trim();
+    if (!relation || !name) return '';
+    const custom = String(student?.guardianCustomRelation || '').trim();
+    const relationLabel = relation === 'kita' ? custom : relation;
+    return relationLabel ? `${relationLabel} ${name}` : '';
+  }
+
+  function normalizedStudentName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('lt-LT');
+  }
+
   function studentList() {
     return Object.entries(teacherStudentDb.students || {})
       .map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'lt'));
+      .sort((a, b) => {
+        const gradeA = studentGradeValue(a.grade) || 99;
+        const gradeB = studentGradeValue(b.grade) || 99;
+        return gradeA - gradeB
+          || String(a.name || '').localeCompare(String(b.name || ''), 'lt')
+          || studentGuardianLabel(a).localeCompare(studentGuardianLabel(b), 'lt');
+      });
+  }
+
+  function studentSameNameGroup(student, students = studentList()) {
+    const name = normalizedStudentName(student?.name);
+    if (!name) return [];
+    return students.filter(item => normalizedStudentName(item.name) === name);
+  }
+
+  function studentSameNameGradeGroup(student, students = studentList()) {
+    const grade = studentGradeValue(student?.grade);
+    return studentSameNameGroup(student, students).filter(item => studentGradeValue(item.grade) === grade);
+  }
+
+  function studentTeacherLabel(student, students = studentList(), options = {}) {
+    if (!student) return 'Mokinys';
+    const name = String(student.name || 'Mokinys').trim() || 'Mokinys';
+    const grade = studentGradeValue(student.grade);
+    const sameName = studentSameNameGroup(student, students);
+    const sameNameGrade = studentSameNameGradeGroup(student, students);
+    const parts = [];
+    if ((options.alwaysGrade || sameName.length > 1) && grade) parts.push(`${grade} kl.`);
+    if (sameNameGrade.length > 1) {
+      const guardian = studentGuardianLabel(student);
+      if (guardian) parts.push(guardian);
+    }
+    return parts.length ? `${name} · ${parts.join(' · ')}` : name;
+  }
+
+  function studentMatchesSearch(student, query = studentSearchQuery) {
+    const needle = String(query || '').trim().toLocaleLowerCase('lt-LT');
+    if (!needle) return true;
+    const grade = studentGradeValue(student?.grade);
+    const haystack = [
+      student?.name,
+      grade ? `${grade}` : '',
+      grade ? `${grade} klasė` : '',
+      studentGuardianLabel(student),
+      student?.guardianName,
+      student?.guardianCustomRelation,
+      student?.notes
+    ].map(value => String(value || '').toLocaleLowerCase('lt-LT')).join(' ');
+    return haystack.includes(needle);
+  }
+
+  function filteredStudentList(students = studentList()) {
+    return students.filter(student => {
+      const grade = studentGradeValue(student.grade);
+      const gradeMatches = studentGradeFilter === 'all'
+        || (studentGradeFilter === 'none' ? grade === 0 : grade === Number(studentGradeFilter));
+      return gradeMatches && studentMatchesSearch(student);
+    });
   }
 
   function linkedStudentIdForRoom(roomId = currentRoomId()) {
@@ -2178,10 +2261,11 @@
   function classSessionParticipants(classSessionId = linkedClassSessionIdForRoom()) {
     const session = teacherStudentDb.classSessions?.[classSessionId];
     const entries = Object.entries(session?.students && typeof session.students === 'object' ? session.students : {});
+    const students = studentList();
     return entries.map(([studentId, item]) => ({
       studentId,
       roomId: String(item?.roomId || '').trim().toUpperCase(),
-      name: String(studentRecord(studentId)?.name || 'Mokinys').trim() || 'Mokinys',
+      name: studentTeacherLabel(studentRecord(studentId), students),
       addedAt: Number(item?.addedAt || 0)
     })).filter(item => item.roomId).sort((a, b) => a.addedAt - b.addedAt || a.name.localeCompare(b.name, 'lt'));
   }
@@ -2430,12 +2514,16 @@
     const host = studentsModal.querySelector('#p2StudentsBody');
     if (!host) return;
     const students = studentList();
+    const visibleStudents = filteredStudentList(students);
     const roomId = currentRoomId();
     const linkedStudentId = linkedStudentIdForRoom(roomId);
     if (!selectedStudentId || !teacherStudentDb.students?.[selectedStudentId]) {
       selectedStudentId = linkedStudentId && teacherStudentDb.students?.[linkedStudentId]
         ? linkedStudentId
         : students[0]?.id || null;
+    }
+    if (visibleStudents.length && selectedStudentId && !visibleStudents.some(student => student.id === selectedStudentId)) {
+      selectedStudentId = visibleStudents[0].id;
     }
     const selected = selectedStudentId ? teacherStudentDb.students[selectedStudentId] : null;
     const history = selected ? lessonHistoryForStudent(selected) : [];
@@ -2447,17 +2535,60 @@
     const classParticipants = classSessionParticipants(classSessionId);
     const selectedClassParticipant = classParticipants.find(item => item.studentId === selectedStudentId) || null;
 
-    const listMarkup = students.length ? students.map(student => {
-      const count = lessonHistoryForStudent(student).length;
-      const current = linkedStudentId === student.id;
-      return `<button class="p2-student-list-item ${student.id === selectedStudentId ? 'is-active' : ''}" type="button" data-student-select="${escapeHtml(student.id)}">
-        <span class="p2-student-avatar" aria-hidden="true">${escapeHtml(String(student.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</span>
-        <span><strong>${escapeHtml(student.name || 'Mokinys')}</strong><small>${count} ${count === 1 ? 'pamoka' : 'pamokos'}${current ? ' · dabartinė sesija' : ''}</small></span>
-      </button>`;
-    }).join('') : `<div class="p2-students-empty"><strong>Dar nėra mokinių</strong><span>Įrašyk vardą žemiau ir sukurk pirmą mokinio kortelę.</span></div>`;
+    const presentGrades = Array.from(new Set(students.map(student => studentGradeValue(student.grade)).filter(Boolean))).sort((a, b) => a - b);
+    const hasUngraded = students.some(student => !studentGradeValue(student.grade));
+    const validGradeFilters = new Set(['all', ...presentGrades.map(String), ...(hasUngraded ? ['none'] : [])]);
+    if (!validGradeFilters.has(studentGradeFilter)) studentGradeFilter = 'all';
+    const gradeFilterOptions = [
+      '<option value="all">Visos klasės</option>',
+      ...presentGrades.map(grade => `<option value="${grade}" ${studentGradeFilter === String(grade) ? 'selected' : ''}>${grade} klasė</option>`),
+      ...(hasUngraded ? [`<option value="none" ${studentGradeFilter === 'none' ? 'selected' : ''}>Klasė nenurodyta</option>`] : [])
+    ].join('').replace('value="all"', `value="all" ${studentGradeFilter === 'all' ? 'selected' : ''}`);
 
-    let detailMarkup = `<div class="p2-student-detail-empty"><span aria-hidden="true">♟</span><h3>Pasirink mokinį</h3><p>Sukūrus mokinį čia atsiras jo pamokų istorija ir senų lentų nuorodos.</p></div>`;
+    const grouped = new Map();
+    for (const student of visibleStudents) {
+      const grade = studentGradeValue(student.grade);
+      const key = grade ? String(grade) : 'none';
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(student);
+    }
+    const groupEntries = Array.from(grouped.entries()).sort(([a], [b]) => {
+      if (a === 'none') return 1;
+      if (b === 'none') return -1;
+      return Number(a) - Number(b);
+    });
+
+    const listMarkup = groupEntries.length ? groupEntries.map(([gradeKey, groupStudents]) => {
+      const heading = gradeKey === 'none' ? 'Klasė nenurodyta' : `${gradeKey} klasė`;
+      const items = groupStudents.map(student => {
+        const count = lessonHistoryForStudent(student).length;
+        const current = linkedStudentId === student.id;
+        const duplicate = studentSameNameGradeGroup(student, students).length > 1;
+        const guardian = duplicate ? studentGuardianLabel(student) : '';
+        const identity = duplicate ? (guardian || 'reikia identifikatoriaus') : '';
+        const meta = [identity, `${count} ${count === 1 ? 'pamoka' : 'pamokos'}`, current ? 'dabartinė sesija' : ''].filter(Boolean).join(' · ');
+        return `<button class="p2-student-list-item ${student.id === selectedStudentId ? 'is-active' : ''}" type="button" data-student-select="${escapeHtml(student.id)}">
+          <span class="p2-student-avatar" aria-hidden="true">${escapeHtml(String(student.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</span>
+          <span><strong>${escapeHtml(student.name || 'Mokinys')}</strong><small class="${duplicate && !guardian ? 'needs-id' : ''}">${escapeHtml(meta)}</small></span>
+        </button>`;
+      }).join('');
+      return `<section class="p2-student-group"><div class="p2-student-group-heading"><strong>${escapeHtml(heading)}</strong><span>${groupStudents.length}</span></div>${items}</section>`;
+    }).join('') : (students.length
+      ? `<div class="p2-students-empty"><strong>Mokinių nerasta</strong><span>Pakeisk paiešką arba klasės filtrą.</span></div>`
+      : `<div class="p2-students-empty"><strong>Dar nėra mokinių</strong><span>Paspausk „Naujas mokinys“ ir sukurk pirmą kortelę.</span></div>`);
+
+    const gradeOptions = (selectedGrade = 0) => `<option value="">—</option>${Array.from({ length: 12 }, (_, index) => index + 1).map(grade => `<option value="${grade}" ${grade === selectedGrade ? 'selected' : ''}>${grade}</option>`).join('')}`;
+    const guardianRelationOptions = selectedRelation => {
+      const relation = studentGuardianRelation(selectedRelation);
+      return `<option value="">— Nenurodyta —</option><option value="mama" ${relation === 'mama' ? 'selected' : ''}>Mama</option><option value="tėtis" ${relation === 'tėtis' ? 'selected' : ''}>Tėtis</option><option value="kita" ${relation === 'kita' ? 'selected' : ''}>Kita</option>`;
+    };
+
+    let detailMarkup = `<div class="p2-student-detail-empty"><span aria-hidden="true">♟</span><h3>Pasirink mokinį</h3><p>Sukūrus mokinį čia atsiras jo profilis, pamokų istorija ir senų lentų nuorodos.</p></div>`;
     if (selected) {
+      const selectedGrade = studentGradeValue(selected.grade);
+      const selectedRelation = studentGuardianRelation(selected.guardianRelation);
+      const guardianLabel = studentGuardianLabel(selected);
+      const cardMeta = [selectedGrade ? `${selectedGrade} klasė` : 'Klasė nenurodyta', guardianLabel ? `${guardianLabel} · tik mokytojui` : '', `Sukurta ${formatStudentDate(selected.createdAt, true)}`].filter(Boolean).join(' · ');
       const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === defaultLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
       const historyMarkup = history.length ? history.map(item => {
         const title = item.title || lessonForId(item.lessonId)?.shortTitle || 'Lentos sesija';
@@ -2480,22 +2611,28 @@
       detailMarkup = `
         <div class="p2-student-card-head">
           <div class="p2-student-avatar is-large" aria-hidden="true">${escapeHtml(String(selected.name || 'M').trim().slice(0, 1).toUpperCase() || 'M')}</div>
-          <div><span class="p2-label">Mokinio kortelė</span><h3>${escapeHtml(selected.name || 'Mokinys')}</h3><p>Sukurta ${formatStudentDate(selected.createdAt, true)}</p></div>
+          <div><span class="p2-label">Mokinio kortelė</span><h3>${escapeHtml(selected.name || 'Mokinys')}</h3><p>${escapeHtml(cardMeta)}</p></div>
           <button class="p2-student-danger" type="button" data-student-delete>Pašalinti mokinį</button>
         </div>
         <section class="p2-student-edit-card">
-          <label><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
-          <label><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
-          <button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button>
+          <div class="p2-student-edit-grid">
+            <label><span>Vardas</span><input id="p2StudentNameEdit" value="${escapeHtml(selected.name || '')}" maxlength="80"></label>
+            <label class="p2-student-grade-field"><span>Klasė</span><select id="p2StudentGradeEdit">${gradeOptions(selectedGrade)}</select></label>
+            <label><span>Tėtis / mama / kita</span><select id="p2StudentGuardianRelationEdit">${guardianRelationOptions(selectedRelation)}</select></label>
+            <label data-guardian-custom-field ${selectedRelation === 'kita' ? '' : 'hidden'}><span>Pavadinimas</span><input id="p2StudentGuardianCustomEdit" value="${escapeHtml(selected.guardianCustomRelation || '')}" maxlength="40" placeholder="Pvz. globėja"></label>
+            <label><span>Tėčio / mamos / globėjo vardas</span><input id="p2StudentGuardianNameEdit" value="${escapeHtml(selected.guardianName || '')}" maxlength="80" placeholder="Nebūtina"></label>
+            <label class="p2-student-notes-field"><span>Pastabos</span><textarea id="p2StudentNotesEdit" maxlength="600" placeholder="Nebūtina">${escapeHtml(selected.notes || '')}</textarea></label>
+          </div>
+          <div class="p2-student-edit-footer"><span>Tėčio / mamos / globėjo duomenys saugomi tik mokytojo mokinių bazėje ir į mokinio Room nekopijuojami.</span><button type="button" class="p2-secondary" data-student-save>Įrašyti pakeitimus</button></div>
         </section>
         <section class="p2-student-current-session ${currentLesson || selectedClassParticipant ? 'is-linked' : ''}">
-          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(currentLinkedStudent?.name || 'Mokinys')} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
+          <div class="p2-student-section-heading"><div><span class="p2-label">Dabartinė pamoka</span><h3>${linkedStudentId ? `${escapeHtml(studentTeacherLabel(currentLinkedStudent, students))} · Room ${escapeHtml(roomId || '—')}` : `Room ${escapeHtml(roomId || '—')}`}</h3></div>${currentLesson ? '<span class="p2-status-badge is-assigned">✓ Šio mokinio lenta</span>' : classParticipants.length > 1 ? `<span class="p2-status-badge is-assigned">${classParticipants.length} mokiniai</span>` : ''}</div>
           ${linkedToOther ? (selectedClassParticipant
-            ? `<div class="p2-student-class-info"><strong>${escapeHtml(selected.name || 'Mokinys')}</strong> jau yra šioje pamokoje ir turi atskirą lentą <code>${escapeHtml(selectedClassParticipant.roomId)}</code>.</div>`
-            : `<div class="p2-student-class-info">Dabar atidaryta <strong>${escapeHtml(currentLinkedStudent?.name || 'kito mokinio')}</strong> lenta. Pasirinktam mokiniui <strong>„${escapeHtml(selected.name || 'Mokinys')}“</strong> bus automatiškai sukurta <strong>atskira lenta</strong>, o viršuje atsiras jo vardinis skirtukas.</div>`)
+            ? `<div class="p2-student-class-info"><strong>${escapeHtml(studentTeacherLabel(selected, students))}</strong> jau yra šioje pamokoje ir turi atskirą lentą <code>${escapeHtml(selectedClassParticipant.roomId)}</code>.</div>`
+            : `<div class="p2-student-class-info">Dabar atidaryta <strong>${escapeHtml(studentTeacherLabel(currentLinkedStudent, students))}</strong> lenta. Pasirinktam mokiniui <strong>„${escapeHtml(studentTeacherLabel(selected, students))}“</strong> bus automatiškai sukurta <strong>atskira lenta</strong>, o viršuje atsiras jo vardinis skirtukas.</div>`)
             : ''}
           ${linkedToOther && selectedClassParticipant
-            ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(selected.name || 'Mokinys')}</button></div>`
+            ? `<div class="p2-student-current-actions"><button type="button" class="p2-primary" data-student-switch-class-room="${escapeHtml(selectedClassParticipant.roomId)}">Atidaryti lentą · ${escapeHtml(studentTeacherLabel(selected, students))}</button></div>`
             : `<div class="p2-student-assign-row">
                 <label><span>Pratybos šiam mokiniui</span><select id="p2StudentLessonSelect"><option value="">Tik lenta / nepriskirti naujų pratybų</option>${lessonOptions}</select></label>
                 <button type="button" class="p2-primary" ${linkedToOther ? 'data-student-add-to-class' : 'data-student-link-current'}>${linkedToOther ? 'Pridėti į šią pamoką' : (currentLesson ? 'Atnaujinti pamokos įrašą' : 'Priskirti šią pamoką')}</button>
@@ -2510,7 +2647,23 @@
 
     host.innerHTML = `
       <aside class="p2-students-list-pane">
-        <div class="p2-student-create"><label for="p2NewStudentName">Naujas mokinys</label><div><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"><button type="button" data-student-add>＋</button></div></div>
+        <div class="p2-student-create">
+          <button type="button" class="p2-student-create-toggle" data-student-create-toggle>${studentCreateOpen ? '− Uždaryti formą' : '＋ Naujas mokinys'}</button>
+          <div class="p2-student-create-form" ${studentCreateOpen ? '' : 'hidden'}>
+            <label><span>Vardas</span><input id="p2NewStudentName" maxlength="80" placeholder="Vardas"></label>
+            <div class="p2-student-create-row">
+              <label><span>Klasė</span><select id="p2NewStudentGrade">${gradeOptions(0)}</select></label>
+              <label><span>Kas?</span><select id="p2NewStudentGuardianRelation">${guardianRelationOptions('')}</select></label>
+            </div>
+            <label data-new-guardian-custom-field hidden><span>Pavadinimas</span><input id="p2NewStudentGuardianCustom" maxlength="40" placeholder="Pvz. globėja"></label>
+            <label><span>Tėčio / mamos / globėjo vardas</span><input id="p2NewStudentGuardianName" maxlength="80" placeholder="Nebūtina"></label>
+            <button type="button" class="p2-primary" data-student-add>Sukurti mokinį</button>
+          </div>
+        </div>
+        <div class="p2-student-list-tools">
+          <label class="p2-student-search"><span aria-hidden="true">⌕</span><input id="p2StudentSearch" value="${escapeHtml(studentSearchQuery)}" placeholder="Ieškoti mokinio…" autocomplete="off"></label>
+          <select id="p2StudentGradeFilter" aria-label="Filtruoti pagal klasę">${gradeFilterOptions}</select>
+        </div>
         <div class="p2-students-list">${listMarkup}</div>
         <div class="p2-student-backup-box"><strong>Duomenų sauga</strong><span>Schema v${escapeHtml(String(teacherStudentDb.meta?.schemaVersion || P2_DATA_SCHEMA_VERSION))}. Kopijoje išsaugomi mokiniai, pamokų istorija, rezultatai, tvarkaraštis ir susietų Room lentos.</span><button type="button" class="p2-secondary" data-student-backup>↓ Atsisiųsti atsarginę kopiją</button></div>
         <div class="p2-student-db-id"><span>Šios naršyklės mokytojo bazė</span><code title="Techninis bazės identifikatorius">${escapeHtml(teacherStudentDb.profileId || 'jungiama…')}</code></div>
@@ -2523,30 +2676,84 @@
       window.dispatchEvent(new CustomEvent('p2:backup-request'));
     });
 
+    host.querySelector('[data-student-create-toggle]')?.addEventListener('click', () => {
+      studentCreateOpen = !studentCreateOpen;
+      renderStudentsModal();
+      if (studentCreateOpen) host.querySelector('#p2NewStudentName')?.focus();
+    });
+
+    const searchInput = host.querySelector('#p2StudentSearch');
+    searchInput?.addEventListener('input', () => {
+      const value = String(searchInput.value || '');
+      studentSearchQuery = value;
+      renderStudentsModal();
+      const next = studentsModal?.querySelector('#p2StudentSearch');
+      if (next) {
+        next.focus();
+        try { next.setSelectionRange(value.length, value.length); } catch (_) {}
+      }
+    });
+    host.querySelector('#p2StudentGradeFilter')?.addEventListener('change', event => {
+      studentGradeFilter = String(event.currentTarget?.value || 'all');
+      renderStudentsModal();
+    });
+
     host.querySelectorAll('[data-student-select]').forEach(button => button.addEventListener('click', () => {
       selectedStudentId = button.dataset.studentSelect;
       renderStudentsModal();
     }));
-    const addInput = host.querySelector('#p2NewStudentName');
+
+    const newRelation = host.querySelector('#p2NewStudentGuardianRelation');
+    const syncNewGuardianCustom = () => {
+      const field = host.querySelector('[data-new-guardian-custom-field]');
+      if (field) field.hidden = String(newRelation?.value || '') !== 'kita';
+    };
+    newRelation?.addEventListener('change', syncNewGuardianCustom);
+    syncNewGuardianCustom();
+
     const addStudent = () => {
+      const addInput = host.querySelector('#p2NewStudentName');
       const name = String(addInput?.value || '').trim();
+      const grade = studentGradeValue(host.querySelector('#p2NewStudentGrade')?.value);
+      const guardianRelation = studentGuardianRelation(host.querySelector('#p2NewStudentGuardianRelation')?.value);
+      const guardianCustomRelation = String(host.querySelector('#p2NewStudentGuardianCustom')?.value || '').trim();
+      const guardianName = String(host.querySelector('#p2NewStudentGuardianName')?.value || '').trim();
       if (!name) { addInput?.focus(); return; }
-      requestStudentDb({ action: 'add', name });
-      if (addInput) addInput.value = '';
+      if (guardianRelation && !guardianName) { toast('Įrašyk tėčio, mamos arba globėjo vardą'); host.querySelector('#p2NewStudentGuardianName')?.focus(); return; }
+      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk ryšio pavadinimą'); host.querySelector('#p2NewStudentGuardianCustom')?.focus(); return; }
+      requestStudentDb({ action: 'add', name, grade, guardianRelation, guardianCustomRelation, guardianName });
+      studentCreateOpen = false;
     };
     host.querySelector('[data-student-add]')?.addEventListener('click', addStudent);
-    addInput?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addStudent(); } });
+    host.querySelector('#p2NewStudentName')?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addStudent(); } });
+
+    const editRelation = host.querySelector('#p2StudentGuardianRelationEdit');
+    const syncEditGuardianCustom = () => {
+      const field = host.querySelector('[data-guardian-custom-field]');
+      if (field) field.hidden = String(editRelation?.value || '') !== 'kita';
+    };
+    editRelation?.addEventListener('change', syncEditGuardianCustom);
+    syncEditGuardianCustom();
 
     host.querySelector('[data-student-save]')?.addEventListener('click', () => {
-      if (!selectedStudentId) return;
+      if (!selectedStudentId || !selected) return;
+      const guardianRelation = studentGuardianRelation(editRelation?.value);
+      const guardianCustomRelation = String(host.querySelector('#p2StudentGuardianCustomEdit')?.value || '').trim();
+      const guardianName = String(host.querySelector('#p2StudentGuardianNameEdit')?.value || '').trim();
+      if (guardianRelation && !guardianName) { toast('Įrašyk tėčio, mamos arba globėjo vardą'); host.querySelector('#p2StudentGuardianNameEdit')?.focus(); return; }
+      if (guardianRelation === 'kita' && !guardianCustomRelation) { toast('Nurodyk ryšio pavadinimą'); host.querySelector('#p2StudentGuardianCustomEdit')?.focus(); return; }
       requestStudentDb({
         action: 'update', studentId: selectedStudentId,
         name: host.querySelector('#p2StudentNameEdit')?.value || selected.name || '',
+        grade: studentGradeValue(host.querySelector('#p2StudentGradeEdit')?.value),
+        guardianRelation,
+        guardianCustomRelation,
+        guardianName,
         notes: host.querySelector('#p2StudentNotesEdit')?.value || ''
       });
     });
     host.querySelector('[data-student-delete]')?.addEventListener('click', () => {
-      if (!selectedStudentId) return;
+      if (!selectedStudentId || !selected) return;
       if (!window.confirm(`Pašalinti mokinį „${selected.name || 'Mokinys'}“ iš mokinių bazės? Senos Room lentos nebus ištrintos.`)) return;
       requestStudentDb({ action: 'delete', studentId: selectedStudentId });
       selectedStudentId = null;
@@ -2596,7 +2803,6 @@
       requestStudentDb({ action: 'unlink-room', studentId: selectedStudentId, roomId: oldRoom });
     }));
   }
-
   function openStudentsDatabase() {
     if (role() !== 'teacher') return;
     ensureStudentsModal();
@@ -2700,7 +2906,8 @@
   }
 
   function scheduleStudentNames(entry) {
-    return scheduleStudentIds(entry).map(id => String(teacherStudentDb.students?.[id]?.name || 'Mokinys').trim() || 'Mokinys');
+    const students = studentList();
+    return scheduleStudentIds(entry).map(id => studentTeacherLabel(studentRecord(id), students, { alwaysGrade: true }));
   }
 
   function scheduleRunRooms(run) {
@@ -2814,7 +3021,7 @@
       const runRooms = scheduleRunRooms(run);
       const dayOptions = SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === editDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
       const lessonOptions = LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === editLessonId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
-      const studentChecks = students.length ? students.map(student => `<label class="p2-schedule-student-check"><input type="checkbox" value="${escapeHtml(student.id)}" ${selectedIds.has(student.id) ? 'checked' : ''}><span class="p2-student-avatar">${escapeHtml(String(student.name || 'M').trim().slice(0,1).toUpperCase() || 'M')}</span><strong>${escapeHtml(student.name || 'Mokinys')}</strong></label>`).join('') : '<div class="p2-schedule-no-students">Pirmiausia sukurk mokinius skiltyje „Mokiniai“.</div>';
+      const studentChecks = students.length ? students.map(student => `<label class="p2-schedule-student-check"><input type="checkbox" value="${escapeHtml(student.id)}" ${selectedIds.has(student.id) ? 'checked' : ''}><span class="p2-student-avatar">${escapeHtml(String(student.name || 'M').trim().slice(0,1).toUpperCase() || 'M')}</span><strong>${escapeHtml(studentTeacherLabel(student, students, { alwaysGrade: true }))}</strong></label>`).join('') : '<div class="p2-schedule-no-students">Pirmiausia sukurk mokinius skiltyje „Mokiniai“.</div>';
       const openCaption = run && runRooms.length ? 'Atidaryti pamoką' : 'Atidaryti pamoką';
       const openHint = run && runRooms.length
         ? `Šiandienos pamoka jau pradėta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}. Atidarysi esamas mokinių lentas.`

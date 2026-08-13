@@ -6867,7 +6867,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 
 /* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
 
-/* P2-SPLIT-P2.5-P4-P1.7.3.1 · duomenų saugos / atsarginės kopijos kortelė */
+/* P2-SPLIT-P2.5-P4-P1.7.4 · duomenų saugos / atsarginės kopijos kortelė */
 .p2-student-backup-box {
   margin: 12px 0 8px;
   padding: 12px;
@@ -6880,3 +6880,55 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-backup-box strong { font-size: 13px; }
 .p2-student-backup-box span { font-size: 11px; line-height: 1.4; color: #64748b; }
 .p2-student-backup-box button { width: 100%; justify-content: center; }
+
+/* P2-SPLIT-P2.5-P4-P1.7.4 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
+.p2-students-body { grid-template-columns:340px minmax(0,1fr); }
+.p2-students-list-pane { gap:12px; }
+.p2-student-create { display:grid; gap:9px; }
+.p2-student-create-toggle { width:100%; min-height:39px; border:1px solid #ced7e3; border-radius:11px; background:#fff; color:#344158; font:inherit; font-size:12px; font-weight:800; cursor:pointer; }
+.p2-student-create-toggle:hover { background:#f5f7fa; border-color:#bbc7d7; }
+.p2-student-create-form[hidden], .p2-student-edit-card [hidden] { display:none !important; }
+.p2-student-create-form { display:grid; gap:9px; padding:11px; border:1px solid #dfe5ee; border-radius:13px; background:#fff; box-shadow:0 5px 16px rgba(15,23,42,.04); }
+.p2-student-create-form label { min-width:0; display:grid; gap:5px; color:#69768a; font-size:10px; font-weight:800; }
+.p2-student-create-form input, .p2-student-create-form select { width:100%; min-width:0; box-sizing:border-box; height:37px; border:1px solid #d7dee9; border-radius:9px; padding:0 9px; background:#fff; color:#263447; font:inherit; font-size:12px; outline:none; }
+.p2-student-create-form input:focus, .p2-student-create-form select:focus { border-color:#8697ad; box-shadow:0 0 0 3px rgba(100,116,139,.09); }
+.p2-student-create-form > button { width:100%; min-height:37px; }
+.p2-student-create-row { display:grid; grid-template-columns:90px minmax(0,1fr); gap:8px; }
+.p2-student-list-tools { display:grid; grid-template-columns:minmax(0,1fr) 112px; gap:7px; }
+.p2-student-search { min-width:0; height:38px; display:grid; grid-template-columns:28px minmax(0,1fr); align-items:center; border:1px solid #d9e0ea; border-radius:10px; background:#fff; overflow:hidden; }
+.p2-student-search > span { display:grid; place-items:center; color:#8a96a8; font-size:17px; }
+.p2-student-search input { min-width:0; height:100%; border:0; outline:0; padding:0 8px 0 0; background:transparent; color:#2d394d; font:inherit; font-size:11px; }
+.p2-student-list-tools > select { min-width:0; height:38px; border:1px solid #d9e0ea; border-radius:10px; padding:0 8px; background:#fff; color:#536176; font:inherit; font-size:10px; outline:none; }
+.p2-student-search:focus-within, .p2-student-list-tools > select:focus { border-color:#8697ad; box-shadow:0 0 0 3px rgba(100,116,139,.08); }
+.p2-students-list { gap:12px; }
+.p2-student-group { display:grid; gap:5px; }
+.p2-student-group-heading { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:25px; padding:3px 7px; background:rgba(248,250,252,.96); color:#6d798b; backdrop-filter:blur(5px); }
+.p2-student-group-heading strong { font-size:10px; text-transform:uppercase; letter-spacing:.065em; }
+.p2-student-group-heading span { min-width:21px; height:19px; display:grid; place-items:center; padding:0 5px; border-radius:999px; background:#e8edf4; color:#657287; font-size:9px; font-weight:800; }
+.p2-student-list-item small.needs-id { color:#a96b32; font-weight:700; }
+.p2-student-edit-card { display:grid; grid-template-columns:1fr; gap:12px; align-items:stretch; }
+.p2-student-edit-grid { display:grid; grid-template-columns:minmax(150px,1fr) 90px minmax(150px,1fr) minmax(150px,1fr); gap:10px; align-items:end; }
+.p2-student-edit-grid label { min-width:0; }
+.p2-student-edit-grid select { width:100%; min-width:0; height:38px; border:1px solid #d8e0eb; border-radius:10px; padding:0 9px; background:#fff; color:#263447; font:inherit; outline:none; }
+.p2-student-edit-grid input { width:100%; box-sizing:border-box; }
+.p2-student-edit-grid .p2-student-notes-field { grid-column:1 / -1; }
+.p2-student-edit-grid textarea { width:100%; box-sizing:border-box; min-height:58px; }
+.p2-student-edit-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-top:2px; }
+.p2-student-edit-footer > span { max-width:620px; color:#8590a0; font-size:9px; line-height:1.45; }
+.p2-student-edit-footer > button { flex:0 0 auto; }
+@media(max-width:1050px) {
+  .p2-students-body { grid-template-columns:310px minmax(0,1fr); }
+  .p2-student-edit-grid { grid-template-columns:minmax(140px,1fr) 84px minmax(140px,1fr); }
+  .p2-student-edit-grid [data-guardian-custom-field] { grid-column:auto; }
+}
+@media(max-width:850px) {
+  .p2-students-body { grid-template-columns:1fr; }
+  .p2-students-list-pane { max-height:330px; }
+  .p2-student-list-tools { grid-template-columns:minmax(0,1fr) 118px; }
+  .p2-student-edit-grid { grid-template-columns:1fr; }
+  .p2-student-edit-grid .p2-student-notes-field { grid-column:auto; }
+  .p2-student-edit-footer { align-items:stretch; flex-direction:column; }
+  .p2-student-edit-footer > button { width:100%; }
+}
+.p2-student-create .p2-student-create-toggle { width:100%; }
+.p2-student-create > .p2-student-create-form { width:100%; box-sizing:border-box; display:grid; }
