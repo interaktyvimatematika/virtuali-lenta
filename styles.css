@@ -6867,7 +6867,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 
 /* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · duomenų saugos / atsarginės kopijos kortelė */
+/* P2-SPLIT-P2.5-P4-P1.7.4.4 · duomenų saugos / atsarginės kopijos kortelė */
 .p2-student-backup-box {
   margin: 12px 0 8px;
   padding: 12px;
@@ -6881,7 +6881,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-backup-box span { font-size: 11px; line-height: 1.4; color: #64748b; }
 .p2-student-backup-box button { width: 100%; justify-content: center; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
+/* P2-SPLIT-P2.5-P4-P1.7.4.4 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
 .p2-students-body { grid-template-columns:340px minmax(0,1fr); }
 .p2-students-list-pane { gap:12px; }
 .p2-student-create { display:grid; gap:9px; }
@@ -6933,7 +6933,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-create .p2-student-create-toggle { width:100%; }
 .p2-student-create > .p2-student-create-form { width:100%; box-sizing:border-box; display:grid; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
+/* P2-SPLIT-P2.5-P4-P1.7.4.4 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
 .p2-students-panel{width:min(1260px,96vw)}
 .p2-students-body{grid-template-columns:255px minmax(0,1fr)}
 .p2-students-list-pane{padding:18px 14px 14px;gap:12px}
@@ -6978,7 +6978,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media(max-width:850px){.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{max-height:none;border-right:0;border-bottom:1px solid #e8edf4}.p2-student-side-summary,.p2-student-db-id{display:none}.p2-student-backup-box{margin-top:0}.p2-student-detail-pane{padding:16px}.p2-student-overview-grid{grid-template-columns:1fr}.p2-students-overview-head{align-items:flex-start;flex-direction:column}.p2-student-create-page-grid{grid-template-columns:1fr}.p2-student-create-page-footer{flex-direction:column-reverse}.p2-student-create-page-footer button{width:100%}}
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
+/* P2-SPLIT-P2.5-P4-P1.7.4.4 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
 .p2-students-body{display:block;min-height:0}
 .p2-student-detail-pane-full{width:100%;height:100%;box-sizing:border-box;padding:22px 30px 30px;background:#fff;overflow:auto}
 .p2-students-overview{max-width:1180px;margin:0 auto;gap:16px}
@@ -7006,50 +7006,40 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-student-backup-inline{width:100%}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · paprastesnė globėjo įvedimo seka */
-.p2-student-create-page-grid [data-new-guardian-custom-field] { grid-column:3; }
-.p2-student-edit-grid [data-guardian-custom-field] { grid-column:auto; }
-@media(max-width:850px){
-  .p2-student-create-page-grid [data-new-guardian-custom-field] { grid-column:auto; }
-}
-
-/* P2-SPLIT-P2.5-P4-P1.7.4.3 · aiški globėjo duomenų seka */
+/* P2-SPLIT-P2.5-P4-P1.7.4.4 · globėjo laukai vienoje dinaminėje eilutėje */
 .p2-student-create-page-grid{
-  grid-template-columns:160px minmax(240px,1fr) 110px;
-  grid-template-areas:
-    "student student grade"
-    "relation guardian guardian"
-    "custom custom custom";
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 140px;
+  gap:12px 14px;
 }
-.p2-create-student-name{grid-area:student}
-.p2-create-grade{grid-area:grade}
-.p2-create-relation{grid-area:relation}
-.p2-create-guardian-name{grid-area:guardian}
-.p2-create-guardian-custom{grid-area:custom}
-.p2-student-create-page-grid [data-new-guardian-custom-field]{grid-column:auto}
+.p2-create-student-name,.p2-create-grade,.p2-edit-student-name,.p2-edit-grade{grid-column:auto}
+
+.p2-student-create-page-grid .p2-create-guardian-row{grid-column:1 / -1}
+.p2-guardian-row{
+  display:flex;
+  align-items:end;
+  gap:14px;
+  margin-top:14px;
+}
+.p2-guardian-row > label{min-width:0}
+.p2-guardian-row .p2-create-relation,.p2-guardian-row .p2-edit-relation{flex:0 0 170px}
+.p2-guardian-row .p2-create-guardian-custom,.p2-guardian-row .p2-edit-guardian-custom{flex:0 0 220px}
+.p2-guardian-row .p2-create-guardian-name,.p2-guardian-row .p2-edit-guardian-name{flex:1 1 280px}
+.p2-guardian-row [hidden]{display:none!important}
 
 .p2-student-edit-grid{
-  grid-template-columns:minmax(170px,1fr) 90px 150px minmax(200px,1fr);
-  grid-template-areas:
-    "student grade relation guardian"
-    "custom custom custom custom"
-    "notes notes notes notes";
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 110px;
+  gap:12px 14px;
 }
-.p2-edit-student-name{grid-area:student}
-.p2-edit-grade{grid-area:grade}
-.p2-edit-relation{grid-area:relation}
-.p2-edit-guardian-name{grid-area:guardian}
-.p2-edit-guardian-custom{grid-area:custom}
-.p2-student-edit-grid .p2-student-notes-field{grid-area:notes;grid-column:auto}
-.p2-student-edit-grid [data-guardian-custom-field]{grid-column:auto}
+.p2-student-edit-grid .p2-edit-guardian-row{grid-column:1 / -1;margin-top:0}
+.p2-student-edit-grid .p2-student-notes-field{grid-column:1 / -1}
 
 @media(max-width:850px){
-  .p2-student-create-page-grid,
-  .p2-student-edit-grid{
-    grid-template-columns:1fr;
-    grid-template-areas:none;
-  }
-  .p2-create-student-name,.p2-create-grade,.p2-create-relation,.p2-create-guardian-name,.p2-create-guardian-custom,
-  .p2-edit-student-name,.p2-edit-grade,.p2-edit-relation,.p2-edit-guardian-name,.p2-edit-guardian-custom,
-  .p2-student-edit-grid .p2-student-notes-field{grid-area:auto;grid-column:auto}
+  .p2-student-create-page-grid,.p2-student-edit-grid{grid-template-columns:1fr}
+  .p2-student-edit-grid .p2-edit-guardian-row,.p2-student-edit-grid .p2-student-notes-field{grid-column:auto}
+  .p2-guardian-row{align-items:stretch;flex-direction:column}
+  .p2-guardian-row .p2-create-relation,.p2-guardian-row .p2-edit-relation,
+  .p2-guardian-row .p2-create-guardian-custom,.p2-guardian-row .p2-edit-guardian-custom,
+  .p2-guardian-row .p2-create-guardian-name,.p2-guardian-row .p2-edit-guardian-name{flex:1 1 auto;width:100%}
 }
