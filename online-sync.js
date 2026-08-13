@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.4.4';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.5';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -1371,7 +1371,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.4.4 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.5 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(error?.code === 'schedule-conflict' ? message : 'Nepavyko atnaujinti tvarkaraščio');
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1456,6 +1456,41 @@ window.addEventListener('p2:students-request', async event => {
     }
     const targetRoom = safeRoom(detail.roomId);
     if (!targetRoom) return;
+    if (detail.action === 'get-room-history') {
+      const lessonRecord = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom];
+      const linkedStudentId = safeStudentId(teacherProfileCache.roomLinks?.[targetRoom]?.studentId);
+      const belongsToStudent = Boolean(lessonRecord && typeof lessonRecord === 'object') || linkedStudentId === studentId;
+      if (!belongsToStudent || (linkedStudentId && linkedStudentId !== studentId)) {
+        window.dispatchEvent(new CustomEvent('p2:student-room-history', {
+          detail: { studentId, roomId: targetRoom, error: 'Ši Room nesusieta su pasirinktu mokiniu.' }
+        }));
+        return;
+      }
+      try {
+        // Sąmoningai skaitome tik P2 pratybų šaką. Lentos workspace gali būti
+        // labai didelis, todėl mokinio kortelės istorijos peržiūra jo nekrauna.
+        const snapshot = await get(ref(db, `p772Rooms/${targetRoom}/p2`));
+        const raw = snapshot.val() || {};
+        window.dispatchEvent(new CustomEvent('p2:student-room-history', {
+          detail: {
+            studentId,
+            roomId: targetRoom,
+            data: {
+              assignment: raw?.student?.assignment || null,
+              progress: raw?.student?.progress || null,
+              history: raw?.history && typeof raw.history === 'object' ? raw.history : {},
+              fetchedAt: Date.now()
+            }
+          }
+        }));
+      } catch (error) {
+        console.error('Mokinio pamokos istorijos skaitymo klaida', error);
+        window.dispatchEvent(new CustomEvent('p2:student-room-history', {
+          detail: { studentId, roomId: targetRoom, error: 'Nepavyko perskaityti šios pamokos eigos.' }
+        }));
+      }
+      return;
+    }
     if (detail.action === 'backfill-legacy-assignment') {
       const existingLessonRecord = teacherProfileCache.students?.[studentId]?.lessons?.[targetRoom];
       const linkedStudentId = safeStudentId(teacherProfileCache.roomLinks?.[targetRoom]?.studentId);

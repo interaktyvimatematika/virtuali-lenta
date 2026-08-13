@@ -6867,7 +6867,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 
 /* P2-SPLIT-P2.5-P4-P1.7.2 · pamokos kortelė atidaroma vienu paspaudimu */
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.4 · duomenų saugos / atsarginės kopijos kortelė */
+/* P2-SPLIT-P2.5-P4-P1.7.5 · duomenų saugos / atsarginės kopijos kortelė */
 .p2-student-backup-box {
   margin: 12px 0 8px;
   padding: 12px;
@@ -6881,7 +6881,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-backup-box span { font-size: 11px; line-height: 1.4; color: #64748b; }
 .p2-student-backup-box button { width: 100%; justify-content: center; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.4 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
+/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinių sąrašas pagal klases, paieška ir privatūs identifikatoriai */
 .p2-students-body { grid-template-columns:340px minmax(0,1fr); }
 .p2-students-list-pane { gap:12px; }
 .p2-student-create { display:grid; gap:9px; }
@@ -6933,7 +6933,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-create .p2-student-create-toggle { width:100%; }
 .p2-student-create > .p2-student-create-form { width:100%; box-sizing:border-box; display:grid; }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.4 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
+/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinių bazės pradinis vaizdas: sąrašas dešinėje */
 .p2-students-panel{width:min(1260px,96vw)}
 .p2-students-body{grid-template-columns:255px minmax(0,1fr)}
 .p2-students-list-pane{padding:18px 14px 14px;gap:12px}
@@ -6978,7 +6978,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media(max-width:850px){.p2-students-body{grid-template-columns:1fr}.p2-students-list-pane{max-height:none;border-right:0;border-bottom:1px solid #e8edf4}.p2-student-side-summary,.p2-student-db-id{display:none}.p2-student-backup-box{margin-top:0}.p2-student-detail-pane{padding:16px}.p2-student-overview-grid{grid-template-columns:1fr}.p2-students-overview-head{align-items:flex-start;flex-direction:column}.p2-student-create-page-grid{grid-template-columns:1fr}.p2-student-create-page-footer{flex-direction:column-reverse}.p2-student-create-page-footer button{width:100%}}
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.4 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
+/* P2-SPLIT-P2.5-P4-P1.7.5 · vieno vaizdo mokinių bazė: paieška virš sąrašo */
 .p2-students-body{display:block;min-height:0}
 .p2-student-detail-pane-full{width:100%;height:100%;box-sizing:border-box;padding:22px 30px 30px;background:#fff;overflow:auto}
 .p2-students-overview{max-width:1180px;margin:0 auto;gap:16px}
@@ -7006,7 +7006,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-student-backup-inline{width:100%}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.4.4 · globėjo laukai vienoje dinaminėje eilutėje */
+/* P2-SPLIT-P2.5-P4-P1.7.5 · globėjo laukai vienoje dinaminėje eilutėje */
 .p2-student-create-page-grid{
   display:grid;
   grid-template-columns:minmax(0,1fr) 140px;
@@ -7042,4 +7042,75 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
   .p2-guardian-row .p2-create-relation,.p2-guardian-row .p2-edit-relation,
   .p2-guardian-row .p2-create-guardian-custom,.p2-guardian-row .p2-edit-guardian-custom,
   .p2-guardian-row .p2-create-guardian-name,.p2-guardian-row .p2-edit-guardian-name{flex:1 1 auto;width:100%}
+}
+
+/* P2-SPLIT-P2.5-P4-P1.7.5 · mokinio kortelės pamokų istorija ir užduočių peržiūra */
+.p2-student-history-item{display:block;padding:0;overflow:hidden}
+.p2-student-history-summary-row{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
+.p2-student-history-item.is-expanded{border-color:#cbd8e8;box-shadow:0 8px 24px rgba(34,55,82,.06)}
+.p2-student-history-title{flex-wrap:wrap}
+.p2-student-lesson-status{font-size:9px!important;text-transform:uppercase;letter-spacing:.055em;border-radius:999px;padding:3px 7px!important;background:#eef2f7!important;color:#66758a!important}
+.p2-student-lesson-status.is-completed{background:#edf7f0!important;color:#3f7650!important}
+.p2-student-lesson-status.is-progress{background:#eef4fc!important;color:#526e93!important}
+.p2-student-lesson-status.is-not-started{background:#f4f5f7!important;color:#7a8492!important}
+.p2-student-lesson-status.is-board{background:#f4f1fb!important;color:#6c6284!important}
+.p2-student-history-title span.is-current-room{background:#e8f1fc;color:#496983}
+.p2-student-history-progress{flex-wrap:wrap}
+.p2-student-history-progress strong{font-size:11px;color:#445267}
+.p2-student-history-progress>span{color:#7c899a}
+.p2-student-history-actions button.p2-history-detail-toggle{border-color:#cbd8e8;background:#f7faff;color:#385876;font-weight:700}
+.p2-student-history-actions button.p2-history-detail-toggle.is-open{background:#eaf2fb}
+.p2-student-history-actions button.is-secondary{color:#68768a}
+.p2-student-history-detail{border-top:1px solid #e4eaf2;background:#f9fbfd;padding:16px;display:grid;gap:14px}
+.p2-student-history-detail.is-loading,.p2-student-history-detail.is-error{display:flex;align-items:center;gap:12px;color:#647286}
+.p2-student-history-detail.is-loading strong,.p2-student-history-detail.is-error strong{display:block;color:#344258;font-size:12px}
+.p2-student-history-detail.is-loading small,.p2-student-history-detail.is-error small{display:block;margin-top:3px;color:#8793a3;font-size:10px}
+.p2-student-history-detail.is-error{justify-content:space-between;background:#fffafb}
+.p2-student-history-detail.is-error button{border:1px solid #dccfd2;background:#fff;border-radius:9px;padding:7px 10px;color:#765762;cursor:pointer}
+.p2-history-loader{width:18px;height:18px;border:2px solid #d8e1ec;border-top-color:#607894;border-radius:50%;animation:p2-history-spin .8s linear infinite;flex:0 0 auto}
+@keyframes p2-history-spin{to{transform:rotate(360deg)}}
+.p2-history-board-hint{border:1px solid #dce5ef;background:#fff;border-radius:13px;padding:12px 13px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.p2-history-board-hint>div{display:flex;align-items:center;gap:10px;min-width:0}
+.p2-history-board-hint>div>span{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#edf3f9;color:#526b86;font-size:15px;flex:0 0 auto}
+.p2-history-board-hint strong{display:block;color:#344258;font-size:11px}
+.p2-history-board-hint small{display:block;margin-top:2px;color:#8591a1;font-size:9px}
+.p2-history-board-hint button{border:1px solid #cfdbe8;background:#fff;border-radius:9px;padding:8px 10px;color:#465d76;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.p2-history-board-hint button:hover{background:#f3f7fb}
+.p2-history-practice-run{border:1px solid #dfe6ef;background:#fff;border-radius:14px;overflow:hidden}
+.p2-history-practice-run.is-older{border-style:dashed}
+.p2-history-practice-head{padding:12px 13px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #edf1f5}
+.p2-history-practice-head strong{display:block;color:#29364a;font-size:12px}
+.p2-history-practice-head small{display:block;margin-top:3px;color:#8995a4;font-size:9px}
+.p2-history-practice-head>span{font-size:9px;border-radius:999px;padding:4px 7px;background:#edf4fb;color:#56708e;white-space:nowrap}
+.p2-history-run-stats{padding:10px 13px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;background:#fafbfd;border-bottom:1px solid #edf1f5}
+.p2-history-run-stats>div{border:1px solid #e7ebf1;border-radius:9px;background:#fff;padding:8px 9px}
+.p2-history-run-stats span{display:block;color:#8591a1;font-size:8px;text-transform:uppercase;letter-spacing:.045em}
+.p2-history-run-stats strong{display:block;margin-top:3px;color:#344258;font-size:12px}
+.p2-history-task-table{display:grid}
+.p2-history-task-row{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(140px,auto);gap:10px;align-items:center;padding:10px 13px;border-top:1px solid #edf1f5}
+.p2-history-task-row:first-child{border-top:0}
+.p2-history-task-row:hover{background:#fbfcfe}
+.p2-history-task-number{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:#eef2f6;color:#647286;font-size:9px;font-weight:800}
+.p2-history-task-copy{min-width:0}
+.p2-history-task-copy strong{display:block;color:#344258;font-size:10px}
+.p2-history-task-copy small{display:block;margin-top:2px;color:#8a95a4;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p2-history-task-copy p{margin:5px 0 0;color:#536176;font-size:9px;white-space:normal;overflow-wrap:anywhere}
+.p2-history-task-copy p span{margin-right:5px;color:#8b96a5}
+.p2-history-task-result{text-align:right}
+.p2-history-task-status{display:inline-flex;border-radius:999px;padding:3px 7px;background:#eef2f6;color:#66758a;font-size:8px;font-weight:800;white-space:nowrap}
+.p2-history-task-status.is-good{background:#edf7f0;color:#3f7650}
+.p2-history-task-status.is-help{background:#fff6df;color:#866c31}
+.p2-history-task-status.is-repeat{background:#fff0f0;color:#965c5c}
+.p2-history-task-status.is-started{background:#eef4fc;color:#526e93}
+.p2-history-task-result small{display:block;margin-top:4px;color:#909baa;font-size:8px;white-space:nowrap}
+.p2-history-no-snapshot{padding:14px;border:1px dashed #dce3ec;border-radius:11px;background:#fff;color:#7d8999}
+.p2-history-no-snapshot strong{display:block;color:#4a586b;font-size:10px}
+.p2-history-no-snapshot span{display:block;margin-top:3px;font-size:9px}
+@media(max-width:850px){
+  .p2-student-history-summary-row{grid-template-columns:1fr}
+  .p2-student-history-actions{justify-content:flex-start}
+  .p2-history-board-hint{align-items:flex-start;flex-direction:column}
+  .p2-history-run-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .p2-history-task-row{grid-template-columns:26px minmax(0,1fr)}
+  .p2-history-task-result{grid-column:2;text-align:left}
 }
