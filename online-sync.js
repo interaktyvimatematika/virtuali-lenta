@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.26';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.27';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -263,7 +263,7 @@ function resolveTeacherProfileId() {
 }
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
-let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {}, library: null };
+let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
 
 let roomRef;
 let workspaceRef;
@@ -1345,47 +1345,10 @@ function emitTeacherProfile() {
       roomLinks: teacherProfileCache.roomLinks || {},
       classSessions: teacherProfileCache.classSessions || {},
       scheduleEntries: teacherProfileCache.scheduleEntries || {},
-      scheduleRuns: teacherProfileCache.scheduleRuns || {},
-      library: teacherProfileCache.library || null
+      scheduleRuns: teacherProfileCache.scheduleRuns || {}
     }
   }));
 }
-
-function emitTeacherLibraryState() {
-  if (!teacherProfileId || onlineRole !== 'teacher') return;
-  const library = teacherProfileCache.library && typeof teacherProfileCache.library === 'object' ? teacherProfileCache.library : null;
-  window.dispatchEvent(new CustomEvent('p772:teacher-library-state', {
-    detail: {
-      exists: Boolean(library),
-      library,
-      updatedAt: Math.max(0, Number(library?.updatedAt || 0))
-    }
-  }));
-}
-
-function sanitizeTeacherLibrary(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Netinkama bibliotekos būsena.');
-  const tasks = Array.isArray(value.tasks) ? value.tasks : [];
-  const practiceSets = Array.isArray(value.practiceSets) ? value.practiceSets : [];
-  const payload = { schemaVersion: 1, tasks, practiceSets };
-  const json = JSON.stringify(payload);
-  if (json.length > 12 * 1024 * 1024) throw new Error('Biblioteka per didelė sinchronizuoti vienu įrašu.');
-  return JSON.parse(json);
-}
-
-window.addEventListener('p772:teacher-library-write', async event => {
-  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
-  try {
-    const library = sanitizeTeacherLibrary(event.detail?.library);
-    const payload = { ...library, updatedAt: Date.now(), updatedBy: me, appBuild: BUILD };
-    await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/library`), payload);
-    if (event.detail?.initialSeed) bridge.showToast?.(`Biblioteka apsaugota Firebase · ${library.tasks.length} užduotys`);
-  } catch (error) {
-    console.error('P1.7.9.26 bibliotekos sinchronizacijos klaida', error);
-    window.dispatchEvent(new CustomEvent('p772:teacher-library-write-error', { detail: { message: String(error?.message || error || '') } }));
-    bridge.showToast?.('Nepavyko išsaugoti bibliotekos debesyje');
-  }
-});
 
 // P1.7.5.6 vienkartinis vartotojo paprašytas duomenų pataisymas.
 // Svarbu: būsimos pamokos saugomos TIK scheduleEntries. Mokinio kortelė jų
@@ -1615,8 +1578,7 @@ if (teacherProfileRef) {
       roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {},
       classSessions: value.classSessions && typeof value.classSessions === 'object' ? value.classSessions : {},
       scheduleEntries: value.scheduleEntries && typeof value.scheduleEntries === 'object' ? value.scheduleEntries : {},
-      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {},
-      library: value.library && typeof value.library === 'object' ? value.library : null
+      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {}
     };
     const profileMeta = teacherProfileCache.meta || {};
     if (Number(profileMeta.schemaVersion || 0) < P2_DATA_SCHEMA_VERSION || profileMeta.lastCompatibleBuild !== BUILD) {
@@ -1630,7 +1592,6 @@ if (teacherProfileRef) {
       update(teacherProfileRef, metaUpdates).catch(error => console.warn('Nepavyko papildyti duomenų schemos metaduomenų', error));
     }
     emitTeacherProfile();
-    emitTeacherLibraryState();
     try {
       if (sessionStorage.getItem('p772-profile-recovered-v1') === teacherProfileId) {
         sessionStorage.removeItem('p772-profile-recovered-v1');
@@ -1754,8 +1715,6 @@ function restoreBackupCounts(profile, rooms) {
     classSessions: objectCount(profile?.classSessions),
     scheduleRuns: objectCount(profile?.scheduleRuns),
     roomLinks: objectCount(profile?.roomLinks),
-    libraryTasks: Array.isArray(profile?.library?.tasks) ? profile.library.tasks.length : 0,
-    libraryPracticeSets: Array.isArray(profile?.library?.practiceSets) ? profile.library.practiceSets.length : 0,
     rooms: objectCount(rooms)
   };
 }
@@ -1998,9 +1957,10 @@ async function recoverTeacherProfileFromBackupIfNeeded(parsed) {
   const currentProfile = currentSnapshot.val() || {};
   if (teacherProfileHasLinkedData(currentProfile)) return false;
 
-  // P1.7.9.26: po localStorage išvalymo programa būna sukūrusi naują tuščią
-  // T-... profilį. Patikima vartotojo atsarginė kopija gali grąžinti seną profilio
-  // identitetą; po reload duomenys vėl skaitomi tiesiai iš ankstesnio Firebase mazgo.
+  // P1.7.9.27: naršyklės svetainės duomenų išvalymas panaikina tik vietinį
+  // T-... identifikatorių, bet ne ankstesnio mokytojo Firebase profilį.
+  // Patikima mūsų pačių atsarginė kopija gali grąžinti tą identifikatorių,
+  // tačiau tik tada, kai naujai sukurtas dabartinis profilis dar visiškai tuščias.
   try { localStorage.setItem(TEACHER_PROFILE_STORAGE_KEY, sourceTeacher); }
   catch (_) { throw new Error('Naršyklė neleido atkurti mokytojo profilio identifikatoriaus.'); }
   try { sessionStorage.setItem('p772-profile-recovered-v1', sourceTeacher); } catch (_) {}
@@ -2470,7 +2430,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.25 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.27 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

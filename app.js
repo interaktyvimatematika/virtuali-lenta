@@ -472,15 +472,6 @@
   const selectedLibraryTaskIds = new Set();
   let onlineAccessRole = 'teacher';
 
-  // P1.7.9.26: mokytojo biblioteka turi debesinę kopiją Firebase profilyje.
-  // Vietinė localStorage kopija lieka greitam startui / darbui nutrūkus ryšiui,
-  // tačiau nebėra vienintelė bibliotekos saugojimo vieta.
-  let teacherLibraryCloudReady = false;
-  let teacherLibraryCloudApplying = false;
-  let teacherLibraryCloudTimer = null;
-  let teacherLibraryCloudSignature = '';
-  let teacherLibraryCloudPendingSignature = '';
-
   const responseRenderers = {
     'single-math-input': renderSingleMathInput,
     'math-step-list': renderMathStepList
@@ -1003,72 +994,6 @@
 
   let saveShouldNotifyShared = false;
 
-  function teacherLibrarySnapshot() {
-    return normalizeLibrary(deepClone(state.library));
-  }
-
-  function teacherLibrarySignature(library = state.library) {
-    try { return JSON.stringify(normalizeLibrary(deepClone(library))); }
-    catch (_) { return ''; }
-  }
-
-  function scheduleTeacherLibraryCloudSync(options = {}) {
-    if (!teacherLibraryCloudReady || teacherLibraryCloudApplying || onlineAccessRole !== 'teacher') return;
-    const library = teacherLibrarySnapshot();
-    const signature = teacherLibrarySignature(library);
-    if (!signature) return;
-    if (!options.force && (signature === teacherLibraryCloudSignature || signature === teacherLibraryCloudPendingSignature)) return;
-    clearTimeout(teacherLibraryCloudTimer);
-    teacherLibraryCloudTimer = setTimeout(() => {
-      if (!teacherLibraryCloudReady || teacherLibraryCloudApplying || onlineAccessRole !== 'teacher') return;
-      const nextLibrary = teacherLibrarySnapshot();
-      const nextSignature = teacherLibrarySignature(nextLibrary);
-      if (!nextSignature || (!options.force && nextSignature === teacherLibraryCloudSignature)) return;
-      teacherLibraryCloudPendingSignature = nextSignature;
-      window.dispatchEvent(new CustomEvent('p772:teacher-library-write', { detail: { library: nextLibrary, initialSeed: Boolean(options.initialSeed) } }));
-    }, options.immediate ? 0 : 260);
-  }
-
-  window.addEventListener('p772:teacher-library-state', event => {
-    if (onlineAccessRole !== 'teacher') return;
-    const detail = event.detail || {};
-    teacherLibraryCloudReady = true;
-    if (detail.exists && detail.library && typeof detail.library === 'object') {
-      const incoming = normalizeLibrary(detail.library);
-      const incomingSignature = teacherLibrarySignature(incoming);
-      teacherLibraryCloudSignature = incomingSignature;
-      teacherLibraryCloudPendingSignature = '';
-      const localSignature = teacherLibrarySignature(state.library);
-      if (incomingSignature && incomingSignature !== localSignature) {
-        teacherLibraryCloudApplying = true;
-        state.library = incoming;
-        selectedLibraryTaskIds.clear();
-        renderLibrary();
-        try {
-          state.packageData = practicePackage;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          refs.saveState.textContent = 'Išsaugota';
-        } catch (error) {
-          console.warn('Nepavyko vietoje išsaugoti Firebase bibliotekos kopijos:', error);
-        } finally {
-          teacherLibraryCloudApplying = false;
-        }
-      }
-      return;
-    }
-
-    // Pirmas .26 paleidimas: jeigu profilyje bibliotekos dar nėra, į Firebase
-    // keliama būtent šiame įrenginyje esanti biblioteka. Taip neprarandami
-    // ankstesnėje .25 localStorage kopijoje jau turėti įrašai.
-    teacherLibraryCloudSignature = '';
-    teacherLibraryCloudPendingSignature = '';
-    scheduleTeacherLibraryCloudSync({ force: true, immediate: true, initialSeed: true });
-  });
-
-  window.addEventListener('p772:teacher-library-write-error', () => {
-    teacherLibraryCloudPendingSignature = '';
-  });
-
   function scheduleSave(options = {}) {
     refs.saveState.textContent = 'Saugoma…';
     if (options.notifyShared !== false) saveShouldNotifyShared = true;
@@ -1084,7 +1009,6 @@
         refs.saveState.textContent = 'Neišsaugota vietoje';
         console.error('Nepavyko išsaugoti vietinės kopijos:', error);
       }
-      scheduleTeacherLibraryCloudSync();
       // Piešimo brūkšniai online režime siunčiami tiesiogiai per p772:live-stroke/end,
       // todėl vien dėl jų nebeskanuojame ir neserializuojame visos bendros lentos būsenos.
       if (notifyShared) window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
@@ -12306,7 +12230,6 @@ KOKYBĖS REIKALAVIMAI:
     if (modeSwitch) modeSwitch.hidden = true;
 
     if (isTeacher) {
-      scheduleTeacherLibraryCloudSync();
       // Mokytojo teisės lieka mokytojo, tačiau pagrindiniame lange rodomos pačios pratybos.
       // Mokytojo rengyklė nėra numatytasis vaizdas.
       setMode('student', { force: true, allowEmpty: true });
