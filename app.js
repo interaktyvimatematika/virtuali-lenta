@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.10.5: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.10.6: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -9243,11 +9243,22 @@ KOKYBĖS REIKALAVIMAI:
     }));
   }
 
+  // P1.7.9.10.6: mokinio pieštukas juodas, mokytojo – raudonas.
+  // Spalva išsaugoma pačiame brūkšnyje, todėl vienodai matoma abiejuose
+  // įrenginiuose ir išlieka pamokos istorijoje.
+  function currentPenStrokeColor() {
+    return document.body?.dataset?.onlineRole === 'student' ? '#111111' : '#d22f3f';
+  }
+
+  function strokeRenderColor(stroke) {
+    return String(stroke?.color || '#27364f');
+  }
+
   function drawStrokeSegment(context, stroke, fromPoint, toPoint, rect = getBoardWorldRect()) {
     if (!context || !stroke || !fromPoint || !toPoint) return;
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    context.strokeStyle = '#27364f';
+    context.strokeStyle = strokeRenderColor(stroke);
     context.lineWidth = stroke.width;
     context.beginPath();
     context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
@@ -9266,7 +9277,7 @@ KOKYBĖS REIKALAVIMAI:
     if (!context || !stroke?.points?.length) return;
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    context.strokeStyle = '#27364f';
+    context.strokeStyle = strokeRenderColor(stroke);
     context.lineWidth = stroke.width;
     context.beginPath();
     stroke.points.forEach((point, index) => {
@@ -9300,6 +9311,7 @@ KOKYBĖS REIKALAVIMAI:
       id: createStrokeId(),
       mode: state.activeTool,
       width: state.activeTool === 'eraser' ? 22 : 2.6,
+      color: state.activeTool === 'pen' ? currentPenStrokeColor() : undefined,
       points: [pointFromEvent(event)]
     };
     // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
