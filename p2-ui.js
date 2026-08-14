@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.16';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.17';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -1114,7 +1114,7 @@
 
   const GRADE10_REVIEW_LESSON = Object.freeze({
     "id": "p2-grade10-review-01",
-    "contentVersion": 2,
+    "contentVersion": 3,
     "title": "10 klasės matematikos pakartojimas",
     "shortTitle": "10 klasės pakartojimas",
     "description": "30 įvairių 10 klasės kurso kartojimo užduočių: proporcingoji dalyba, sudėtiniai procentai ir mišiniai, racionaliosios lygtys, kvadratinės nelygybės, lygčių sistemos, panašumas, trikampių ir apskritimų geometrija, trigonometrija, statistika, kombinatorika ir tikimybės.",
@@ -1270,8 +1270,14 @@
             "section": "class",
             "label": "Lygčių sistemos",
             "title": "Tiesė ir parabolė",
-            "prompt": "Kuris taškas tenkina lygčių sistemą y=x², y=2x?",
-            "promptDisplay": "Kuris taškas tenkina lygčių sistemą \\(\\begin{cases}y=x^2,\\\\y=2x.\\end{cases}\\)?",
+            "prompt": "Kuris taškas tenkina lygčių sistemą y=x² ir y=2x?",
+            "promptDisplay": "Kuris taškas tenkina lygčių sistemą \\(\\begin{cases}y=x^2\\\\y=2x\\end{cases}\\)?",
+            "choicesDisplay": [
+                "\\((1;2)\\)",
+                "\\((2;4)\\)",
+                "\\((3;6)\\)",
+                "\\((-2;-4)\\)"
+            ],
             "choices": [
                 "(1;2)",
                 "(2;4)",
@@ -1302,7 +1308,7 @@
             "label": "Panašumas",
             "title": "Panašių figūrų perimetrai",
             "prompt": "Panašių trikampių mastelio koeficientas 3. Mažesniojo perimetras 12 cm. Koks didesniojo perimetras?",
-            "promptDisplay": "Panašių trikampių mastelio koeficientas \\(3\\). Mažesniojo perimetras \\(12\\text{ cm}\\).",
+            "promptDisplay": "Panašių trikampių mastelio koeficientas \\(3\\). Mažesniojo trikampio perimetras yra \\(12\\text{ cm}\\). Koks didesniojo trikampio perimetras?",
             "answer": "36",
             "answerType": "number",
             "inputLabel": "Perimetras",
@@ -1317,7 +1323,7 @@
             "label": "Panašumas",
             "title": "Panašių figūrų plotai",
             "prompt": "Panašių figūrų ilgių mastelio koeficientas 4. Kiek kartų didesnis didesniosios figūros plotas?",
-            "promptDisplay": "Panašių figūrų ilgių mastelio koeficientas \\(4\\). Kiek kartų didesnis plotas?",
+            "promptDisplay": "Dviejų panašių figūrų ilgių mastelio koeficientas yra \\(4\\). Kiek kartų didesnis didesniosios figūros plotas?",
             "answer": "16",
             "answerType": "number",
             "inputLabel": "Atsakymas",
@@ -1330,8 +1336,8 @@
             "section": "class",
             "label": "Trikampiai",
             "title": "Pusiaukampinės savybė",
-            "prompt": "Trikampyje ABC kampo A pusiaukampinė AD kerta kraštinę BC taške D. BD=6, DC=9, AB=8. Rask kraštinės AC ilgį.",
-            "promptDisplay": "Trikampyje \\(ABC\\) kampo \\(A\\) pusiaukampinė \\(AD\\) kerta kraštinę \\(BC\\) taške \\(D\\). Duota \\(BD=6\\), \\(DC=9\\), \\(AB=8\\). Rask \\(AC\\).",
+            "prompt": "Trikampyje ABC kampo A pusiaukampinė AD kerta kraštinę BC taške D. BD=6 cm, DC=9 cm, AB=8 cm. Rask kraštinės AC ilgį.",
+            "promptDisplay": "Trikampyje \\(ABC\\) kampo \\(A\\) pusiaukampinė \\(AD\\) kerta kraštinę \\(BC\\) taške \\(D\\). Duota \\(BD=6\\text{ cm}\\), \\(DC=9\\text{ cm}\\), \\(AB=8\\text{ cm}\\). Rask kraštinės \\(AC\\) ilgį.",
             "diagram": {
                 "type": "angle-bisector"
             },
@@ -1339,7 +1345,8 @@
             "answerType": "number",
             "inputLabel": "Atsakymas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "Pusiaukampinė dalija priešingą kraštinę proporcingai gretimoms kraštinėms."
+            "hint": "Pusiaukampinė dalija priešingą kraštinę proporcingai gretimoms kraštinėms.",
+            "inputSuffix": "cm"
         },
         {
             "id": "g10-14",
@@ -1347,8 +1354,11 @@
             "section": "class",
             "label": "Trikampiai",
             "title": "Sunkio centras",
-            "prompt": "Trikampio sunkio centras pusiaukraštinę dalija santykiu:",
-            "promptDisplay": "Trikampio sunkio centras pusiaukraštinę dalija santykiu:",
+            "prompt": "Trikampio ABC pusiaukraštinės susikerta sunkio centre G. Kokiu santykiu sunkio centras G dalija kiekvieną pusiaukraštinę, skaičiuojant nuo viršūnės?",
+            "promptDisplay": "Trikampio \\(ABC\\) pusiaukraštinės susikerta sunkio centre \\(G\\). Kokiu santykiu taškas \\(G\\) dalija kiekvieną pusiaukraštinę, skaičiuojant nuo viršūnės?",
+            "diagram": {
+                "type": "centroid"
+            },
             "choices": [
                 "1:1",
                 "2:1 nuo viršūnės",
@@ -1400,8 +1410,11 @@
             "section": "class",
             "label": "Keturkampiai",
             "title": "Įbrėžtinis keturkampis",
-            "prompt": "Į apskritimą įbrėžto keturkampio vienas kampas 112°. Koks priešingas kampas?",
-            "promptDisplay": "Į apskritimą įbrėžto keturkampio vienas kampas \\(112^\\circ\\). Koks priešingas kampas?",
+            "prompt": "Keturkampis ABCD įbrėžtas į apskritimą. Kampas A=112°. Rask jam priešingo kampo C dydį.",
+            "promptDisplay": "Keturkampis \\(ABCD\\) įbrėžtas į apskritimą. Duota \\(\\angle A=112^\\circ\\). Rask jam priešingo kampo \\(\\angle C\\) dydį.",
+            "diagram": {
+                "type": "cyclic-quadrilateral"
+            },
             "answer": "68",
             "answerType": "number",
             "inputLabel": "Kampas",
@@ -1423,6 +1436,12 @@
                 "√3/2",
                 "−√3/2"
             ],
+            "choicesDisplay": [
+                "\\(-\\frac12\\)",
+                "\\(\\frac12\\)",
+                "\\(\\frac{\\sqrt3}{2}\\)",
+                "\\(-\\frac{\\sqrt3}{2}\\)"
+            ],
             "answer": "1/2",
             "hint": "sin(180°−α)=sin α."
         },
@@ -1440,6 +1459,12 @@
                 "√3/2",
                 "−√3/2"
             ],
+            "choicesDisplay": [
+                "\\(-\\frac12\\)",
+                "\\(\\frac12\\)",
+                "\\(\\frac{\\sqrt3}{2}\\)",
+                "\\(-\\frac{\\sqrt3}{2}\\)"
+            ],
             "answer": "−1/2",
             "hint": "cos(180°−α)=−cos α."
         },
@@ -1449,8 +1474,8 @@
             "section": "class",
             "label": "Trigonometrija",
             "title": "Trikampio plotas",
-            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 8 ir 10, o kampas C tarp jų lygus 30°. Rask trikampio plotą.",
-            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=8\\), \\(BC=10\\), o kampas tarp jų \\(\\angle C=30^\\circ\\). Rask trikampio plotą.",
+            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 8 cm ir 10 cm, o kampas C tarp šių kraštinių lygus 30°. Rask trikampio ABC plotą.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=8\\text{ cm}\\), \\(BC=10\\text{ cm}\\), o kampas tarp šių kraštinių \\(\\angle C=30^\\circ\\). Rask trikampio \\(ABC\\) plotą.",
             "diagram": {
                 "type": "included-angle"
             },
@@ -1458,24 +1483,34 @@
             "answerType": "number",
             "inputLabel": "Plotas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "Naudok S=1/2·ab·sin C."
+            "hint": "Naudok formulę S=1/2·AC·BC·sin C.",
+            "inputSuffix": "cm²"
         },
         {
             "id": "g10-21",
-            "type": "input",
+            "type": "choice",
             "section": "self",
             "label": "Trigonometrija",
             "title": "Kosinusų teorema",
-            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 5 ir 7, o kampas C tarp jų lygus 60°. Rask trečiosios kraštinės AB ilgio kvadratą.",
-            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=5\\), \\(BC=7\\), \\(\\angle C=60^\\circ\\). Rask \\(AB^2\\).",
+            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 5 cm ir 7 cm, o kampas C tarp šių kraštinių lygus 60°. Rask trečiosios kraštinės AB ilgį.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=5\\text{ cm}\\), \\(BC=7\\text{ cm}\\), o kampas tarp šių kraštinių \\(\\angle C=60^\\circ\\). Rask trečiosios kraštinės \\(AB\\) ilgį.",
             "diagram": {
                 "type": "cosine-law"
             },
-            "answer": "39",
-            "answerType": "number",
-            "inputLabel": "Atsakymas",
-            "placeholder": "Įrašyk skaičių",
-            "hint": "Naudok kosinusų teoremą."
+            "choices": [
+                "√39 cm",
+                "√74 cm",
+                "39 cm",
+                "74 cm"
+            ],
+            "choicesDisplay": [
+                "\\(\\sqrt{39}\\text{ cm}\\)",
+                "\\(\\sqrt{74}\\text{ cm}\\)",
+                "\\(39\\text{ cm}\\)",
+                "\\(74\\text{ cm}\\)"
+            ],
+            "answer": "√39 cm",
+            "hint": "Pagal kosinusų teoremą: AB²=AC²+BC²−2·AC·BC·cos C."
         },
         {
             "id": "g10-22",
@@ -1483,8 +1518,8 @@
             "section": "self",
             "label": "Trigonometrija",
             "title": "Sinusų teorema",
-            "prompt": "Trikampyje ABC kraštinė a=BC=10, kampas A=30°, o kampas B=90°. Rask kraštinės b=AC ilgį.",
-            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(a=BC=10\\), \\(\\angle A=30^\\circ\\), \\(\\angle B=90^\\circ\\). Rask \\(b=AC\\).",
+            "prompt": "Trikampyje ABC kraštinės a=BC ilgis yra 10 cm, kampas A=30°, o kampas B=90°. Rask kraštinės b=AC ilgį.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(a=BC=10\\text{ cm}\\), \\(\\angle A=30^\\circ\\), \\(\\angle B=90^\\circ\\). Rask kraštinės \\(b=AC\\) ilgį.",
             "diagram": {
                 "type": "sine-law"
             },
@@ -1492,7 +1527,8 @@
             "answerType": "number",
             "inputLabel": "Atsakymas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "Naudok sinusų teoremą: a/sin A = b/sin B."
+            "hint": "Naudok sinusų teoremą: a/sin A = b/sin B.",
+            "inputSuffix": "cm"
         },
         {
             "id": "g10-23",
@@ -2377,6 +2413,12 @@
     if (type === 'circumcircle') return wrap('Trikampis ir apie jį apibrėžtas apskritimas', `
       <circle cx="120" cy="82" r="70" class="guide"/><path d="M120 12 L56 121 L191 121 Z"/>
       <text x="116" y="10">A</text><text x="45" y="134">B</text><text x="194" y="134">C</text><path d="M120 82 L191 121" class="guide"/><text x="157" y="96">R</text>`);
+    if (type === 'centroid') return wrap('Trikampio pusiaukraštinės ir sunkio centras', `
+      <path d="M120 18 L27 139 L215 139 Z"/><path d="M120 18 L121 139" class="guide"/><path d="M27 139 L168 79" class="guide"/><path d="M215 139 L74 79" class="guide"/>
+      <circle cx="121" cy="99" r="3.5"/><text x="116" y="14">A</text><text x="14" y="151">B</text><text x="218" y="151">C</text><text x="128" y="97">G</text>`);
+    if (type === 'cyclic-quadrilateral') return wrap('Į apskritimą įbrėžtas keturkampis', `
+      <circle cx="120" cy="82" r="70" class="guide"/><path d="M79 25 L183 48 L169 132 L50 105 Z"/>
+      <text x="68" y="20">A</text><text x="187" y="47">B</text><text x="172" y="145">C</text><text x="36" y="111">D</text><text x="83" y="47">112°</text><text x="144" y="119">?</text>`);
     if (type === 'included-angle') return wrap('Trikampis su dviem kraštinėmis ir kampu tarp jų', `
       <path d="M31 137 L105 35 L215 137 Z"/><path d="M53 137 A22 22 0 0 1 45 119" class="guide"/>
       <text x="19" y="151">C</text><text x="101" y="30">A</text><text x="217" y="151">B</text>
@@ -4056,7 +4098,7 @@
 
   function lessonHistoryForStudent(student) {
     return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
-      // P1.7.9.16: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
+      // P1.7.9.17: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
       // bet pataisymo migracija gali jį pažymėti kaip paslėptą dublikatą. Taip
       // atsarginėje kopijoje išlieka audito pėdsakas, o mokinio istorijoje
       // rodomas tik tikrasis pamokos Room.
@@ -4080,7 +4122,7 @@
 
   function studentLessonScheduleMeta(lesson) {
     const session = teacherStudentDb.classSessions?.[lesson?.classSessionId] || {};
-    // P1.7.9.16: pirmiausia naudojame classSession metaduomenis, bet turime
+    // P1.7.9.17: pirmiausia naudojame classSession metaduomenis, bet turime
     // saugų fallback į patį mokinio pamokos įrašą. Naujesnės schedule pamokos
     // šiuos laukus turi abiejose vietose, todėl statusas nepriklauso nuo to,
     // kuri Firebase šaka buvo užkrauta pirmiau.

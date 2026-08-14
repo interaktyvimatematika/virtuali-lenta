@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.16';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.17';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -1235,7 +1235,7 @@ async function applyP1756RequestedScheduleOnce() {
   }
 }
 
-// P1.7.9.16 vienkartinė saugi korekcija po P1.7.5.6 migracijos.
+// P1.7.9.17 vienkartinė saugi korekcija po P1.7.5.6 migracijos.
 // 2026-08-13 Adomo pamoka realiai vyko jau egzistavusiame Room, tačiau
 // tvarkaraščio modelis buvo sukurtas tik po pamokos. Vėliau pasirinkus tą
 // praeities datą senesnis kodas sukūrė naują tuščią Room. Ši migracija
@@ -1351,7 +1351,7 @@ async function applyP17913LegacyScheduleRoomRepairOnce() {
       await update(teacherProfileRef, updates);
       bridge.showToast?.('Vakarykštės Adomo pamokos istorija susieta su tikruoju Room.');
     } catch (error) {
-      console.error('P1.7.9.16 istorinio Room susiejimo klaida', error);
+      console.error('P1.7.9.17 istorinio Room susiejimo klaida', error);
     } finally {
       p17913HistoryRepairRunning = false;
     }
@@ -1382,7 +1382,7 @@ if (teacherProfileRef) {
     }
     emitTeacherProfile();
     applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
-    applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.16 istorinio Room pataisa neįvykdyta', error));
+    applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.17 istorinio Room pataisa neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
@@ -1835,7 +1835,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.16 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.17 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
