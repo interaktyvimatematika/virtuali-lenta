@@ -10,6 +10,16 @@ import {
   onDisconnect,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA5zJ2jx67MMg9b_aYn7QW1_ORmQAaMrCg",
@@ -21,7 +31,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.27';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.28';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -239,6 +249,8 @@ if (newButton) {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch(error => console.warn('Firebase Auth išsaugojimo režimo klaida', error));
 
 // P2-SPLIT-P2.5-P2: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
 // naršyklė gauna ilgalaikį atsitiktinį profilio ID; jis niekada nepridedamas
@@ -264,6 +276,270 @@ function resolveTeacherProfileId() {
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
 let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+
+// P1.7.9.28: pasirenkama mokytojo Firebase Authentication paskyra.
+// Esamas T-... profilis nekeičiamas ir nemigruojamas į naują kelią: paskyros UID
+// gauna tik nuorodą į jau naudojamą mokytojo profilį. Tai leidžia kitame
+// įrenginyje prisijungus atkurti T-... identifikatorių ir perkrauti tą pačią bazę.
+const AUTH_USER_ROOT = 'p772AuthUsers';
+const teacherAccountButton = document.getElementById('teacherAccountButton');
+const teacherAccountButtonLabel = document.getElementById('teacherAccountButtonLabel');
+const teacherAuthModal = document.getElementById('teacherAuthModal');
+const teacherAuthSignedOut = document.getElementById('teacherAuthSignedOut');
+const teacherAuthSignedIn = document.getElementById('teacherAuthSignedIn');
+const teacherAuthEmail = document.getElementById('teacherAuthEmail');
+const teacherAuthPassword = document.getElementById('teacherAuthPassword');
+const teacherAuthSignInButton = document.getElementById('teacherAuthSignInButton');
+const teacherAuthSignUpButton = document.getElementById('teacherAuthSignUpButton');
+const teacherAuthResetButton = document.getElementById('teacherAuthResetButton');
+const teacherAuthCurrentEmail = document.getElementById('teacherAuthCurrentEmail');
+const teacherAuthUidLabel = document.getElementById('teacherAuthUidLabel');
+const teacherAuthCurrentProfile = document.getElementById('teacherAuthCurrentProfile');
+const teacherAuthBindingStatus = document.getElementById('teacherAuthBindingStatus');
+const teacherAuthLinkProfileButton = document.getElementById('teacherAuthLinkProfileButton');
+const teacherAuthSignedInNote = document.getElementById('teacherAuthSignedInNote');
+const teacherAuthSignOutButton = document.getElementById('teacherAuthSignOutButton');
+const teacherAuthStatus = document.getElementById('teacherAuthStatus');
+let teacherAuthUser = null;
+let teacherAuthBinding = null;
+let teacherAuthBusy = false;
+let teacherAuthReloading = false;
+
+function authUserBindingRef(uid) {
+  return ref(db, `${AUTH_USER_ROOT}/${String(uid || '').replace(/[.#$\[\]/]/g, '-')}`);
+}
+
+function setTeacherAuthStatus(text = '', kind = '') {
+  if (!teacherAuthStatus) return;
+  teacherAuthStatus.textContent = String(text || '');
+  teacherAuthStatus.classList.toggle('is-error', kind === 'error');
+  teacherAuthStatus.classList.toggle('is-ok', kind === 'ok');
+}
+
+function firebaseAuthErrorMessage(error) {
+  const code = String(error?.code || '');
+  if (code === 'auth/operation-not-allowed') return 'Firebase Authentication dar neįjungtas. Firebase Console reikia įjungti Email/Password prisijungimą.';
+  if (code === 'auth/email-already-in-use') return 'Šis el. paštas jau turi paskyrą. Rinkis „Prisijungti“.';
+  if (code === 'auth/invalid-email') return 'Patikrink el. pašto adresą.';
+  if (code === 'auth/weak-password') return 'Slaptažodis per silpnas. Naudok bent 6 simbolius.';
+  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'Nepavyko prisijungti. Patikrink el. paštą ir slaptažodį.';
+  if (code === 'auth/too-many-requests') return 'Per daug bandymų. Palauk ir bandyk dar kartą.';
+  if (code === 'auth/network-request-failed') return 'Nepavyko pasiekti Firebase Authentication. Patikrink interneto ryšį.';
+  return String(error?.message || error || 'Prisijungimo klaida.').slice(0, 260);
+}
+
+function setTeacherAuthBusy(value) {
+  teacherAuthBusy = Boolean(value);
+  [teacherAuthSignInButton, teacherAuthSignUpButton, teacherAuthResetButton, teacherAuthLinkProfileButton, teacherAuthSignOutButton]
+    .forEach(button => { if (button) button.disabled = teacherAuthBusy; });
+}
+
+function openTeacherAuthModal() {
+  if (onlineRole !== 'teacher' || !teacherAuthModal) return;
+  teacherAuthModal.hidden = false;
+  document.body.classList.add('teacher-auth-open');
+  setTeacherAuthStatus('');
+  renderTeacherAuthUi();
+  setTimeout(() => (teacherAuthUser ? teacherAuthSignOutButton : teacherAuthEmail)?.focus?.(), 20);
+}
+
+function closeTeacherAuthModal() {
+  if (!teacherAuthModal) return;
+  teacherAuthModal.hidden = true;
+  document.body.classList.remove('teacher-auth-open');
+}
+
+async function loadTeacherAuthBinding(user = teacherAuthUser) {
+  if (!user?.uid) return null;
+  const snapshot = await get(authUserBindingRef(user.uid));
+  const value = snapshot.val() || {};
+  const profileId = safeTeacherProfileId(value.teacherProfileId);
+  return profileId ? { teacherProfileId: profileId, linkedAt: Math.max(0, Number(value.linkedAt || 0)) } : null;
+}
+
+async function linkCurrentProfileToAuth(user = teacherAuthUser, options = {}) {
+  if (!user?.uid || !teacherProfileId || !teacherProfileRef) throw new Error('Mokytojo profilis arba paskyra nepasiekiama.');
+  const [profileSnapshot, bindingSnapshot] = await Promise.all([
+    get(teacherProfileRef),
+    get(authUserBindingRef(user.uid))
+  ]);
+  const profile = profileSnapshot.val() || {};
+  const currentOwner = String(profile?.meta?.authUid || '').trim();
+  if (currentOwner && currentOwner !== user.uid) throw new Error('Šis mokytojo profilis jau susietas su kita paskyra.');
+  const existingBinding = safeTeacherProfileId(bindingSnapshot.val()?.teacherProfileId);
+  if (existingBinding && existingBinding !== teacherProfileId) throw new Error(`Ši paskyra jau susieta su kitu mokytojo profiliu (${existingBinding}).`);
+
+  const now = Date.now();
+  const updates = {};
+  updates[`p772TeacherProfiles/${teacherProfileId}/meta/authUid`] = user.uid;
+  updates[`p772TeacherProfiles/${teacherProfileId}/meta/authLinkedAt`] = now;
+  updates[`p772TeacherProfiles/${teacherProfileId}/meta/authModelVersion`] = 1;
+  updates[`${AUTH_USER_ROOT}/${user.uid}/teacherProfileId`] = teacherProfileId;
+  updates[`${AUTH_USER_ROOT}/${user.uid}/linkedAt`] = now;
+  updates[`${AUTH_USER_ROOT}/${user.uid}/schemaVersion`] = 1;
+  await update(ref(db), updates);
+  teacherAuthBinding = { teacherProfileId, linkedAt: now };
+  if (!options.quiet) bridge.showToast?.('Mokytojo paskyra susieta su dabartiniu profiliu');
+  renderTeacherAuthUi();
+  return teacherAuthBinding;
+}
+
+async function reconcileSignedInTeacher(user, options = {}) {
+  if (onlineRole !== 'teacher' || !user?.uid || teacherAuthReloading) return;
+  try {
+    teacherAuthBinding = await loadTeacherAuthBinding(user);
+    const mappedProfileId = teacherAuthBinding?.teacherProfileId || '';
+    if (mappedProfileId && mappedProfileId !== teacherProfileId) {
+      teacherAuthReloading = true;
+      try { localStorage.setItem(TEACHER_PROFILE_STORAGE_KEY, mappedProfileId); }
+      catch (_) { throw new Error('Naršyklė neleido įrašyti mokytojo profilio identifikatoriaus.'); }
+      try { sessionStorage.setItem('p772-profile-recovered-v1', mappedProfileId); } catch (_) {}
+      bridge.showToast?.('Paskyra rado tavo mokytojo profilį · atnaujinamas puslapis');
+      setTimeout(() => location.reload(), 240);
+      return;
+    }
+    if (options.autoLinkNewAccount && !mappedProfileId) {
+      await linkCurrentProfileToAuth(user, { quiet: false });
+    } else {
+      renderTeacherAuthUi();
+    }
+  } catch (error) {
+    console.error('P1.7.9.28 paskyros susiejimo patikros klaida', error);
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+    renderTeacherAuthUi();
+  }
+}
+
+function renderTeacherAuthUi() {
+  if (!teacherAccountButton) return;
+  const isTeacher = onlineRole === 'teacher';
+  teacherAccountButton.hidden = !isTeacher;
+  if (!isTeacher) return;
+  const signedIn = Boolean(teacherAuthUser?.uid);
+  if (teacherAuthSignedOut) teacherAuthSignedOut.hidden = signedIn;
+  if (teacherAuthSignedIn) teacherAuthSignedIn.hidden = !signedIn;
+  if (teacherAuthCurrentProfile) teacherAuthCurrentProfile.textContent = teacherProfileId || '—';
+  teacherAccountButton.classList.toggle('is-authenticated', Boolean(signedIn && teacherAuthBinding?.teacherProfileId === teacherProfileId));
+  teacherAccountButton.classList.toggle('is-unlinked', Boolean(signedIn && !teacherAuthBinding));
+
+  if (!signedIn) {
+    if (teacherAccountButtonLabel) teacherAccountButtonLabel.textContent = 'Paskyra';
+    teacherAccountButton.title = 'Mokytojo paskyra · neprisijungta';
+    return;
+  }
+
+  const email = String(teacherAuthUser.email || '').trim();
+  if (teacherAuthCurrentEmail) teacherAuthCurrentEmail.textContent = email || 'Firebase paskyra';
+  if (teacherAuthUidLabel) teacherAuthUidLabel.textContent = `UID ${String(teacherAuthUser.uid || '').slice(0, 10)}…`;
+  if (teacherAccountButtonLabel) teacherAccountButtonLabel.textContent = 'Paskyra';
+
+  const mapped = teacherAuthBinding?.teacherProfileId || '';
+  if (teacherAuthBindingStatus) {
+    teacherAuthBindingStatus.classList.remove('is-ok', 'is-warning', 'is-error');
+    if (mapped === teacherProfileId) {
+      teacherAuthBindingStatus.textContent = 'Susieta · šis profilis atkuriamas prisijungus kitame įrenginyje';
+      teacherAuthBindingStatus.classList.add('is-ok');
+      teacherAccountButton.title = `Prisijungta${email ? ` · ${email}` : ''}`;
+    } else if (!mapped) {
+      teacherAuthBindingStatus.textContent = 'Paskyra dar nesusieta su mokytojo profiliu';
+      teacherAuthBindingStatus.classList.add('is-warning');
+      teacherAccountButton.title = 'Prisijungta, bet profilis dar nesusietas';
+    } else {
+      teacherAuthBindingStatus.textContent = `Paskyra susieta su kitu profiliu: ${mapped}`;
+      teacherAuthBindingStatus.classList.add('is-error');
+      teacherAccountButton.title = 'Paskyros profilio neatitikimas';
+    }
+  }
+  if (teacherAuthLinkProfileButton) teacherAuthLinkProfileButton.hidden = Boolean(mapped);
+  if (teacherAuthSignedInNote) {
+    teacherAuthSignedInNote.textContent = mapped === teacherProfileId
+      ? 'Susiejimas paruoštas. Kitame įrenginyje prisijungus tuo pačiu el. paštu sistema automatiškai atkurs šį mokytojo profilį.'
+      : 'Jei tai tavo pagrindinis įrenginys ir čia matai teisingus mokinius bei tvarkaraštį, susiek dabartinį profilį su paskyra.';
+  }
+}
+
+teacherAccountButton?.addEventListener('click', openTeacherAuthModal);
+teacherAuthModal?.querySelectorAll('[data-teacher-auth-close]').forEach(element => element.addEventListener('click', closeTeacherAuthModal));
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && teacherAuthModal && !teacherAuthModal.hidden) closeTeacherAuthModal();
+});
+
+teacherAuthSignInButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy) return;
+  const email = String(teacherAuthEmail?.value || '').trim();
+  const password = String(teacherAuthPassword?.value || '');
+  if (!email || !password) { setTeacherAuthStatus('Įrašyk el. paštą ir slaptažodį.', 'error'); return; }
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Jungiamasi…');
+  try {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    await reconcileSignedInTeacher(credential.user);
+    if (!teacherAuthReloading) setTeacherAuthStatus('Prisijungta.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthSignUpButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy) return;
+  const email = String(teacherAuthEmail?.value || '').trim();
+  const password = String(teacherAuthPassword?.value || '');
+  if (!email || !password) { setTeacherAuthStatus('Įrašyk el. paštą ir slaptažodį.', 'error'); return; }
+  if (password.length < 6) { setTeacherAuthStatus('Slaptažodis turi būti bent 6 simbolių.', 'error'); return; }
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Kuriama paskyra ir saugiai susiejamas dabartinis profilis…');
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
+    teacherAuthUser = credential.user;
+    await reconcileSignedInTeacher(credential.user, { autoLinkNewAccount: true });
+    if (!teacherAuthReloading) setTeacherAuthStatus('Paskyra sukurta ir susieta su šiuo mokytojo profiliu.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthResetButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy) return;
+  const email = String(teacherAuthEmail?.value || '').trim();
+  if (!email) { setTeacherAuthStatus('Pirmiausia įrašyk el. pašto adresą.', 'error'); return; }
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Siunčiama slaptažodžio atkūrimo nuoroda…');
+  try {
+    await sendPasswordResetEmail(auth, email);
+    setTeacherAuthStatus('Slaptažodžio atkūrimo laiškas išsiųstas.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthLinkProfileButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy || !teacherAuthUser) return;
+  const hasData = teacherProfileHasLinkedData(teacherProfileCache);
+  if (!hasData && !confirm('Dabartiniame profilyje kol kas nėra mokinių ar tvarkaraščio duomenų. Vis tiek susieti šį profilį su paskyra?')) return;
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Susiejamas dabartinis profilis…');
+  try {
+    await linkCurrentProfileToAuth(teacherAuthUser);
+    setTeacherAuthStatus('Profilis susietas su paskyra.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthSignOutButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy) return;
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Atsijungiama…');
+  try {
+    await signOut(auth);
+    setTeacherAuthStatus('Nuo paskyros atsijungta. Šio įrenginio mokytojo profilis lieka nepakeistas.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+onAuthStateChanged(auth, async user => {
+  teacherAuthUser = user || null;
+  teacherAuthBinding = null;
+  renderTeacherAuthUi();
+  if (onlineRole !== 'teacher' || !user) return;
+  await reconcileSignedInTeacher(user);
+});
 
 let roomRef;
 let workspaceRef;
@@ -2029,6 +2305,8 @@ window.addEventListener('p2:restore-apply-request', async () => {
     let restoredProfile;
     try { restoredProfile = JSON.parse(JSON.stringify(backup.profile)); }
     catch (_) { throw new Error('Nepavyko paruošti mokinių bazės atkūrimui.'); }
+    const activeAuthUid = String(teacherProfileCache?.meta?.authUid || teacherAuthUser?.uid || '').trim();
+    const activeAuthLinkedAt = Math.max(0, Number(teacherProfileCache?.meta?.authLinkedAt || 0));
     restoredProfile.meta = {
       ...(restoredProfile.meta && typeof restoredProfile.meta === 'object' ? restoredProfile.meta : {}),
       schemaVersion: P2_DATA_SCHEMA_VERSION,
@@ -2039,7 +2317,12 @@ window.addEventListener('p2:restore-apply-request', async () => {
         exportedAtIso: backup.exportedAtIso || '',
         appBuild: backup.appBuild || '',
         fileName: pendingRestoreFileName || ''
-      }
+      },
+      ...(activeAuthUid ? {
+        authUid: activeAuthUid,
+        authLinkedAt: activeAuthLinkedAt || restoredAt,
+        authModelVersion: 1
+      } : {})
     };
 
     const updates = {};
@@ -2430,7 +2713,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.27 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.28 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

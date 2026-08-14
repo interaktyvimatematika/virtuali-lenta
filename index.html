@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.27</title>
-  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.5-P4-P1.7.9.27" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.28</title>
+  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.5-P4-P1.7.9.28" />
 </head>
 <body>
   <div class="app" id="app">
@@ -14,7 +14,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.27</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.28</span>
         </div>
       </div>
 
@@ -47,6 +47,7 @@
           <button class="ghost-button p2-top-action students-open-button" id="studentsButton" type="button" title="Mokinių kortelės, pamokų istorija ir senos lentos"><span aria-hidden="true">♟</span><span>Mokiniai</span></button>
           <button class="ghost-button p2-top-action schedule-open-button" id="scheduleButton" type="button" title="Savaitinis pamokų tvarkaraštis"><span aria-hidden="true">▤</span><span>Tvarkaraštis</span></button>
           <button class="ghost-button p2-top-action library-open-button" id="libraryButton" type="button"><span aria-hidden="true">▦</span><span>Biblioteka</span></button>
+          <button class="ghost-button p2-top-action teacher-account-button" id="teacherAccountButton" type="button" title="Mokytojo paskyra ir prisijungimas" hidden><span aria-hidden="true">●</span><span id="teacherAccountButtonLabel">Paskyra</span></button>
         </div>
         <div class="p2-view-actions" aria-label="Darbo vaizdo valdymas">
           <div class="p2-view-switch" id="p2ViewSwitch" role="group" aria-label="Darbo vaizdas">
@@ -634,6 +635,60 @@
       </section>
     </div>
 
+
+    <div class="teacher-auth-modal" id="teacherAuthModal" hidden>
+      <div class="teacher-auth-backdrop" data-teacher-auth-close="true"></div>
+      <section class="teacher-auth-panel" role="dialog" aria-modal="true" aria-labelledby="teacherAuthTitle">
+        <header class="teacher-auth-header">
+          <div>
+            <span class="eyebrow">MOKYTOJO PASKYRA</span>
+            <h2 id="teacherAuthTitle">Prisijungimas</h2>
+            <p>Susiek paskyrą su šiuo mokytojo profiliu, kad kitame įrenginyje profilį būtų galima rasti vien prisijungus.</p>
+          </div>
+          <button class="icon-button" type="button" data-teacher-auth-close="true" aria-label="Uždaryti">×</button>
+        </header>
+
+        <div class="teacher-auth-body">
+          <section class="teacher-auth-signed-out" id="teacherAuthSignedOut">
+            <label class="teacher-auth-field">
+              <span>El. paštas</span>
+              <input id="teacherAuthEmail" type="email" autocomplete="email" inputmode="email" placeholder="vardas@pastas.lt" />
+            </label>
+            <label class="teacher-auth-field">
+              <span>Slaptažodis</span>
+              <input id="teacherAuthPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Bent 6 simboliai" />
+            </label>
+            <div class="teacher-auth-actions">
+              <button class="primary-button" id="teacherAuthSignInButton" type="button">Prisijungti</button>
+              <button class="secondary-button" id="teacherAuthSignUpButton" type="button">Sukurti paskyrą</button>
+            </div>
+            <button class="teacher-auth-link-button" id="teacherAuthResetButton" type="button">Pamiršau slaptažodį</button>
+            <p class="teacher-auth-note">Pirmą paskyrą kurk šiame įrenginyje, kuriame dabar matai savo mokinius ir tvarkaraštį. Paskyra bus susieta su esamu profiliu – duomenys nebus kopijuojami į naują profilį.</p>
+          </section>
+
+          <section class="teacher-auth-signed-in" id="teacherAuthSignedIn" hidden>
+            <div class="teacher-auth-account-card">
+              <span>Prisijungta kaip</span>
+              <strong id="teacherAuthCurrentEmail">—</strong>
+              <small id="teacherAuthUidLabel">Firebase paskyra aktyvi</small>
+            </div>
+            <div class="teacher-auth-profile-card">
+              <div>
+                <span>Dabartinis mokytojo profilis</span>
+                <strong id="teacherAuthCurrentProfile">—</strong>
+              </div>
+              <div class="teacher-auth-binding" id="teacherAuthBindingStatus">Tikrinamas susiejimas…</div>
+            </div>
+            <button class="primary-button teacher-auth-link-profile" id="teacherAuthLinkProfileButton" type="button" hidden>Susieti šį profilį su paskyra</button>
+            <p class="teacher-auth-note" id="teacherAuthSignedInNote">Kai paskyra susieta, kitame įrenginyje užteks prisijungti tuo pačiu el. paštu.</p>
+            <button class="secondary-button" id="teacherAuthSignOutButton" type="button">Atsijungti nuo paskyros</button>
+          </section>
+
+          <div class="teacher-auth-status" id="teacherAuthStatus" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 
@@ -644,9 +699,9 @@
       MathfieldElement.soundsDirectory = null;
     }
   </script>
-  <script src="tasks.js?v=P2-SPLIT-P2.5-P4-P1.7.9.27"></script>
-  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.27"></script>
-  <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.27"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.27"></script>
+  <script src="tasks.js?v=P2-SPLIT-P2.5-P4-P1.7.9.28"></script>
+  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.28"></script>
+  <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.28"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.28"></script>
 </body>
 </html>

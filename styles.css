@@ -7449,3 +7449,46 @@ body.p2-shell .p2-board-tools {
 .p2-backup-restore-change-badge{flex:0 0 auto;padding:4px 6px;border-radius:999px;background:#edf2f8;color:#617087;font-size:8px;font-weight:900;white-space:nowrap}.is-rollback>.p2-backup-restore-change-badge{background:#ffe4e4;color:#a64040}.is-forward>.p2-backup-restore-change-badge{background:#def3e6;color:#27784a}.is-remove>.p2-backup-restore-change-badge{background:#fff0c9;color:#8a691d}
 .p2-backup-restore-more{margin:0;color:#7a8799;font-size:9px}.p2-backup-restore-change-summary{display:grid;gap:3px;padding:9px 10px;border-top:1px solid #e7ebf1;color:#6d7a8d}.p2-backup-restore-change-summary strong{color:#4b596e;font-size:10px}.p2-backup-restore-change-summary span{font-size:9px;line-height:1.4}.p2-backup-restore-change-summary.is-muted{border:1px dashed #dce3ed;border-radius:10px;background:#fff}
 @media(max-width:560px){.p2-backup-restore-diff-head{flex-direction:column}.p2-backup-restore-diff-chips{justify-content:flex-start}.p2-backup-restore-change-row{grid-template-columns:1fr}.p2-backup-restore-change-badge{justify-self:start}}
+
+/* P1.7.9.28 — mokytojo paskyros / Firebase Authentication dialogas. */
+.teacher-auth-modal[hidden] { display: none !important; }
+.teacher-auth-modal { position: fixed; inset: 0; z-index: 1800; display: grid; place-items: center; padding: 18px; }
+.teacher-auth-backdrop { position: absolute; inset: 0; background: rgba(23,31,48,.46); backdrop-filter: blur(3px); }
+.teacher-auth-panel { position: relative; width: min(560px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); overflow: auto; border: 1px solid #dfe5ef; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px rgba(20,31,51,.22); }
+.teacher-auth-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 22px 16px; border-bottom: 1px solid #e7ebf2; }
+.teacher-auth-header h2 { margin: 3px 0 5px; color: #1f2b42; font-size: 23px; letter-spacing: -.02em; }
+.teacher-auth-header p { margin: 0; max-width: 450px; color: #69758a; font-size: 12px; line-height: 1.5; }
+.teacher-auth-body { padding: 20px 22px 22px; }
+.teacher-auth-signed-out, .teacher-auth-signed-in { display: grid; gap: 12px; }
+.teacher-auth-field { display: grid; gap: 6px; color: #354259; font-size: 12px; font-weight: 800; }
+.teacher-auth-field input { width: 100%; box-sizing: border-box; min-height: 43px; padding: 9px 11px; border: 1px solid #d8deea; border-radius: 11px; background: #fbfcfe; color: #1f2a40; font: inherit; font-weight: 600; outline: none; }
+.teacher-auth-field input:focus { border-color: #8094df; box-shadow: 0 0 0 3px rgba(92,116,214,.12); background: #fff; }
+.teacher-auth-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 2px; }
+.teacher-auth-actions button, .teacher-auth-link-profile, .teacher-auth-signed-in > .secondary-button { min-height: 42px; }
+.teacher-auth-link-button { justify-self: start; padding: 2px 0; border: 0; background: transparent; color: #526fc8; font-size: 12px; font-weight: 800; cursor: pointer; }
+.teacher-auth-link-button:hover { text-decoration: underline; }
+.teacher-auth-note { margin: 2px 0 0; padding: 11px 12px; border-radius: 11px; background: #f5f7fb; color: #68758a; font-size: 11px; line-height: 1.5; }
+.teacher-auth-account-card, .teacher-auth-profile-card { padding: 13px 14px; border: 1px solid #e1e6ef; border-radius: 13px; background: #fafbfe; }
+.teacher-auth-account-card span, .teacher-auth-profile-card span { display: block; margin-bottom: 3px; color: #7a8699; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.teacher-auth-account-card strong, .teacher-auth-profile-card strong { display: block; overflow-wrap: anywhere; color: #243149; font-size: 14px; }
+.teacher-auth-account-card small { display: block; margin-top: 4px; color: #8290a4; font-size: 10px; }
+.teacher-auth-profile-card { display: grid; gap: 10px; }
+.teacher-auth-binding { padding: 8px 10px; border-radius: 9px; background: #eef2f8; color: #5d6a7f; font-size: 11px; font-weight: 800; }
+.teacher-auth-binding.is-ok { background: #eaf7ef; color: #2c7a4a; }
+.teacher-auth-binding.is-warning { background: #fff5dc; color: #8a6417; }
+.teacher-auth-binding.is-error { background: #fff0f0; color: #a53d3d; }
+.teacher-auth-status { min-height: 18px; margin-top: 10px; color: #68758a; font-size: 11px; line-height: 1.45; }
+.teacher-auth-status.is-error { color: #a33d3d; }
+.teacher-auth-status.is-ok { color: #28764a; }
+.teacher-account-button.is-authenticated span:first-child { color: #2ca76b; }
+.teacher-account-button.is-unlinked span:first-child { color: #d09a28; }
+body.teacher-auth-open { overflow: hidden; }
+
+@media (max-width: 620px) {
+  .teacher-auth-modal { padding: 6px; }
+  .teacher-auth-panel { width: calc(100vw - 12px); max-height: calc(100vh - 12px); border-radius: 15px; }
+  .teacher-auth-header { padding: 16px 15px 13px; }
+  .teacher-auth-header h2 { font-size: 20px; }
+  .teacher-auth-body { padding: 15px; }
+  .teacher-auth-actions { grid-template-columns: 1fr; }
+}
