@@ -538,7 +538,7 @@
   const BOARD_CANVAS_REPOSITION_GUARD_SCREEN = 110;
   const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
 
-  // P1.7.9.42: lentos geometrijos daugiau automatiškai nemigruojame net tada,
+  // P1.7.9.43: lentos geometrijos daugiau automatiškai nemigruojame net tada,
   // kai istorinis Room yra tuščias. Nauji Room ir taip kuriami 720 px pločio, o
   // senų Room worldWidth / worldHeight paliekami tokie, kokie buvo išsaugoti.
   // Mastelio suderinimas nuo šiol yra tik kameros / peržiūros atsakomybė.
@@ -586,39 +586,54 @@
     return world.width > BOARD_STRIP_DEFAULT_WIDTH + 1;
   }
 
-  // P1.7.9.42: 100 % turi vieną universalią geometrinę reikšmę visoms lentoms:
-  // camera.zoom === 1.0, t. y. 1 lentos pasaulio px = 1 CSS px. Istorinės lentos
-  // vis dar gali būti automatiškai SUTALPINAMOS pirmą kartą atidarant, tačiau tada
-  // UI rodo tikrą mastelį (pvz. 8 %, 27 %, 63 %), o ne klaidinantį „100 %“.
-  const BOARD_LEGACY_FALLBACK_ZOOM = 0.20;
+  // P1.7.9.43: nedestruktyvus istorinių lentų mastelio suderinamumo sluoksnis.
+  // Iki 720 px vertikalios juostos senieji Room naudojo 2400 px bazinę koordinačių
+  // sistemą ir 54 px smulkų tinklelio žingsnį. Dabartinėje sistemoje smulkus žingsnis
+  // yra 18 px. Todėl senos sistemos vizualus 100 % yra 18/54 = 1/3 tikro camera.zoom.
+  // Tai nekeičia worldWidth/worldHeight, piešinių taškų ar jokių Firebase duomenų.
+  const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
 
   function boardUser100Zoom() {
-    return 1;
+    return boardUsesLegacyReadableScale() ? BOARD_LEGACY_USER_100_ZOOM : 1;
+  }
+
+  function boardZoomForUserPercent(percent) {
+    const normalized = Math.max(1, Math.min(180, Number(percent) || 100));
+    return clampCameraZoom(boardUser100Zoom() * normalized / 100);
   }
 
   function boardLegacyContentFitZoom(viewportWidthOverride = null) {
     const bounds = boardContentBounds();
     const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
-    if (!bounds) return clampCameraZoom(BOARD_LEGACY_FALLBACK_ZOOM);
+    // Tuščios senos lentos neturi ko „sutalpinti“ — jos iškart rodomos natūraliu 100 %.
+    if (!bounds) return boardUser100Zoom();
     const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
     const availableWidth = Math.max(1, viewportWidth - BOARD_LEGACY_FIT_PADDING_X * 2);
-    return clampCameraZoom(Math.min(1, availableWidth / contentWidth));
+    return clampCameraZoom(Math.min(boardUser100Zoom(), availableWidth / contentWidth));
   }
 
   function boardInitialFitZoom(viewportWidthOverride = null) {
-    return boardUsesLegacyReadableScale()
-      ? boardLegacyContentFitZoom(viewportWidthOverride)
-      : boardFitZoom(viewportWidthOverride);
+    if (boardUsesLegacyReadableScale()) return boardLegacyContentFitZoom(viewportWidthOverride);
+    return Math.min(boardUser100Zoom(), boardFitZoom(viewportWidthOverride));
   }
 
   function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
-    return Math.max(1, Math.round(clampCameraZoom(actualZoom) * 100));
+    const baseZoom = Math.max(0.001, boardUser100Zoom());
+    return Math.max(1, Math.round((clampCameraZoom(actualZoom) / baseZoom) * 100));
   }
 
   function setBoardUserZoomPercent(percent, options = {}) {
-    const normalized = Math.max(1, Math.min(180, Number(percent) || 100));
-    setBoardZoom(normalized / 100, options);
+    setBoardZoom(boardZoomForUserPercent(percent), options);
+  }
+
+  function boardStrokeWorldWidth(strokeWidth) {
+    // Canvas yra boardWorld viduje ir masteliuojamas kartu su kamera. Senos lentos
+    // bazinis zoom yra 1/3, todėl linijos plotį kompensuojame atvirkščiai: ties
+    // vartotojo 100 % 2.6 px pieštukas ir 22 px trintukas lieka tokio pat ekrano storio
+    // kaip dabartinėje 720 px sistemoje. Išsaugota stroke.width reikšmė nekeičiama.
+    const width = Math.max(0.1, Number(strokeWidth) || 2.6);
+    return width / Math.max(0.001, boardUser100Zoom());
   }
 
   function boardGeometrySnapshot() {
@@ -8717,7 +8732,7 @@ KOKYBĖS REIKALAVIMAI:
     }
     const camera = normalizeCamera(state.camera);
     if (Number.isFinite(saved?.userZoomPercent)) {
-      state.camera.zoom = clampCameraZoom(saved.userZoomPercent / 100);
+      state.camera.zoom = boardZoomForUserPercent(saved.userZoomPercent);
     } else if (saved?.zoom) {
       state.camera.zoom = clampCameraZoom(saved.zoom);
     }
@@ -8801,6 +8816,10 @@ KOKYBĖS REIKALAVIMAI:
 
     refs.boardWorld.style.width = `${world.width}px`;
     refs.boardWorld.style.height = `${world.height}px`;
+    // P1.7.9.43: tik vaizdavimo žyma. Senose 2400 px koordinatėse tinklelio
+    // pasaulio žingsnis yra 3 kartus didesnis, kad ties jų vizualiu 100 %
+    // ekrane liktų tas pats 18/90 px tinklelis kaip dabartinėje lentoje.
+    refs.boardWorld.dataset.coordinateScale = boardUsesLegacyReadableScale() ? 'legacy-2400' : 'current-720';
     // Chromium CSS zoom perskaičiuoja MathLive geometriją prieš piešimą. Tai nepalieka
     // trupmeninio transformavimo siūlių ties ištempiamu šaknies ženklu.
     const useLayoutZoom = Boolean(window.CSS?.supports?.('zoom', '1'));
@@ -9024,7 +9043,7 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
     refs.boardZoomActualButton.addEventListener('click', () => {
-      // 100 % nuo P1.7.9.42 visur yra tikras camera.zoom = 1.0.
+      // 100 % nuo P1.7.9.43 reiškia vienodą VIZUALŲ mastelį; senam 2400 px Room tai camera.zoom = 1/3.
       setBoardUserZoomPercent(100, { preserveCenter: true });
     });
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
@@ -9413,7 +9432,7 @@ KOKYBĖS REIKALAVIMAI:
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = stroke.width;
+    context.lineWidth = boardStrokeWorldWidth(stroke.width);
     context.beginPath();
     context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
     context.lineTo(toPoint.x * rect.width, toPoint.y * rect.height);
@@ -9432,7 +9451,7 @@ KOKYBĖS REIKALAVIMAI:
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = stroke.width;
+    context.lineWidth = boardStrokeWorldWidth(stroke.width);
     context.beginPath();
     stroke.points.forEach((point, index) => {
       const x = point.x * rect.width;
@@ -12359,9 +12378,9 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointerup', stopDrawing);
   refs.canvas.addEventListener('pointercancel', stopDrawing);
 
-  // P1.7.9.42: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
-  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome tą patį FIZINĮ zoom.
-  // Procentas nebėra santykinis nuo viewport'o: 100 % visada yra zoom=1.
+  // P1.7.9.43: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
+  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome tą patį vartotojo mastelį.
+  // 100 % bazė priklauso tik nuo Room koordinačių kartos, o ne nuo viewport'o pločio.
   let boardLastViewportWidth = 0;
   let boardViewportResizeFrame = 0;
   const boardViewportObserver = new ResizeObserver(() => {
@@ -12374,8 +12393,8 @@ KOKYBĖS REIKALAVIMAI:
       if (nextWidth < 80 || nextHeight < 80) return;
 
       const oldZoom = currentBoardZoom();
-      // P1.7.9.42: keičiantis viewport'ui fizinio lentos mastelio nebekeičiame.
-      // 100 % lieka camera.zoom=1 net pasukus planšetę ar pakeitus lango plotį.
+      // P1.7.9.43: keičiantis viewport'ui mastelio bazės nekeičiame.
+      // Naujam Room 100 % = zoom 1; senam 2400 px Room 100 % = zoom 1/3.
       boardLastViewportWidth = nextWidth;
       applyBoardCamera({ preserveCenter: true, oldZoom });
       resizeCanvas({ force: true });

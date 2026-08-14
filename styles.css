@@ -62,13 +62,26 @@ button { -webkit-tap-highlight-color: transparent; }
      tinklelis perkalibruotas taip, kad 100 % režime išliktų ankstesnis
      vizualus languoto lapo tankis. Mažas langelis 18 px, pagrindinė linija
      kas 5 langelius (90 px). */
+  --board-grid-major: 90px;
+  --board-grid-minor: 18px;
   background-image:
     linear-gradient(rgba(102,118,148,.24) 1.2px,transparent 1.2px),
     linear-gradient(90deg,rgba(102,118,148,.24) 1.2px,transparent 1.2px),
     linear-gradient(rgba(102,118,148,.12) .9px,transparent .9px),
     linear-gradient(90deg,rgba(102,118,148,.12) .9px,transparent .9px);
-  background-size: 90px 90px,90px 90px,18px 18px,18px 18px;
+  background-size:
+    var(--board-grid-major) var(--board-grid-major),
+    var(--board-grid-major) var(--board-grid-major),
+    var(--board-grid-minor) var(--board-grid-minor),
+    var(--board-grid-minor) var(--board-grid-minor);
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
+}
+/* P1.7.9.43: 2400 px istorinių Room tinklelis saugomas jų senojoje pasaulio
+   skalėje (54/270 px). Esant suderinamumo 100 % zoom=1/3, ekrane jis tampa
+   lygiai 18/90 px — toks pats kaip dabartinės 720 px lentos ties 100 %. */
+.board-world[data-coordinate-scale="legacy-2400"] {
+  --board-grid-major: 270px;
+  --board-grid-minor: 54px;
 }
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 #drawingCanvas { position: absolute; left: 0; top: 0; z-index: 1; touch-action: none; }
