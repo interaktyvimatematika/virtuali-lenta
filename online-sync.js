@@ -35,11 +35,14 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.38';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.39';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
 const BOARD_STRIP_INITIAL_HEIGHT = 10000;
+// P1.7.9.39 RECOVERY: tik atpažinimo reikšmė iš klaidingo P1.7.9.35/.36 eksperimento.
+// Ji NĖRA aktyvios lentos koordinačių sistemos versija ir nieko nemigruoja.
+const RECOVERY_SCALE_MIGRATION_VERSION = 3;
 
 function safeAssignmentKey(value) {
   return String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 96);
@@ -2371,7 +2374,7 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
       : null;
     const migrationBuild = String(migrationMeta?.build || '');
     const isScaleExperimentMigration = boardChanged
-      && Number(migrationMeta?.version || 0) === BOARD_COORDINATE_SYSTEM_VERSION
+      && Number(migrationMeta?.version || 0) === RECOVERY_SCALE_MIGRATION_VERSION
       && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36');
     let kind = 'changed';
     let detail = [];
@@ -2509,7 +2512,7 @@ window.addEventListener('p2:restore-scale-migration-request', async () => {
         ? currentWorkspace.meta.boardCoordinateMigration
         : null;
       const migrationBuild = String(migrationMeta?.build || '');
-      const isTarget = Number(migrationMeta?.version || 0) === BOARD_COORDINATE_SYSTEM_VERSION
+      const isTarget = Number(migrationMeta?.version || 0) === RECOVERY_SCALE_MIGRATION_VERSION
         && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36')
         && backup.rooms?.[targetRoom]?.workspace;
       if (isTarget) targetRoomIds.push(targetRoom);
@@ -2525,7 +2528,7 @@ window.addEventListener('p2:restore-scale-migration-request', async () => {
 
     const updates = {};
     for (const targetRoom of targetRoomIds) {
-      // P1.7.9.38 RECOVERY: atkuriamas TIK workspace iš patikimos kopijos.
+      // P1.7.9.39 RECOVERY: atkuriamas TIK workspace iš patikimos kopijos.
       // Mokinių bazė, tvarkaraštis, pratybų p2 progresas ir control neliečiami.
       updates[`p772Rooms/${targetRoom}/workspace`] = backup.rooms[targetRoom].workspace ?? null;
     }
@@ -2539,7 +2542,7 @@ window.addEventListener('p2:restore-scale-migration-request', async () => {
       message: `Atkurta tik ${targetRoomIds.length} P1.7.9.35 / P1.7.9.36 mastelio eksperimento paliestų lentų būsena. Mokinių bazė, tvarkaraštis ir pratybų progresas nepakeisti.`
     }}));
   } catch (error) {
-    console.error('P1.7.9.38 tikslinio lentų atkūrimo klaida', error);
+    console.error('P1.7.9.39 tikslinio lentų atkūrimo klaida', error);
     bridge.showToast?.('Lentų atkūrimas sustabdytas');
     window.dispatchEvent(new CustomEvent('p2:restore-error', { detail: { message: String(error?.message || error || 'Lentų atkūrimas nepavyko.') } }));
   }
@@ -2971,7 +2974,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.38 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.39 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
