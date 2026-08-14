@@ -58,16 +58,16 @@ button { -webkit-tap-highlight-color: transparent; }
 .board-world {
   position: absolute; left: 0; top: 0; width: 720px; height: 1700px; transform-origin: top left;
   overflow: hidden; background-color: #fbfcfe;
-  /* P1.7.9.10.4: 100 % paliekamas kaip „lapas telpa per plotį“, tačiau
-     pats languoto lapo tinklelis perkalibruotas pagal ankstesnį 150 % vaizdą.
-     Todėl 100 % režime langelių ir linijų fizinis dydis atitinka tai, kas
-     P1.7.9.10.3 buvo matoma ties 150 %, neįvedant horizontalios slankjuostės. */
+  /* P1.7.9.21: po naujų Room geometrijos suvienodinimo iki 720 px
+     tinklelis perkalibruotas taip, kad 100 % režime išliktų ankstesnis
+     vizualus languoto lapo tankis. Mažas langelis 18 px, pagrindinė linija
+     kas 5 langelius (90 px). */
   background-image:
-    linear-gradient(rgba(102,118,148,.24) 3.6px,transparent 3.6px),
-    linear-gradient(90deg,rgba(102,118,148,.24) 3.6px,transparent 3.6px),
-    linear-gradient(rgba(102,118,148,.12) 2.7px,transparent 2.7px),
-    linear-gradient(90deg,rgba(102,118,148,.12) 2.7px,transparent 2.7px);
-  background-size: 270px 270px,270px 270px,54px 54px,54px 54px;
+    linear-gradient(rgba(102,118,148,.24) 1.2px,transparent 1.2px),
+    linear-gradient(90deg,rgba(102,118,148,.24) 1.2px,transparent 1.2px),
+    linear-gradient(rgba(102,118,148,.12) .9px,transparent .9px),
+    linear-gradient(90deg,rgba(102,118,148,.12) .9px,transparent .9px);
+  background-size: 90px 90px,90px 90px,18px 18px,18px 18px;
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
 }
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
