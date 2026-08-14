@@ -8,7 +8,8 @@ import {
   onValue,
   get,
   onDisconnect,
-  serverTimestamp
+  serverTimestamp,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 import {
   getAuth,
@@ -35,7 +36,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.35';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.36';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1521,9 +1522,10 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       applyInitialWorkspace(blank);
     } else {
       let workspaceValue = snapshot.val() || {};
-      // P1.7.9.35: istorinės plačios lentos vieną kartą normalizuojamos į dabartinę
-      // 720 px koordinačių sistemą. Migraciją į Firebase įrašo tik autentifikuotas
-      // mokytojas; mokinys seną Room gali perskaityti, bet jo istorijos neperrašo.
+      let pendingLegacyMigration = null;
+      // P1.7.9.36: istorinio Room navigacijos NEGALIMA blokuoti dideliu Firebase
+      // workspace perrašymu. Pirmiausia lokaliai parodome normalizuotą lentą ir
+      // užbaigiame kortelės / Room atidarymą; atominį įrašą atliekame fone.
       const geometry = workspaceValue.boardGeometry && typeof workspaceValue.boardGeometry === 'object'
         ? workspaceValue.boardGeometry
         : null;
@@ -1532,41 +1534,30 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
         const migration = migrateLegacyWorkspaceCoordinates(workspaceValue);
         if (migration) {
           workspaceValue = migration.workspace;
-          const migrationUpdates = {
-            drawing: workspaceValue.drawing || {},
-            notes: workspaceValue.notes || {},
-            boardImages: workspaceValue.boardImages || {},
-            boardTasks: workspaceValue.boardTasks || {},
-            boardPractices: workspaceValue.boardPractices || {},
-            window: workspaceValue.window || {},
-            boardGeometry: workspaceValue.boardGeometry,
-            'meta/boardCoordinateMigration': {
-              version: BOARD_COORDINATE_SYSTEM_VERSION,
-              build: BUILD,
-              oldWorldWidth: migration.oldWidth,
-              oldWorldHeight: migration.oldHeight,
-              newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH,
-              newWorldHeight: migration.newHeight,
-              scale: migration.scale,
-              migratedBy: auth.currentUser.uid,
-              migratedAt: serverTimestamp()
-            }
-          };
-          await update(localWorkspaceRef, migrationUpdates);
-          if (generation !== roomGeneration || targetRoom !== roomId) return;
-          diagnosticLog('legacy-board-normalized', {
-            oldWorldWidth: migration.oldWidth, oldWorldHeight: migration.oldHeight,
-            newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH, newWorldHeight: migration.newHeight,
-            scale: Math.round(migration.scale * 100000) / 100000
-          }, { urgent: true });
-          bridge.showToast?.('Istorinė lenta pritaikyta dabartiniam 100 % masteliui');
+          pendingLegacyMigration = migration;
         }
       } else if (legacyWidth > BOARD_STRIP_DEFAULT_WIDTH + BOARD_LEGACY_WIDTH_EPSILON) {
-        // Jei pirmas seną Room atidarė mokinys, nieko neperrašome. Mokytojui jį
-        // atidarius migracija bus atlikta automatiškai ir visiems įrenginiams vienodai.
         diagnosticLog('legacy-board-awaiting-teacher-normalization', { worldWidth: legacyWidth });
       }
       applyInitialWorkspace(workspaceValue);
+
+      bootstrapped = true;
+      subscribeRoomRealtimeListeners(generation, { deferWorkspace: Boolean(pendingLegacyMigration) });
+      // Navigacija jau gali būti užbaigta; migracijos Firebase round-trip nebeturi
+      // laikyti roomSwitching=true ir negali „suvalgyti“ kortelės paspaudimo.
+      activateCurrentRoomPresence(generation);
+      if (generation !== roomGeneration || targetRoom !== roomId) return;
+      setUi('online', location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta');
+      diagnosticSyncState.workspaceReadyAt = Date.now();
+      diagnosticLog('workspace-ready', { startsBlank: Boolean(startsBlank), switched: Boolean(switched), migrationPending: Boolean(pendingLegacyMigration) }, { urgent: true });
+      window.dispatchEvent(new CustomEvent('p2:workspace-ready', {
+        detail: { roomId: targetRoom, startsBlank: Boolean(startsBlank), switched: Boolean(switched) }
+      }));
+      if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-complete', { detail: { roomId: targetRoom } }));
+      if (pendingLegacyMigration) {
+        setTimeout(() => persistLegacyWorkspaceMigration(localWorkspaceRef, targetRoom, generation, pendingLegacyMigration), 0);
+      }
+      return;
     }
 
     bootstrapped = true;
@@ -3020,7 +3011,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.35 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.36 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -3905,14 +3896,65 @@ function subscribePresenceList() {
   });
 }
 
-function subscribeRoomRealtimeListeners(generation = roomGeneration) {
+function subscribeRoomRealtimeListeners(generation = roomGeneration, options = {}) {
   if (generation !== roomGeneration) return;
-  subscribeWorkspaceParts();
+  if (!options.deferWorkspace) subscribeWorkspaceParts();
   subscribeLiveStrokes();
   subscribeP2StudentProfile();
   subscribeP2AssignmentAndProgress();
   subscribeTransition();
   subscribePresenceList();
+}
+
+async function persistLegacyWorkspaceMigration(targetRef, targetRoom, generation, migrationPreview) {
+  try {
+    const result = await runTransaction(targetRef, current => {
+      const migration = migrateLegacyWorkspaceCoordinates(current);
+      if (!migration) return;
+      const workspace = migration.workspace;
+      workspace.meta = {
+        ...(workspace.meta && typeof workspace.meta === 'object' ? workspace.meta : {}),
+        boardCoordinateMigration: {
+          version: BOARD_COORDINATE_SYSTEM_VERSION,
+          build: BUILD,
+          oldWorldWidth: migration.oldWidth,
+          oldWorldHeight: migration.oldHeight,
+          newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH,
+          newWorldHeight: migration.newHeight,
+          scale: migration.scale,
+          migratedBy: auth.currentUser?.uid || '',
+          migratedAt: Date.now()
+        }
+      };
+      return workspace;
+    }, { applyLocally: false });
+
+    if (result.committed) {
+      diagnosticLog('legacy-board-normalized', {
+        oldWorldWidth: migrationPreview.oldWidth, oldWorldHeight: migrationPreview.oldHeight,
+        newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH, newWorldHeight: migrationPreview.newHeight,
+        scale: Math.round(migrationPreview.scale * 100000) / 100000
+      }, { urgent: true });
+      if (generation === roomGeneration && targetRoom === roomId) {
+        subscribeWorkspaceParts();
+        bridge.showToast?.('Istorinė lenta pritaikyta dabartiniam 100 % masteliui');
+      }
+      return;
+    }
+
+    // Jei kitas mokytojo langas jau spėjo atlikti migraciją, transaction gali būti
+    // nutrauktas kaip nebereikalingas. Tada tiesiog prisijungiame prie galutinės būsenos.
+    if (generation === roomGeneration && targetRoom === roomId) subscribeWorkspaceParts();
+  } catch (error) {
+    console.error('Istorinės lentos koordinačių migracijos klaida', error);
+    diagnosticLog('legacy-board-normalization-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
+    if (generation === roomGeneration && targetRoom === roomId) {
+      // Migracijos klaida nebegali blokuoti mokinio / pamokos kortelės atidarymo.
+      // Prijungiame įprastus workspace listenerius ir paliekame seną lentą nepakeistą.
+      subscribeWorkspaceParts();
+      bridge.showToast?.('Istorinės lentos mastelio migracija nepavyko · lenta atidaryta nepakeista');
+    }
+  }
 }
 
 onValue(connectedRef, snapshot => {
