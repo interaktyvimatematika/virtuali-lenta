@@ -17,6 +17,7 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInAnonymously,
   GoogleAuthProvider,
   signInWithPopup,
   linkWithPopup,
@@ -34,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.31';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.32';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -253,7 +254,42 @@ if (newButton) {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch(error => console.warn('Firebase Auth išsaugojimo režimo klaida', error));
+try {
+  await setPersistence(auth, browserLocalPersistence);
+} catch (error) {
+  console.warn('Firebase Auth išsaugojimo režimo klaida', error);
+}
+
+// P1.7.9.32: mokiniui nereikia kurti paskyros ar spausti prisijungimo.
+// Prieš prijungiant Room realaus laiko klausytojus palaukiame, kol Firebase
+// nustatys jau išsaugotą Auth būseną. Jei mokinio įrenginys dar neturi
+// Firebase vartotojo, sukuriame laikiną anoniminę tapatybę. Taip vėliau
+// Realtime Database taisyklės galės reikalauti auth != null nesulaužydamos
+// mokinio nuorodos. Jei tame pačiame naršyklės profilyje jau prisijungęs
+// mokytojas, jo paskyros NEATJUNGIAME ir anonimine nepakeičiame.
+async function ensureStudentFirebaseAuth() {
+  try {
+    if (typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    } else {
+      await new Promise(resolve => {
+        let unsubscribe = () => {};
+        unsubscribe = onAuthStateChanged(auth, () => { unsubscribe(); resolve(); });
+      });
+    }
+    if (onlineRole !== 'student' || auth.currentUser) return auth.currentUser || null;
+    const credential = await signInAnonymously(auth);
+    console.info('P1.7.9.32: mokinio anoniminė Firebase sesija paruošta', credential.user?.uid || '');
+    return credential.user || null;
+  } catch (error) {
+    console.error('P1.7.9.32: nepavyko paruošti mokinio anoniminės Firebase sesijos', error);
+    // Kol taisyklės dar atviros, programa gali tęsti darbą ir šią klaidą
+    // išbandysime prieš uždarant Realtime Database. Uždarius taisykles ši
+    // būsena bus aiškiai matoma kaip prieigos klaida, o ne tylus duomenų dingimas.
+    return auth.currentUser || null;
+  }
+}
+await ensureStudentFirebaseAuth();
 
 // P2-SPLIT-P2.5-P2: mokinių sąrašas nėra Room dalis. Kiekviena mokytojo
 // naršyklė gauna ilgalaikį atsitiktinį profilio ID; jis niekada nepridedamas
@@ -280,7 +316,7 @@ const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
 let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
 
-// P1.7.9.31: mokytojo Firebase Authentication paskyra (Email/Password + Google).
+// P1.7.9.32: mokytojo Firebase Authentication paskyra (Email/Password + Google).
 // Esamas T-... profilis nekeičiamas ir nemigruojamas į naują kelią: paskyros UID
 // gauna tik nuorodą į jau naudojamą mokytojo profilį. Tai leidžia kitame
 // įrenginyje prisijungus atkurti T-... identifikatorių ir perkrauti tą pačią bazę.
@@ -415,7 +451,7 @@ async function reconcileSignedInTeacher(user, options = {}) {
       renderTeacherAuthUi();
     }
   } catch (error) {
-    console.error('P1.7.9.31 paskyros susiejimo patikros klaida', error);
+    console.error('P1.7.9.32 paskyros susiejimo patikros klaida', error);
     setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
     renderTeacherAuthUi();
   }
@@ -2789,7 +2825,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.31 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.32 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
