@@ -7459,6 +7459,9 @@ body.p2-shell .p2-board-tools {
 .teacher-auth-header h2 { margin: 3px 0 5px; color: #1f2b42; font-size: 23px; letter-spacing: -.02em; }
 .teacher-auth-header p { margin: 0; max-width: 450px; color: #69758a; font-size: 12px; line-height: 1.5; }
 .teacher-auth-body { padding: 20px 22px 22px; }
+/* P1.7.9.29: [hidden] turi laimėti prieš šių blokų display:grid.
+   P1.7.9.28 dėl CSS kaskados vienu metu rodė ir prisijungimo, ir prisijungusio vartotojo dalis. */
+.teacher-auth-signed-out[hidden], .teacher-auth-signed-in[hidden] { display: none !important; }
 .teacher-auth-signed-out, .teacher-auth-signed-in { display: grid; gap: 12px; }
 .teacher-auth-field { display: grid; gap: 6px; color: #354259; font-size: 12px; font-weight: 800; }
 .teacher-auth-field input { width: 100%; box-sizing: border-box; min-height: 43px; padding: 9px 11px; border: 1px solid #d8deea; border-radius: 11px; background: #fbfcfe; color: #1f2a40; font: inherit; font-weight: 600; outline: none; }
