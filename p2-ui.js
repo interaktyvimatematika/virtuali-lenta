@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.17';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.18';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -1114,7 +1114,7 @@
 
   const GRADE10_REVIEW_LESSON = Object.freeze({
     "id": "p2-grade10-review-01",
-    "contentVersion": 3,
+    "contentVersion": 4,
     "title": "10 klasės matematikos pakartojimas",
     "shortTitle": "10 klasės pakartojimas",
     "description": "30 įvairių 10 klasės kurso kartojimo užduočių: proporcingoji dalyba, sudėtiniai procentai ir mišiniai, racionaliosios lygtys, kvadratinės nelygybės, lygčių sistemos, panašumas, trikampių ir apskritimų geometrija, trigonometrija, statistika, kombinatorika ir tikimybės.",
@@ -2408,17 +2408,30 @@
       <text x="116" y="14">A</text><text x="11" y="151">B</text><text x="219" y="151">C</text><text x="97" y="153">D</text>
       <text x="48" y="132">6</text><text x="157" y="132">9</text><text x="63" y="72">8</text><text x="171" y="72">?</text>`);
     if (type === 'incircle') return wrap('Trikampis ir į jį įbrėžtas apskritimas', `
-      <path d="M120 18 L28 139 L214 139 Z"/><circle cx="121" cy="102" r="35" class="guide"/>
-      <text x="116" y="14">A</text><text x="16" y="151">B</text><text x="216" y="151">C</text><text x="129" y="99">r</text>`);
+      <path d="M120 15 L35 145 L205 145 Z"/>
+      <circle cx="120" cy="99.02" r="45.98" class="guide"/>
+      <text x="116" y="12">A</text><text x="23" y="157">B</text><text x="208" y="157">C</text><text x="124" y="102">r</text>`);
     if (type === 'circumcircle') return wrap('Trikampis ir apie jį apibrėžtas apskritimas', `
-      <circle cx="120" cy="82" r="70" class="guide"/><path d="M120 12 L56 121 L191 121 Z"/>
-      <text x="116" y="10">A</text><text x="45" y="134">B</text><text x="194" y="134">C</text><path d="M120 82 L191 121" class="guide"/><text x="157" y="96">R</text>`);
+      <circle cx="120" cy="82" r="70" class="guide"/>
+      <path d="M120 12 L64 124 L176 124 Z"/>
+      <path d="M120 82 L176 124" class="guide"/>
+      <circle cx="120" cy="82" r="2.6" style="fill:#526078;stroke:none"/>
+      <text x="116" y="10">A</text><text x="52" y="137">B</text><text x="179" y="137">C</text>
+      <text x="112" y="77">O</text><text x="150" y="99">R</text>`);
     if (type === 'centroid') return wrap('Trikampio pusiaukraštinės ir sunkio centras', `
       <path d="M120 18 L27 139 L215 139 Z"/><path d="M120 18 L121 139" class="guide"/><path d="M27 139 L168 79" class="guide"/><path d="M215 139 L74 79" class="guide"/>
       <circle cx="121" cy="99" r="3.5"/><text x="116" y="14">A</text><text x="14" y="151">B</text><text x="218" y="151">C</text><text x="128" y="97">G</text>`);
     if (type === 'cyclic-quadrilateral') return wrap('Į apskritimą įbrėžtas keturkampis', `
-      <circle cx="120" cy="82" r="70" class="guide"/><path d="M79 25 L183 48 L169 132 L50 105 Z"/>
-      <text x="68" y="20">A</text><text x="187" y="47">B</text><text x="172" y="145">C</text><text x="36" y="111">D</text><text x="83" y="47">112°</text><text x="144" y="119">?</text>`);
+      <circle cx="120" cy="82" r="70" class="guide"/>
+      <path d="M66.38 37.00 L155.00 21.38 L165.00 135.62 L52.71 101.29 Z"/>
+      <path d="M78 38 A23 23 0 0 1 61 58" class="guide"/>
+      <path d="M160 119 A18 18 0 0 0 149 134" class="guide"/>
+      <circle cx="66.38" cy="37" r="2.4" style="fill:#526078;stroke:none"/>
+      <circle cx="155" cy="21.38" r="2.4" style="fill:#526078;stroke:none"/>
+      <circle cx="165" cy="135.62" r="2.4" style="fill:#526078;stroke:none"/>
+      <circle cx="52.71" cy="101.29" r="2.4" style="fill:#526078;stroke:none"/>
+      <text x="54" y="31">A</text><text x="159" y="18">B</text><text x="169" y="149">C</text><text x="39" y="107">D</text>
+      <text x="76" y="62">112°</text><text x="145" y="121">?</text>`);
     if (type === 'included-angle') return wrap('Trikampis su dviem kraštinėmis ir kampu tarp jų', `
       <path d="M31 137 L105 35 L215 137 Z"/><path d="M53 137 A22 22 0 0 1 45 119" class="guide"/>
       <text x="19" y="151">C</text><text x="101" y="30">A</text><text x="217" y="151">B</text>
@@ -2428,9 +2441,11 @@
       <text x="18" y="151">C</text><text x="102" y="30">A</text><text x="220" y="151">B</text>
       <text x="55" y="79">5</text><text x="127" y="151">7</text><text x="50" y="121">60°</text><text x="164" y="83">AB = ?</text>`);
     if (type === 'sine-law') return wrap('Trikampis sinusų teoremai', `
-      <path d="M29 137 L29 42 L215 137 Z"/><path d="M29 55 L42 55 L42 42" class="guide"/>
-      <text x="16" y="151">A</text><text x="15" y="35">B</text><text x="217" y="151">C</text>
-      <text x="51" y="132">30°</text><text x="102" y="151">b = ?</text><text x="96" y="80">a = 10</text>`);
+      <path d="M55 140 L55 25 L121.40 25 Z"/>
+      <path d="M55 37 L67 37 L67 25" class="guide"/>
+      <path d="M55 118 A22 22 0 0 1 66 120.95" class="guide"/>
+      <text x="42" y="154">A</text><text x="42" y="20">B</text><text x="124" y="29">C</text>
+      <text x="68" y="113">30°</text><text x="87" y="17">a = 10</text><text x="89" y="90">b = ?</text>`);
     return '';
   }
 
@@ -4098,7 +4113,7 @@
 
   function lessonHistoryForStudent(student) {
     return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
-      // P1.7.9.17: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
+      // P1.7.9.18: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
       // bet pataisymo migracija gali jį pažymėti kaip paslėptą dublikatą. Taip
       // atsarginėje kopijoje išlieka audito pėdsakas, o mokinio istorijoje
       // rodomas tik tikrasis pamokos Room.
@@ -4122,7 +4137,7 @@
 
   function studentLessonScheduleMeta(lesson) {
     const session = teacherStudentDb.classSessions?.[lesson?.classSessionId] || {};
-    // P1.7.9.17: pirmiausia naudojame classSession metaduomenis, bet turime
+    // P1.7.9.18: pirmiausia naudojame classSession metaduomenis, bet turime
     // saugų fallback į patį mokinio pamokos įrašą. Naujesnės schedule pamokos
     // šiuos laukus turi abiejose vietose, todėl statusas nepriklauso nuo to,
     // kuri Firebase šaka buvo užkrauta pirmiau.
