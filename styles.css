@@ -7261,7 +7261,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-time-manage-pane>small{color:#8b96a5;font-size:9px;line-height:1.45}
 .p2-schedule-time-manage-pane[hidden]{display:none!important}
 
-/* P2-SPLIT-P2.5-P4-P1.7.9.13 — tvarkaraštyje mokytojas turi matyti pilną
+/* P2-SPLIT-P2.5-P4-P1.7.9.14 — tvarkaraštyje mokytojas turi matyti pilną
    mokinio identifikatorių (vardą, klasę ir globėją), todėl jo nekerpame ellipsis. */
 .p2-schedule-card-students span {
   overflow: visible;
@@ -7272,7 +7272,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 }
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.9.13 — lentos teksto dydis pritaikytas naujam
+/* P2-SPLIT-P2.5-P4-P1.7.9.14 — lentos teksto dydis pritaikytas naujam
    100 % tinkleliui: vienos teksto eilutės ritmas ≈ vienas 54 px langelis. */
 body.p2-shell .board-note.board-mixed-editor {
   font-size: 42px;

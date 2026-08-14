@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.13: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.14: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -581,24 +581,38 @@
     return clampCameraZoom(state?.camera?.zoom);
   }
 
-  // P1.7.9.9: vartotojui rodomas 100 % mastelis reiškia „visas lapo plotis
-  // telpa matomame lentos lange“, o ne tiesioginį 1:1 pasaulio pikselių mastelį.
-  // Taip ir senesni, platesni Room ties 100 % neturi horizontalios slankjuostės.
+  // P1.7.9.9: naujajai 720 px vertikaliai lentai 100 % reiškia visą lapo plotį.
+  // P1.7.9.14: senos plačios 2D lentos yra išimtis. Jose visas 20–30 tūkst. px
+  // pasaulis neturi būti sutraukiamas iki 100 %, nes tada normaliai rašyti 20–40 px
+  // dydžio brūkšniai tampa beveik neįžiūrimi. Tokioms lentoms 100 % grąžina
+  // skaitomą senojo pasaulio 1:1 mastelį; „Rodyti plotį“ ir toliau sutalpina visą
+  // seną pasaulį. Duomenų / brūkšnių Firebase dėl to nekeičiame.
   function boardFitZoom() {
     const world = getBoardWorldRect();
     const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
     return clampCameraZoom(Math.min(1, viewportWidth / Math.max(1, world.width)));
   }
 
+  function boardUsesLegacyReadableScale() {
+    const world = getBoardWorldRect();
+    return world.width > BOARD_STRIP_DEFAULT_WIDTH + 1;
+  }
+
+  function boardUser100Zoom() {
+    if (!boardUsesLegacyReadableScale()) return boardFitZoom();
+    const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
+    return clampCameraZoom(Math.min(1, viewportWidth / BOARD_STRIP_DEFAULT_WIDTH));
+  }
+
   function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
-    const fitZoom = Math.max(0.001, boardFitZoom());
-    return Math.max(1, Math.round((actualZoom / fitZoom) * 100));
+    const baseZoom = Math.max(0.001, boardUser100Zoom());
+    return Math.max(1, Math.round((actualZoom / baseZoom) * 100));
   }
 
   function setBoardUserZoomPercent(percent, options = {}) {
-    const fitZoom = Math.max(0.001, boardFitZoom());
+    const baseZoom = Math.max(0.001, boardUser100Zoom());
     const normalized = Math.max(20, Math.min(250, Number(percent) || 100));
-    setBoardZoom(fitZoom * normalized / 100, options);
+    setBoardZoom(baseZoom * normalized / 100, options);
   }
 
   function boardGeometrySnapshot() {
@@ -8866,15 +8880,29 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function showBoardAt100FromTop(options = {}) {
-    state.camera.zoom = boardFitZoom();
+    const legacyReadable = boardUsesLegacyReadableScale();
+    const targetZoom = boardUser100Zoom();
+    state.camera.zoom = targetZoom;
     state.camera.scrollLeft = 0;
     state.camera.scrollTop = 0;
     applyBoardCamera();
     requestAnimationFrame(() => {
-      refs.board.scrollLeft = 0;
-      refs.board.scrollTop = 0;
-      state.camera.scrollLeft = 0;
-      state.camera.scrollTop = 0;
+      if (legacyReadable) {
+        // Senose 2D lentose turinys po ankstesnių left/top plėtimų gali būti už
+        // kelių tūkstančių pasaulio pikselių nuo dabartinio (0;0). Atverdami 100 %
+        // rodome pirmą realaus turinio vietą, užuot palikę vartotoją tuščioje erdvėje.
+        const bounds = boardContentBounds();
+        const padding = 48;
+        const left = Number.isFinite(bounds?.minX) ? bounds.minX : normalizeCamera(state.camera).worldOriginX;
+        const top = Number.isFinite(bounds?.minY) ? bounds.minY : normalizeCamera(state.camera).worldOriginY;
+        refs.board.scrollLeft = Math.max(0, left * targetZoom - padding);
+        refs.board.scrollTop = Math.max(0, top * targetZoom - padding);
+      } else {
+        refs.board.scrollLeft = 0;
+        refs.board.scrollTop = 0;
+      }
+      state.camera.scrollLeft = refs.board.scrollLeft;
+      state.camera.scrollTop = refs.board.scrollTop;
       if (options.save !== false) scheduleSave();
     });
   }
