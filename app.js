@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 1000;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.5: vertikali juosta susiaurinta iki 1000 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.6: vertikali juosta susiaurinta iki 1000 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -8809,8 +8809,10 @@ KOKYBĖS REIKALAVIMAI:
     const world = getBoardWorldRect();
     const oldZoom = currentBoardZoom();
     const logicalTop = refs.board.scrollTop / Math.max(0.001, oldZoom);
-    const padding = Math.max(24, Math.min(64, refs.board.clientWidth * 0.045));
-    const availableWidth = Math.max(1, refs.board.clientWidth - padding * 2);
+    // P1.7.9.6: vertikalus baltas lapas turi siekti iki pat slankjuostės.
+    // clientWidth jau neįtraukia vertikalios slankjuostės, todėl papildomos
+    // horizontalios paraštės čia nereikia.
+    const availableWidth = Math.max(1, refs.board.clientWidth);
     const targetZoom = clampCameraZoom(Math.min(1, availableWidth / Math.max(1, world.width)));
     state.camera.zoom = targetZoom;
     applyBoardCamera();
