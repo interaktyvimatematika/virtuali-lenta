@@ -8908,11 +8908,49 @@ KOKYBĖS REIKALAVIMAI:
     let attempt = 0;
     const retryDelays = [0, 40, 120, 260, 500, 900, 1500];
 
+    // P1.7.9.45: naujo 720 px Room workspace-ready kartais ateina dar prieš
+    // galutinį flex/grid išdėstymą. Pirmą akimirką board.clientWidth gali būti
+    // keliais procentais per mažas, todėl ankstesnė versija užfiksuodavo, pvz.,
+    // 98 %, nors po kelių kadrų 100 % jau visiškai telpa. Kelis kartus tyliai
+    // perskaičiuojame TIK pradinį fit. Jei vartotojas per tą laiką pats pakeitė
+    // mastelį, vėlyvas perskaičiavimas iškart nutraukiamas.
+    let nonLegacyLastAppliedZoom = null;
+    let nonLegacySettleIndex = 0;
+    const nonLegacySettleDelays = [80, 220, 500, 900];
+
+    const settleNonLegacyInitialFit = () => {
+      if (legacyReadable || !refs.board || nonLegacySettleIndex >= nonLegacySettleDelays.length) return;
+      const delay = nonLegacySettleDelays[nonLegacySettleIndex++];
+      setTimeout(() => {
+        if (legacyReadable || !refs.board) return;
+        const currentZoom = currentBoardZoom();
+        // Vartotojo + / − / 100 % paspaudimas turi absoliučią pirmenybę.
+        if (Number.isFinite(nonLegacyLastAppliedZoom) && Math.abs(currentZoom - nonLegacyLastAppliedZoom) > 0.0025) return;
+
+        const targetZoom = boardInitialFitZoom();
+        if (Math.abs(targetZoom - currentZoom) > 0.001) {
+          state.camera.zoom = targetZoom;
+          state.camera.scrollLeft = 0;
+          state.camera.scrollTop = 0;
+          applyBoardCamera();
+          requestAnimationFrame(() => {
+            refs.board.scrollLeft = 0;
+            refs.board.scrollTop = 0;
+            state.camera.scrollLeft = 0;
+            state.camera.scrollTop = 0;
+          });
+        }
+        nonLegacyLastAppliedZoom = targetZoom;
+        settleNonLegacyInitialFit();
+      }, delay);
+    };
+
     const applyFitAndAlign = () => {
       attempt += 1;
       // Tai tik pradinis PERŽIŪROS pritaikymas. Pats worldWidth/worldHeight ir visas
       // Room turinys neliečiami. UI procentas rodo realų camera.zoom.
       state.camera.zoom = boardInitialFitZoom();
+      if (!legacyReadable) nonLegacyLastAppliedZoom = state.camera.zoom;
       state.camera.scrollLeft = 0;
       state.camera.scrollTop = 0;
       applyBoardCamera();
@@ -8943,6 +8981,7 @@ KOKYBĖS REIKALAVIMAI:
           return;
         }
 
+        if (!legacyReadable) settleNonLegacyInitialFit();
         if (options.save !== false) scheduleSave();
       });
     };
