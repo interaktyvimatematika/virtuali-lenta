@@ -35,11 +35,98 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.34';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.35';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
 const BOARD_STRIP_INITIAL_HEIGHT = 10000;
+const BOARD_COORDINATE_SYSTEM_VERSION = 3;
+const BOARD_LEGACY_WIDTH_EPSILON = 1;
+
+function clampUnit(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : 0;
+}
+
+function cloneJson(value, fallback = {}) {
+  try { return JSON.parse(JSON.stringify(value ?? fallback)); } catch (_) { return fallback; }
+}
+
+function scaleLegacyWorkspaceMapY(map, ratioY, options = {}) {
+  const source = map && typeof map === 'object' ? cloneJson(map, {}) : {};
+  for (const item of Object.values(source)) {
+    if (!item || typeof item !== 'object') continue;
+    if (options.points && Array.isArray(item.points)) {
+      item.points = item.points.map(point => {
+        if (!point || typeof point !== 'object') return point;
+        return { ...point, x: clampUnit(point.x), y: clampUnit((Number(point.y) || 0) * ratioY) };
+      });
+    }
+    if (options.position) {
+      item.x = clampUnit(item.x);
+      item.y = clampUnit((Number(item.y) || 0) * ratioY);
+    }
+    if (options.sizeY && Number.isFinite(Number(item.height))) {
+      item.height = Math.max(0, Number(item.height) * ratioY);
+    }
+    if (options.noteWidth && Number.isFinite(Number(item.width))) {
+      item.width = Math.max(110, Math.min(900, Number(item.width) * options.noteWidth));
+    }
+  }
+  return source;
+}
+
+function migrateLegacyWorkspaceCoordinates(rawWorkspace) {
+  const workspace = rawWorkspace && typeof rawWorkspace === 'object' ? cloneJson(rawWorkspace, {}) : {};
+  const geometry = workspace.boardGeometry && typeof workspace.boardGeometry === 'object'
+    ? workspace.boardGeometry
+    : {};
+  const oldWidth = Math.max(BOARD_STRIP_DEFAULT_WIDTH, Number(geometry.worldWidth) || BOARD_STRIP_DEFAULT_WIDTH);
+  const oldHeight = Math.max(1700, Number(geometry.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT);
+  const alreadyCurrent = Number(geometry.coordinateSystemVersion || 0) >= BOARD_COORDINATE_SYSTEM_VERSION
+    || oldWidth <= BOARD_STRIP_DEFAULT_WIDTH + BOARD_LEGACY_WIDTH_EPSILON;
+  if (alreadyCurrent) return null;
+
+  // Senos lentos buvo rašomos pasaulyje, kurio 100 % vaizdas buvo pritaikytas pagal
+  // visą platesnį pasaulį. Todėl ekrano pikselis pasaulyje tapdavo 1/zoom karto
+  // didesnis. Vienintelis deterministinis grįžimas į dabartinę 720 px sistemą yra
+  // vienodas mastelis 720 / senasPlotis. X normalizuotos koordinatės dėl to lieka
+  // tos pačios, o Y perskaičiuojame pagal naują (mažiausiai 10000 px) juostos aukštį.
+  const scale = BOARD_STRIP_DEFAULT_WIDTH / oldWidth;
+  const scaledOldHeight = oldHeight * scale;
+  const newHeight = Math.max(BOARD_STRIP_INITIAL_HEIGHT, Math.ceil(scaledOldHeight));
+  const ratioY = scaledOldHeight / newHeight;
+
+  workspace.drawing = scaleLegacyWorkspaceMapY(workspace.drawing, ratioY, { points: true });
+  workspace.notes = scaleLegacyWorkspaceMapY(workspace.notes, ratioY, { position: true, noteWidth: scale });
+  workspace.boardImages = scaleLegacyWorkspaceMapY(workspace.boardImages, ratioY, { position: true, sizeY: true });
+  workspace.boardTasks = scaleLegacyWorkspaceMapY(workspace.boardTasks, ratioY, { position: true, sizeY: true });
+  workspace.boardPractices = scaleLegacyWorkspaceMapY(workspace.boardPractices, ratioY, { position: true, sizeY: true });
+
+  if (workspace.window && typeof workspace.window === 'object') {
+    workspace.window = { ...workspace.window };
+    if (workspace.window.x !== null && workspace.window.x !== undefined) workspace.window.x = clampUnit(workspace.window.x);
+    if (workspace.window.y !== null && workspace.window.y !== undefined) workspace.window.y = clampUnit((Number(workspace.window.y) || 0) * ratioY);
+    if (Number.isFinite(Number(workspace.window.height))) workspace.window.height = Math.max(0, Number(workspace.window.height) * ratioY);
+  }
+
+  workspace.boardGeometry = {
+    schemaVersion: 3,
+    coordinateSystemVersion: BOARD_COORDINATE_SYSTEM_VERSION,
+    layoutMode: 'vertical-strip',
+    worldWidth: BOARD_STRIP_DEFAULT_WIDTH,
+    worldHeight: newHeight,
+    worldOriginX: 0,
+    worldOriginY: 0,
+    migratedFrom: {
+      worldWidth: oldWidth,
+      worldHeight: oldHeight,
+      scale
+    }
+  };
+
+  return { workspace, oldWidth, oldHeight, newHeight, scale, ratioY };
+}
 
 function safeAssignmentKey(value) {
   return String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 96);
@@ -1327,7 +1414,7 @@ function cacheWorkspace(data) {
 function applyInitialWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   cacheWorkspace(workspace);
-  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 3, coordinateSystemVersion: BOARD_COORDINATE_SYSTEM_VERSION, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
   bridge.applySharedPart('drawing', mapToArray(workspace.drawing || {}));
   bridge.applySharedPart('notes', mapToArray(workspace.notes || {}));
   bridge.applySharedPart('boardImages', mapToArray(workspace.boardImages || {}));
@@ -1372,7 +1459,7 @@ function emptyWorkspace() {
     boardTasks: {},
     boardPractices: {},
     window: {},
-    boardGeometry: { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 }
+    boardGeometry: { schemaVersion: 3, coordinateSystemVersion: BOARD_COORDINATE_SYSTEM_VERSION, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 }
   };
 }
 
@@ -1383,7 +1470,7 @@ function clearLocalSharedWorkspace() {
   bridge.applySharedPart('boardTasks', []);
   bridge.applySharedPart('boardPractices', []);
   bridge.applySharedPart('window', {});
-  bridge.applySharedPart('boardGeometry', { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', { schemaVersion: 3, coordinateSystemVersion: BOARD_COORDINATE_SYSTEM_VERSION, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
   bridge.setRemoteLiveStrokes([]);
 }
 
@@ -1434,26 +1521,50 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       applyInitialWorkspace(blank);
     } else {
       let workspaceValue = snapshot.val() || {};
-      // P1.7.9.19: kai senesnė online-sync versija buvo sukūrusi visiškai tuščią
-      // 2400 px Room, jį saugu pataisyti iki dabartinio 720 px lapo. Room su bent
-      // vienu realiu brūkšniu / objektu neliečiame, kad neišjudintume istorinio darbo.
-      const hasBoardContent = ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices']
-        .some(key => workspaceValue?.[key] && typeof workspaceValue[key] === 'object' && Object.keys(workspaceValue[key]).length > 0);
+      // P1.7.9.35: istorinės plačios lentos vieną kartą normalizuojamos į dabartinę
+      // 720 px koordinačių sistemą. Migraciją į Firebase įrašo tik autentifikuotas
+      // mokytojas; mokinys seną Room gali perskaityti, bet jo istorijos neperrašo.
       const geometry = workspaceValue.boardGeometry && typeof workspaceValue.boardGeometry === 'object'
         ? workspaceValue.boardGeometry
         : null;
-      if (!hasBoardContent && Number(geometry?.worldWidth || 0) > BOARD_STRIP_DEFAULT_WIDTH) {
-        const fixedGeometry = {
-          schemaVersion: 2,
-          layoutMode: 'vertical-strip',
-          worldWidth: BOARD_STRIP_DEFAULT_WIDTH,
-          worldHeight: Math.max(1700, Number(geometry?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT),
-          worldOriginX: 0,
-          worldOriginY: Math.max(0, Number(geometry?.worldOriginY) || 0)
-        };
-        workspaceValue = { ...workspaceValue, boardGeometry: fixedGeometry };
-        await update(localWorkspaceRef, { boardGeometry: fixedGeometry });
-        if (generation !== roomGeneration || targetRoom !== roomId) return;
+      const legacyWidth = Number(geometry?.worldWidth || 0);
+      if (legacyWidth > BOARD_STRIP_DEFAULT_WIDTH + BOARD_LEGACY_WIDTH_EPSILON && onlineRole === 'teacher' && auth.currentUser && !auth.currentUser.isAnonymous) {
+        const migration = migrateLegacyWorkspaceCoordinates(workspaceValue);
+        if (migration) {
+          workspaceValue = migration.workspace;
+          const migrationUpdates = {
+            drawing: workspaceValue.drawing || {},
+            notes: workspaceValue.notes || {},
+            boardImages: workspaceValue.boardImages || {},
+            boardTasks: workspaceValue.boardTasks || {},
+            boardPractices: workspaceValue.boardPractices || {},
+            window: workspaceValue.window || {},
+            boardGeometry: workspaceValue.boardGeometry,
+            'meta/boardCoordinateMigration': {
+              version: BOARD_COORDINATE_SYSTEM_VERSION,
+              build: BUILD,
+              oldWorldWidth: migration.oldWidth,
+              oldWorldHeight: migration.oldHeight,
+              newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH,
+              newWorldHeight: migration.newHeight,
+              scale: migration.scale,
+              migratedBy: auth.currentUser.uid,
+              migratedAt: serverTimestamp()
+            }
+          };
+          await update(localWorkspaceRef, migrationUpdates);
+          if (generation !== roomGeneration || targetRoom !== roomId) return;
+          diagnosticLog('legacy-board-normalized', {
+            oldWorldWidth: migration.oldWidth, oldWorldHeight: migration.oldHeight,
+            newWorldWidth: BOARD_STRIP_DEFAULT_WIDTH, newWorldHeight: migration.newHeight,
+            scale: Math.round(migration.scale * 100000) / 100000
+          }, { urgent: true });
+          bridge.showToast?.('Istorinė lenta pritaikyta dabartiniam 100 % masteliui');
+        }
+      } else if (legacyWidth > BOARD_STRIP_DEFAULT_WIDTH + BOARD_LEGACY_WIDTH_EPSILON) {
+        // Jei pirmas seną Room atidarė mokinys, nieko neperrašome. Mokytojui jį
+        // atidarius migracija bus atlikta automatiškai ir visiems įrenginiams vienodai.
+        diagnosticLog('legacy-board-awaiting-teacher-normalization', { worldWidth: legacyWidth });
       }
       applyInitialWorkspace(workspaceValue);
     }
@@ -2909,7 +3020,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.34 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.35 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
