@@ -58,14 +58,15 @@ button { -webkit-tap-highlight-color: transparent; }
 .board-world {
   position: absolute; left: 0; top: 0; width: 720px; height: 1700px; transform-origin: top left;
   overflow: hidden; background-color: #fbfcfe;
-  /* P1.7.9.10.2: langeliai padidinti ir paryškinti, kad būtų aiškiai matomi
-     jau 100 % režime, o 250 % neatrodytų pernelyg smulkūs. */
+  /* P1.7.9.10.3: tinklelis sureguliuotas taip, kad būtų matomas jau 100 % režime
+     ir nepranyktų iškart sumažinus iki ~90 %. Langeliai šiek tiek didesni,
+     o linijos storesnės ir kontrastingesnės. */
   background-image:
-    linear-gradient(rgba(105,120,148,.18) 1.2px,transparent 1.2px),
-    linear-gradient(90deg,rgba(105,120,148,.18) 1.2px,transparent 1.2px),
-    linear-gradient(rgba(105,120,148,.085) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(105,120,148,.085) 1px,transparent 1px);
-  background-size: 160px 160px,160px 160px,32px 32px,32px 32px;
+    linear-gradient(rgba(102,118,148,.24) 2.4px,transparent 2.4px),
+    linear-gradient(90deg,rgba(102,118,148,.24) 2.4px,transparent 2.4px),
+    linear-gradient(rgba(102,118,148,.12) 1.8px,transparent 1.8px),
+    linear-gradient(90deg,rgba(102,118,148,.12) 1.8px,transparent 1.8px);
+  background-size: 180px 180px,180px 180px,36px 36px,36px 36px;
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
 }
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -7259,7 +7260,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-time-manage-pane>small{color:#8b96a5;font-size:9px;line-height:1.45}
 .p2-schedule-time-manage-pane[hidden]{display:none!important}
 
-/* P2-SPLIT-P2.5-P4-P1.7.9.10.2 — tvarkaraštyje mokytojas turi matyti pilną
+/* P2-SPLIT-P2.5-P4-P1.7.9.10.3 — tvarkaraštyje mokytojas turi matyti pilną
    mokinio identifikatorių (vardą, klasę ir globėją), todėl jo nekerpame ellipsis. */
 .p2-schedule-card-students span {
   overflow: visible;
