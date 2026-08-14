@@ -17,6 +17,9 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  linkWithPopup,
   signOut,
   sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -31,7 +34,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.29';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.30';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -277,7 +280,7 @@ const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
 let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
 
-// P1.7.9.28: pasirenkama mokytojo Firebase Authentication paskyra.
+// P1.7.9.30: mokytojo Firebase Authentication paskyra (Email/Password + Google).
 // Esamas T-... profilis nekeičiamas ir nemigruojamas į naują kelią: paskyros UID
 // gauna tik nuorodą į jau naudojamą mokytojo profilį. Tai leidžia kitame
 // įrenginyje prisijungus atkurti T-... identifikatorių ir perkrauti tą pačią bazę.
@@ -292,6 +295,8 @@ const teacherAuthPassword = document.getElementById('teacherAuthPassword');
 const teacherAuthSignInButton = document.getElementById('teacherAuthSignInButton');
 const teacherAuthSignUpButton = document.getElementById('teacherAuthSignUpButton');
 const teacherAuthResetButton = document.getElementById('teacherAuthResetButton');
+const teacherAuthGoogleButton = document.getElementById('teacherAuthGoogleButton');
+const teacherAuthLinkGoogleButton = document.getElementById('teacherAuthLinkGoogleButton');
 const teacherAuthCurrentEmail = document.getElementById('teacherAuthCurrentEmail');
 const teacherAuthUidLabel = document.getElementById('teacherAuthUidLabel');
 const teacherAuthCurrentProfile = document.getElementById('teacherAuthCurrentProfile');
@@ -318,11 +323,17 @@ function setTeacherAuthStatus(text = '', kind = '') {
 
 function firebaseAuthErrorMessage(error) {
   const code = String(error?.code || '');
-  if (code === 'auth/operation-not-allowed') return 'Firebase Authentication dar neįjungtas. Firebase Console reikia įjungti Email/Password prisijungimą.';
-  if (code === 'auth/email-already-in-use') return 'Šis el. paštas jau turi paskyrą. Rinkis „Prisijungti“.';
+  if (code === 'auth/operation-not-allowed') return 'Firebase Console dar neįjungtas pasirinktas prisijungimo būdas (Email/Password arba Google).';
+  if (code === 'auth/email-already-in-use') return 'Šis el. paštas jau turi paskyrą. Rinkis „Prisijungti“ arba naudok jau susietą prisijungimo būdą.';
   if (code === 'auth/invalid-email') return 'Patikrink el. pašto adresą.';
   if (code === 'auth/weak-password') return 'Slaptažodis per silpnas. Naudok bent 6 simbolius.';
   if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'Nepavyko prisijungti. Patikrink el. paštą ir slaptažodį.';
+  if (code === 'auth/account-exists-with-different-credential') return 'Šis el. paštas jau naudojamas kitu prisijungimo būdu. Prisijunk tuo būdu; jei tai el. paštas + slaptažodis, prisijungęs galėsi susieti Google.';
+  if (code === 'auth/credential-already-in-use') return 'Ši Google paskyra jau susieta su kita Firebase paskyra.';
+  if (code === 'auth/unauthorized-domain') return 'Šis svetainės domenas dar neįtrauktas į Firebase Authentication → Settings → Authorized domains.';
+  if (code === 'auth/popup-blocked') return 'Naršyklė užblokavo Google prisijungimo langą. Leisk iššokančius langus šiai svetainei ir bandyk dar kartą.';
+  if (code === 'auth/popup-closed-by-user') return 'Google prisijungimo langas uždarytas nebaigus prisijungti.';
+  if (code === 'auth/cancelled-popup-request') return 'Ankstesnis Google prisijungimo langas buvo pakeistas nauju bandymu.';
   if (code === 'auth/too-many-requests') return 'Per daug bandymų. Palauk ir bandyk dar kartą.';
   if (code === 'auth/network-request-failed') return 'Nepavyko pasiekti Firebase Authentication. Patikrink interneto ryšį.';
   return String(error?.message || error || 'Prisijungimo klaida.').slice(0, 260);
@@ -330,7 +341,7 @@ function firebaseAuthErrorMessage(error) {
 
 function setTeacherAuthBusy(value) {
   teacherAuthBusy = Boolean(value);
-  [teacherAuthSignInButton, teacherAuthSignUpButton, teacherAuthResetButton, teacherAuthLinkProfileButton, teacherAuthSignOutButton]
+  [teacherAuthSignInButton, teacherAuthSignUpButton, teacherAuthResetButton, teacherAuthGoogleButton, teacherAuthLinkGoogleButton, teacherAuthLinkProfileButton, teacherAuthSignOutButton]
     .forEach(button => { if (button) button.disabled = teacherAuthBusy; });
 }
 
@@ -404,7 +415,7 @@ async function reconcileSignedInTeacher(user, options = {}) {
       renderTeacherAuthUi();
     }
   } catch (error) {
-    console.error('P1.7.9.28 paskyros susiejimo patikros klaida', error);
+    console.error('P1.7.9.30 paskyros susiejimo patikros klaida', error);
     setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
     renderTeacherAuthUi();
   }
@@ -429,8 +440,13 @@ function renderTeacherAuthUi() {
   }
 
   const email = String(teacherAuthUser.email || '').trim();
+  const providers = Array.isArray(teacherAuthUser.providerData) ? teacherAuthUser.providerData.map(item => String(item?.providerId || '')) : [];
+  const hasGoogle = providers.includes('google.com');
+  const hasPassword = providers.includes('password');
+  const providerLabel = [hasGoogle ? 'Google' : '', hasPassword ? 'el. paštas + slaptažodis' : ''].filter(Boolean).join(' + ') || 'Firebase';
   if (teacherAuthCurrentEmail) teacherAuthCurrentEmail.textContent = email || 'Firebase paskyra';
-  if (teacherAuthUidLabel) teacherAuthUidLabel.textContent = `UID ${String(teacherAuthUser.uid || '').slice(0, 10)}…`;
+  if (teacherAuthUidLabel) teacherAuthUidLabel.textContent = `${providerLabel} · UID ${String(teacherAuthUser.uid || '').slice(0, 10)}…`;
+  if (teacherAuthLinkGoogleButton) teacherAuthLinkGoogleButton.hidden = hasGoogle;
   if (teacherAccountButtonLabel) teacherAccountButtonLabel.textContent = 'Paskyra';
 
   const mapped = teacherAuthBinding?.teacherProfileId || '';
@@ -456,6 +472,35 @@ function renderTeacherAuthUi() {
       ? 'Susiejimas paruoštas. Kitame įrenginyje prisijungus tuo pačiu el. paštu sistema automatiškai atkurs šį mokytojo profilį.'
       : 'Jei tai tavo pagrindinis įrenginys ir čia matai teisingus mokinius bei tvarkaraštį, susiek dabartinį profilį su paskyra.';
   }
+}
+
+function googleAuthProvider() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+}
+
+async function signInTeacherWithGoogle() {
+  const credential = await signInWithPopup(auth, googleAuthProvider());
+  teacherAuthUser = credential.user;
+  const existingBinding = await loadTeacherAuthBinding(credential.user);
+  teacherAuthBinding = existingBinding;
+  if (existingBinding?.teacherProfileId) {
+    await reconcileSignedInTeacher(credential.user);
+    return { linked: true, restored: teacherAuthReloading };
+  }
+
+  // Google prisijungimas kartu yra ir pirmos paskyros sukūrimas. Naują UID
+  // automatiškai siejame tik tada, kai šis įrenginys jau turi realų mokytojo
+  // profilį. Taip švariame kitame įrenginyje netyčia nepririšamas tuščias T-... profilis.
+  let currentProfile = teacherProfileCache;
+  try { currentProfile = (await get(teacherProfileRef)).val() || currentProfile; } catch (_) {}
+  if (teacherProfileHasLinkedData(currentProfile)) {
+    await reconcileSignedInTeacher(credential.user, { autoLinkNewAccount: true });
+    return { linked: true, restored: teacherAuthReloading };
+  }
+  renderTeacherAuthUi();
+  return { linked: false, restored: false };
 }
 
 teacherAccountButton?.addEventListener('click', openTeacherAuthModal);
@@ -491,6 +536,32 @@ teacherAuthSignUpButton?.addEventListener('click', async () => {
     teacherAuthUser = credential.user;
     await reconcileSignedInTeacher(credential.user, { autoLinkNewAccount: true });
     if (!teacherAuthReloading) setTeacherAuthStatus('Paskyra sukurta ir susieta su šiuo mokytojo profiliu.', 'ok');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthGoogleButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy) return;
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Atidaromas Google prisijungimas…');
+  try {
+    const result = await signInTeacherWithGoogle();
+    if (teacherAuthReloading || result.restored) return;
+    if (result.linked) setTeacherAuthStatus('Prisijungta su Google ir mokytojo profilis susietas.', 'ok');
+    else setTeacherAuthStatus('Prisijungta su Google, bet šiame įrenginyje nerastas ankstesnis mokytojo profilis. Pirmą susiejimą atlik pagrindiniame įrenginyje arba atkurk profilį iš atsarginės kopijos.', 'error');
+  } catch (error) {
+    setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
+  } finally { setTeacherAuthBusy(false); }
+});
+
+teacherAuthLinkGoogleButton?.addEventListener('click', async () => {
+  if (teacherAuthBusy || !teacherAuthUser) return;
+  setTeacherAuthBusy(true); setTeacherAuthStatus('Susiejama Google paskyra…');
+  try {
+    const credential = await linkWithPopup(teacherAuthUser, googleAuthProvider());
+    teacherAuthUser = credential.user;
+    await reconcileSignedInTeacher(credential.user);
+    if (!teacherAuthReloading) setTeacherAuthStatus('Google prisijungimas pridėtas prie tos pačios paskyros.', 'ok');
   } catch (error) {
     setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
   } finally { setTeacherAuthBusy(false); }
@@ -2713,7 +2784,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.29 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.30 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.29</title>
-  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.5-P4-P1.7.9.29" />
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.30</title>
+  <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.5-P4-P1.7.9.30" />
 </head>
 <body>
   <div class="app" id="app">
@@ -14,7 +14,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.29</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.30</span>
         </div>
       </div>
 
@@ -663,7 +663,9 @@
               <button class="secondary-button" id="teacherAuthSignUpButton" type="button">Sukurti paskyrą</button>
             </div>
             <button class="teacher-auth-link-button" id="teacherAuthResetButton" type="button">Pamiršau slaptažodį</button>
-            <p class="teacher-auth-note">Pirmą paskyrą kurk šiame įrenginyje, kuriame dabar matai savo mokinius ir tvarkaraštį. Paskyra bus susieta su esamu profiliu – duomenys nebus kopijuojami į naują profilį.</p>
+            <div class="teacher-auth-divider"><span>arba</span></div>
+            <button class="teacher-auth-google-button" id="teacherAuthGoogleButton" type="button"><span class="teacher-auth-google-mark" aria-hidden="true">G</span><span>Prisijungti su Google</span></button>
+            <p class="teacher-auth-note">Pirmą paskyrą arba Google susiejimą atlik šiame įrenginyje, kuriame dabar matai savo mokinius ir tvarkaraštį. Paskyra bus susieta su esamu profiliu – duomenys nebus kopijuojami į naują profilį.</p>
           </section>
 
           <section class="teacher-auth-signed-in" id="teacherAuthSignedIn" hidden>
@@ -680,7 +682,8 @@
               <div class="teacher-auth-binding" id="teacherAuthBindingStatus">Tikrinamas susiejimas…</div>
             </div>
             <button class="primary-button teacher-auth-link-profile" id="teacherAuthLinkProfileButton" type="button" hidden>Susieti šį profilį su paskyra</button>
-            <p class="teacher-auth-note" id="teacherAuthSignedInNote">Kai paskyra susieta, kitame įrenginyje užteks prisijungti tuo pačiu el. paštu.</p>
+            <button class="teacher-auth-google-button teacher-auth-link-google" id="teacherAuthLinkGoogleButton" type="button" hidden><span class="teacher-auth-google-mark" aria-hidden="true">G</span><span>Susieti Google prisijungimą</span></button>
+            <p class="teacher-auth-note" id="teacherAuthSignedInNote">Kai paskyra susieta, kitame įrenginyje užteks prisijungti tuo pačiu el. paštu arba susieta Google paskyra.</p>
             <button class="secondary-button" id="teacherAuthSignOutButton" type="button">Atsijungti nuo paskyros</button>
           </section>
 
@@ -699,9 +702,9 @@
       MathfieldElement.soundsDirectory = null;
     }
   </script>
-  <script src="tasks.js?v=P2-SPLIT-P2.5-P4-P1.7.9.29"></script>
-  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.29"></script>
-  <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.29"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.29"></script>
+  <script src="tasks.js?v=P2-SPLIT-P2.5-P4-P1.7.9.30"></script>
+  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.30"></script>
+  <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.30"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.30"></script>
 </body>
 </html>
