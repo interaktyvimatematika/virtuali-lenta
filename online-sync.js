@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.39';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.40';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1437,27 +1437,9 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       applyInitialWorkspace(blank);
     } else {
       let workspaceValue = snapshot.val() || {};
-      // P1.7.9.19: kai senesnė online-sync versija buvo sukūrusi visiškai tuščią
-      // 2400 px Room, jį saugu pataisyti iki dabartinio 720 px lapo. Room su bent
-      // vienu realiu brūkšniu / objektu neliečiame, kad neišjudintume istorinio darbo.
-      const hasBoardContent = ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices']
-        .some(key => workspaceValue?.[key] && typeof workspaceValue[key] === 'object' && Object.keys(workspaceValue[key]).length > 0);
-      const geometry = workspaceValue.boardGeometry && typeof workspaceValue.boardGeometry === 'object'
-        ? workspaceValue.boardGeometry
-        : null;
-      if (!hasBoardContent && Number(geometry?.worldWidth || 0) > BOARD_STRIP_DEFAULT_WIDTH) {
-        const fixedGeometry = {
-          schemaVersion: 2,
-          layoutMode: 'vertical-strip',
-          worldWidth: BOARD_STRIP_DEFAULT_WIDTH,
-          worldHeight: Math.max(1700, Number(geometry?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT),
-          worldOriginX: 0,
-          worldOriginY: Math.max(0, Number(geometry?.worldOriginY) || 0)
-        };
-        workspaceValue = { ...workspaceValue, boardGeometry: fixedGeometry };
-        await update(localWorkspaceRef, { boardGeometry: fixedGeometry });
-        if (generation !== roomGeneration || targetRoom !== roomId) return;
-      }
+      // P1.7.9.40 DIAGNOSTIC: atkūrimo tyrimo metu jokios senų Room geometrijos
+      // automatiškai nekeičiame, net jei lenta tuščia. Šis build'as turi tik perskaityti
+      // esamą Firebase būseną ir parodyti ją palyginime su atsargine kopija.
       applyInitialWorkspace(workspaceValue);
     }
 
@@ -2385,7 +2367,20 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
       else if (backupProgress.finished > currentProgress.finished) { kind = 'forward'; progressForward += 1; detail.push(`pratybos ${currentText} → ${backupText}`); }
       else if (!restoreSameValue(before.p2?.student?.progress, after.p2?.student?.progress)) detail.push(`pratybų būsena ${currentText} bus pakeista`);
     }
-    if (boardChanged) detail.push('lentos būsena skiriasi');
+    if (boardChanged) {
+      detail.push('lentos būsena skiriasi');
+      const currentGeometry = before?.workspace?.boardGeometry && typeof before.workspace.boardGeometry === 'object' ? before.workspace.boardGeometry : {};
+      const backupGeometry = after?.workspace?.boardGeometry && typeof after.workspace.boardGeometry === 'object' ? after.workspace.boardGeometry : {};
+      const currentWidth = Number(currentGeometry.worldWidth || 0);
+      const backupWidth = Number(backupGeometry.worldWidth || 0);
+      const currentHeight = Number(currentGeometry.worldHeight || 0);
+      const backupHeight = Number(backupGeometry.worldHeight || 0);
+      const currentCoord = Number(currentGeometry.coordinateSystemVersion || 0);
+      const backupCoord = Number(backupGeometry.coordinateSystemVersion || 0);
+      if (currentWidth || backupWidth) detail.push(`geometrija: dabar ${currentWidth || '?'}×${currentHeight || '?'} · kopijoje ${backupWidth || '?'}×${backupHeight || '?'}`);
+      if (currentCoord || backupCoord) detail.push(`koord. versija: dabar ${currentCoord || '—'} · kopijoje ${backupCoord || '—'}`);
+      detail.push(migrationMeta ? `migracijos žyma: ${migrationBuild || 'yra'}` : 'migracijos žymos nėra');
+    }
     const currentUpdated = restoreRoomUpdatedAt(before);
     const backupUpdated = restoreRoomUpdatedAt(after);
     if (currentUpdated && backupUpdated && backupUpdated < currentUpdated) detail.push('kopijos Room būsena senesnė');
@@ -2974,7 +2969,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.39 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.40 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
