@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.8.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -677,7 +677,7 @@ function cacheWorkspace(data) {
 function applyInitialWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   cacheWorkspace(workspace);
-  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 });
   bridge.applySharedPart('drawing', mapToArray(workspace.drawing || {}));
   bridge.applySharedPart('notes', mapToArray(workspace.notes || {}));
   bridge.applySharedPart('boardImages', mapToArray(workspace.boardImages || {}));
@@ -722,7 +722,7 @@ function emptyWorkspace() {
     boardTasks: {},
     boardPractices: {},
     window: {},
-    boardGeometry: { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 }
+    boardGeometry: { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 }
   };
 }
 
@@ -733,7 +733,7 @@ function clearLocalSharedWorkspace() {
   bridge.applySharedPart('boardTasks', []);
   bridge.applySharedPart('boardPractices', []);
   bridge.applySharedPart('window', {});
-  bridge.applySharedPart('boardGeometry', { schemaVersion: 1, worldWidth: 2400, worldHeight: 1700, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 });
   bridge.setRemoteLiveStrokes([]);
 }
 
@@ -788,6 +788,9 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     activateCurrentRoomPresence(generation);
     if (generation !== roomGeneration || targetRoom !== roomId) return;
     setUi('online', location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta');
+    window.dispatchEvent(new CustomEvent('p2:workspace-ready', {
+      detail: { roomId: targetRoom, startsBlank: Boolean(startsBlank), switched: Boolean(switched) }
+    }));
     if (switched) {
       window.dispatchEvent(new CustomEvent('p2:room-switch-complete', { detail: { roomId: targetRoom } }));
     }
@@ -1692,7 +1695,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.8.1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

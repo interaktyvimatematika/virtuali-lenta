@@ -448,7 +448,7 @@
     boardPractices: [],
     activeBoardPracticeId: null,
     activeBoardObject: null,
-    camera: { zoom: 0.72, scrollLeft: 0, scrollTop: 0, worldWidth: 2400, worldHeight: 1700 },
+    camera: { zoom: 0.72, scrollLeft: 0, scrollTop: 0, worldWidth: 2400, worldHeight: 10000, layoutMode: 'vertical-strip' },
     practiceOnly: { active: false, practiceId: null },
     mathToolbarCategory: 'Pagrindiniai',
     library: createInitialLibrary(),
@@ -523,12 +523,15 @@
 
   const BOARD_WORLD_MIN_WIDTH = 2400;
   const BOARD_WORLD_MIN_HEIGHT = 1700;
-  // P3-P1.1: DOM pasaulis plečiamas dalimis. 30 000 px riba yra tik techninė vieno
-  // pasaulio segmento apsauga nuo naršyklės milžiniško elemento / canvas limito;
-  // vartotojui erdvė plečiasi automatiškai tik priartėjus prie krašto.
+  const BOARD_STRIP_DEFAULT_WIDTH = 2400;
+  const BOARD_STRIP_INITIAL_HEIGHT = 10000;
+  // P2-SPLIT-P2.5-P4-P1.7.9: lenta tampa fiksuoto pločio vertikalia juosta.
+  // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
+  // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
+  // Senų Room plotis sąmoningai nemažinamas, kad nebūtų iškraipyti ankstesni piešiniai.
   const BOARD_WORLD_MAX_WIDTH = 30000;
-  const BOARD_WORLD_MAX_HEIGHT = 30000;
-  const BOARD_WORLD_EDGE_SCREEN_MARGIN = 150;
+  const BOARD_WORLD_MAX_HEIGHT = 2000000;
+  const BOARD_WORLD_EDGE_SCREEN_MARGIN = 180;
   // P3-P1.1: piešimo bitmapas apima tik matomą lentos sritį su nedideliu
   // rezervu aplink ją. Taip jo raiška nepriklauso nuo viso virtualaus pasaulio dydžio.
   const BOARD_CANVAS_OVERSCAN_SCREEN = 320;
@@ -544,10 +547,11 @@
       zoom: clampCameraZoom(camera?.zoom),
       scrollLeft: Math.max(0, Number(camera?.scrollLeft) || 0),
       scrollTop: Math.max(0, Number(camera?.scrollTop) || 0),
-      worldWidth: Math.max(BOARD_WORLD_MIN_WIDTH, Math.min(BOARD_WORLD_MAX_WIDTH, Number(camera?.worldWidth) || BOARD_WORLD_MIN_WIDTH)),
-      worldHeight: Math.max(BOARD_WORLD_MIN_HEIGHT, Math.min(BOARD_WORLD_MAX_HEIGHT, Number(camera?.worldHeight) || BOARD_WORLD_MIN_HEIGHT)),
+      worldWidth: Math.max(BOARD_WORLD_MIN_WIDTH, Math.min(BOARD_WORLD_MAX_WIDTH, Number(camera?.worldWidth) || BOARD_STRIP_DEFAULT_WIDTH)),
+      worldHeight: Math.max(BOARD_WORLD_MIN_HEIGHT, Math.min(BOARD_WORLD_MAX_HEIGHT, Number(camera?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT)),
       worldOriginX: Math.max(0, Number(camera?.worldOriginX) || 0),
-      worldOriginY: Math.max(0, Number(camera?.worldOriginY) || 0)
+      worldOriginY: Math.max(0, Number(camera?.worldOriginY) || 0),
+      layoutMode: 'vertical-strip'
     };
   }
 
@@ -563,7 +567,8 @@
   function boardGeometrySnapshot() {
     const camera = normalizeCamera(state?.camera || {});
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      layoutMode: 'vertical-strip',
       worldWidth: camera.worldWidth,
       worldHeight: camera.worldHeight,
       worldOriginX: camera.worldOriginX,
@@ -580,7 +585,8 @@
       worldOriginY: geometry?.worldOriginY
     });
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      layoutMode: 'vertical-strip',
       worldWidth: camera.worldWidth,
       worldHeight: camera.worldHeight,
       worldOriginX: camera.worldOriginX,
@@ -635,68 +641,53 @@
     state.camera = normalizeCamera(state.camera);
     const oldWidth = state.camera.worldWidth;
     const oldHeight = state.camera.worldHeight;
-    let left = Math.max(0, Number(request.left) || 0);
-    let right = Math.max(0, Number(request.right) || 0);
-    let top = Math.max(0, Number(request.top) || 0);
+
+    // P1.7.9: fiksuoto pločio lenta gali augti tik žemyn. Sąmoningai ignoruojame
+    // left/right/top užklausas, todėl nebegalima „pasimesti“ erdvėje į šonus ar viršų.
     let bottom = Math.max(0, Number(request.bottom) || 0);
-
-    const widthCapacity = Math.max(0, BOARD_WORLD_MAX_WIDTH - oldWidth);
     const heightCapacity = Math.max(0, BOARD_WORLD_MAX_HEIGHT - oldHeight);
-    if (left + right > widthCapacity) {
-      const scale = widthCapacity / Math.max(1, left + right);
-      left *= scale; right *= scale;
-    }
-    if (top + bottom > heightCapacity) {
-      const scale = heightCapacity / Math.max(1, top + bottom);
-      top *= scale; bottom *= scale;
-    }
-    left = Math.round(left); right = Math.round(right); top = Math.round(top); bottom = Math.round(bottom);
-    if (!(left || right || top || bottom)) return null;
+    bottom = Math.round(Math.min(bottom, heightCapacity));
+    if (!bottom) return null;
 
-    const newWidth = oldWidth + left + right;
-    const newHeight = oldHeight + top + bottom;
-    const zoom = currentBoardZoom();
+    const newWidth = oldWidth;
+    const newHeight = oldHeight + bottom;
     const oldScrollLeft = refs.board.scrollLeft;
     const oldScrollTop = refs.board.scrollTop;
 
-    remapBoardStateForWorldResize(oldWidth, oldHeight, newWidth, newHeight, left, top);
+    // Esamas modelis saugo Y koordinates normalizuotas pagal lentos aukštį, todėl
+    // didinant aukštį jas perskaičiuojame taip, kad visi jau parašyti objektai liktų
+    // tiksliai tose pačiose fizinėse vietose.
+    remapBoardStateForWorldResize(oldWidth, oldHeight, newWidth, newHeight, 0, 0);
     state.camera.worldWidth = newWidth;
     state.camera.worldHeight = newHeight;
-    state.camera.worldOriginX = Math.max(0, Number(state.camera.worldOriginX) || 0) + left;
-    state.camera.worldOriginY = Math.max(0, Number(state.camera.worldOriginY) || 0) + top;
-    state.camera.scrollLeft = oldScrollLeft + left * zoom;
-    state.camera.scrollTop = oldScrollTop + top * zoom;
+    state.camera.scrollLeft = oldScrollLeft;
+    state.camera.scrollTop = oldScrollTop;
 
     applyBoardCamera({ restoreScroll: true });
     resizeCanvas({ force: true });
     layoutBoardObjects();
     initializePracticeWindow();
     if (options.save !== false) scheduleSave();
-    return { left, right, top, bottom, oldWidth, oldHeight, newWidth, newHeight };
+    return { left: 0, right: 0, top: 0, bottom, oldWidth, oldHeight, newWidth, newHeight };
   }
 
-  function boardExpansionChunk(axis = 'x') {
+  function boardExpansionChunk(axis = 'y') {
     const zoom = Math.max(0.001, currentBoardZoom());
-    const viewport = axis === 'x' ? refs.board.clientWidth : refs.board.clientHeight;
-    const minimum = axis === 'x' ? 1200 : 900;
-    return Math.round(Math.max(minimum, viewport / zoom * 0.9));
+    const viewport = refs.board.clientHeight;
+    // Dideli vertikalūs segmentai sumažina geometrijos perskaičiavimų skaičių
+    // ilgoje pamokoje ir išlaiko P3 našumo pataisų naudą.
+    return Math.round(Math.max(10000, viewport / zoom * 5));
   }
 
   function expandBoardForScrollIntent(deltaX = 0, deltaY = 0) {
-    if (state.practiceOnly?.active || drawingActive) return null;
+    if (state.practiceOnly?.active || drawingActive || deltaY <= 0) return null;
     const zoom = Math.max(0.001, currentBoardZoom());
     const world = getBoardWorldRect();
     const margin = BOARD_WORLD_EDGE_SCREEN_MARGIN;
-    const scaledWidth = world.width * zoom;
     const scaledHeight = world.height * zoom;
-    const maxLeft = Math.max(0, scaledWidth - refs.board.clientWidth);
     const maxTop = Math.max(0, scaledHeight - refs.board.clientHeight);
-    const request = {};
-    if (deltaX < 0 && refs.board.scrollLeft <= margin) request.left = boardExpansionChunk('x');
-    if (deltaX > 0 && maxLeft - refs.board.scrollLeft <= margin) request.right = boardExpansionChunk('x');
-    if (deltaY < 0 && refs.board.scrollTop <= margin) request.top = boardExpansionChunk('y');
-    if (deltaY > 0 && maxTop - refs.board.scrollTop <= margin) request.bottom = boardExpansionChunk('y');
-    return expandBoardWorld(request);
+    if (maxTop - refs.board.scrollTop > margin) return null;
+    return expandBoardWorld({ bottom: boardExpansionChunk('y') });
   }
 
   let infiniteBoardEdgeTimer = null;
@@ -706,17 +697,11 @@
       if (drawingActive || state.practiceOnly?.active) return;
       const zoom = Math.max(0.001, currentBoardZoom());
       const world = getBoardWorldRect();
-      const maxLeft = Math.max(0, world.width * zoom - refs.board.clientWidth);
       const maxTop = Math.max(0, world.height * zoom - refs.board.clientHeight);
-      const margin = 28;
-      const request = {};
-      // Plėtimą nuo scroll įvykio atliekame tik pasiekus tikrą kraštą. Taip naujai
-      // atidaryta lenta savaime neauga vien todėl, kad jos pradinis scroll yra 0.
-      if (refs.board.scrollLeft > 0 && refs.board.scrollLeft <= margin) request.left = boardExpansionChunk('x');
-      if (maxLeft > 0 && maxLeft - refs.board.scrollLeft <= margin) request.right = boardExpansionChunk('x');
-      if (refs.board.scrollTop > 0 && refs.board.scrollTop <= margin) request.top = boardExpansionChunk('y');
-      if (maxTop > 0 && maxTop - refs.board.scrollTop <= margin) request.bottom = boardExpansionChunk('y');
-      expandBoardWorld(request);
+      const margin = 36;
+      if (maxTop > 0 && maxTop - refs.board.scrollTop <= margin) {
+        expandBoardWorld({ bottom: boardExpansionChunk('y') });
+      }
     }, 90);
   }
 
@@ -8668,6 +8653,10 @@ KOKYBĖS REIKALAVIMAI:
     const id = String(roomId || '').trim().toUpperCase();
     if (!id || !refs.board) return;
     const saved = roomBoardViews.get(id) || null;
+    if (!saved) {
+      showBoardFromTop({ fitWidth: true, save: false });
+      return;
+    }
     const camera = normalizeCamera(state.camera);
     if (saved?.zoom) state.camera.zoom = clampCameraZoom(saved.zoom);
     const zoom = currentBoardZoom();
@@ -8687,6 +8676,15 @@ KOKYBĖS REIKALAVIMAI:
   });
   window.addEventListener('p2:room-switch-complete', event => {
     restoreBoardViewForRoom(event.detail?.roomId);
+  });
+
+  window.addEventListener('p2:workspace-ready', event => {
+    // Pradinio puslapio įkėlimo metu neturime room-switch įvykio. Naujas arba pirmą
+    // kartą šiame naršyklės seanse atvertas Room pradedamas nuo lentos viršaus.
+    if (event.detail?.switched) return;
+    const id = String(event.detail?.roomId || '').trim().toUpperCase();
+    if (id && roomBoardViews.has(id)) restoreBoardViewForRoom(id);
+    else showBoardFromTop({ fitWidth: true, save: false });
   });
 
   function applyBoardCamera(options = {}) {
@@ -8779,27 +8777,38 @@ KOKYBĖS REIKALAVIMAI:
     return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
   }
 
-  function fitWholeBoard() {
-    const bounds = boardContentBounds();
-    if (!bounds) {
-      setBoardZoom(0.72, { preserveCenter: true });
-      return;
-    }
-    const padding = 80;
-    const contentWidth = Math.max(240, bounds.maxX - bounds.minX + padding * 2);
-    const contentHeight = Math.max(180, bounds.maxY - bounds.minY + padding * 2);
-    const availableWidth = Math.max(1, refs.board.clientWidth);
-    const availableHeight = Math.max(1, refs.board.clientHeight);
-    const targetZoom = clampCameraZoom(Math.min(availableWidth / contentWidth, availableHeight / contentHeight, 1.25));
+  function fitBoardWidth(options = {}) {
+    const world = getBoardWorldRect();
+    const oldZoom = currentBoardZoom();
+    const logicalTop = refs.board.scrollTop / Math.max(0.001, oldZoom);
+    const padding = Math.max(24, Math.min(64, refs.board.clientWidth * 0.045));
+    const availableWidth = Math.max(1, refs.board.clientWidth - padding * 2);
+    const targetZoom = clampCameraZoom(Math.min(1, availableWidth / Math.max(1, world.width)));
     state.camera.zoom = targetZoom;
     applyBoardCamera();
     requestAnimationFrame(() => {
-      refs.board.scrollLeft = Math.max(0, (bounds.minX + bounds.maxX) / 2 * targetZoom - availableWidth / 2);
-      refs.board.scrollTop = Math.max(0, (bounds.minY + bounds.maxY) / 2 * targetZoom - availableHeight / 2);
+      refs.board.scrollLeft = 0;
+      refs.board.scrollTop = options.top ? 0 : Math.max(0, logicalTop * targetZoom);
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
-      scheduleSave();
+      if (options.save !== false) scheduleSave();
     });
+  }
+
+  function showBoardFromTop(options = {}) {
+    if (options.fitWidth !== false) {
+      fitBoardWidth({ top: true, save: options.save });
+      return;
+    }
+    refs.board.scrollTop = 0;
+    state.camera.scrollTop = 0;
+    if (options.save !== false) scheduleSave();
+  }
+
+  // Suderinamumo aliasas senesniems vidiniams kvietimams. Begalinės vertikalios
+  // lentos nebeįmanoma prasmingai „rodyti visos“, todėl veiksmas rodo visą jos plotį.
+  function fitWholeBoard() {
+    fitBoardWidth({ top: false });
   }
 
   function focusBoardElement(element, options = {}) {
@@ -8895,7 +8904,7 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardZoomOutButton.addEventListener('click', () => setBoardZoom(currentBoardZoom() - 0.1, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardZoom(currentBoardZoom() + 0.1, { preserveCenter: true }));
     refs.boardZoomActualButton.addEventListener('click', () => setBoardZoom(1, { preserveCenter: true }));
-    refs.boardZoomFitButton.addEventListener('click', fitWholeBoard);
+    refs.boardZoomFitButton.addEventListener('click', () => fitBoardWidth({ top: false }));
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
     refs.practiceOnlyButton.addEventListener('click', () => enterPracticeOnly());
     refs.exitPracticeOnlyButton.addEventListener('click', exitPracticeOnly);
@@ -8921,8 +8930,8 @@ KOKYBĖS REIKALAVIMAI:
         });
         return;
       }
-      // Paprastas ratukas lieka natūralus scroll. Jei vartotojas bando važiuoti
-      // už esamo pasaulio krašto, prieš naršyklės scroll įvykį pridedame naujos erdvės.
+      // Paprastas ratukas slenka vertikaliai. Priartėjus prie apatinio krašto
+      // pridedame naują vertikalios juostos segmentą; į šonus ir viršų lenta neauga.
       expandBoardForScrollIntent(event.deltaX, event.deltaY);
     }, { passive: false });
 
@@ -11682,7 +11691,7 @@ KOKYBĖS REIKALAVIMAI:
       refs.practiceWindow.style.top = `${state.window.y * boardRect.height}px`;
       refs.practiceWindow.style.width = `${Math.min(1180, Math.max(360, state.window.width * boardRect.width))}px`;
       refs.practiceWindow.style.height = `${Math.min(920, Math.max(450, state.window.height * boardRect.height))}px`;
-    } else if (state.mode === 'student') {
+    } else {
       refs.practiceWindow.style.transform = 'none';
       refs.practiceWindow.style.left = '24px';
       refs.practiceWindow.style.top = '24px';
