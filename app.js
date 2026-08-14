@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.14: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.15: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -582,10 +582,10 @@
   }
 
   // P1.7.9.9: naujajai 720 px vertikaliai lentai 100 % reiškia visą lapo plotį.
-  // P1.7.9.14: senos plačios 2D lentos yra išimtis. Jose visas 20–30 tūkst. px
+  // P1.7.9.15: senos plačios 2D lentos yra išimtis. Jose visas 20–30 tūkst. px
   // pasaulis neturi būti sutraukiamas iki 100 %, nes tada normaliai rašyti 20–40 px
   // dydžio brūkšniai tampa beveik neįžiūrimi. Tokioms lentoms 100 % grąžina
-  // skaitomą senojo pasaulio 1:1 mastelį; „Rodyti plotį“ ir toliau sutalpina visą
+  // skaitomą senosios lentos mastelį; „Rodyti plotį“ ir toliau sutalpina visą
   // seną pasaulį. Duomenų / brūkšnių Firebase dėl to nekeičiame.
   function boardFitZoom() {
     const world = getBoardWorldRect();
@@ -598,10 +598,16 @@
     return world.width > BOARD_STRIP_DEFAULT_WIDTH + 1;
   }
 
+  // P1.7.9.15: istorinėse plačiose lentose senasis rašymo mastelis buvo gerokai
+  // smulkesnis už dabartinį 720 px lapą. Realus 0.20 kameros mastelis atkuria tą
+  // skaitomą dydį, kuriuo senos lentos buvo naudojamos pamokose. UI jį vadina 100 %.
+  // Tai tik peržiūros suderinamumas – brūkšnių koordinatės ir Firebase duomenys
+  // nekeičiami.
+  const BOARD_LEGACY_READABLE_ZOOM = 0.20;
+
   function boardUser100Zoom() {
     if (!boardUsesLegacyReadableScale()) return boardFitZoom();
-    const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
-    return clampCameraZoom(Math.min(1, viewportWidth / BOARD_STRIP_DEFAULT_WIDTH));
+    return clampCameraZoom(BOARD_LEGACY_READABLE_ZOOM);
   }
 
   function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
@@ -8851,12 +8857,10 @@ KOKYBĖS REIKALAVIMAI:
     for (const image of state.boardImages) include(image.x * world.width, image.y * world.height, (image.x + image.width) * world.width, (image.y + image.height) * world.height);
     for (const task of state.boardTasks) { const r = boardTaskPixelRect(task, world); include(r.x, r.y, r.x + r.width, r.y + r.height); }
     for (const practice of state.boardPractices) { const r = boardPracticePixelRect(practice, world); include(r.x, r.y, r.x + r.width, r.y + r.height); }
-    if (!state.window.shelved && state.window.x !== null && state.window.y !== null) {
-      const left = state.window.x * world.width, top = state.window.y * world.height;
-      const width = Math.max(360, Number(state.window.width || 0) * world.width || refs.practiceWindow.offsetWidth || 650);
-      const height = Math.max(180, Number(state.window.height || 0) * world.height || refs.practiceWindow.offsetHeight || 730);
-      include(left, top, left + width, top + height);
-    }
+    // Sąmoningai neįtraukiame seno plaukiojančio pratybų lango. Istoriniuose Room
+    // jo x/y dažnai likę (0;0), nors realus mokinio rašymas prasideda už kelių
+    // tūkstančių pasaulio pikselių. Įtraukus langą automatinis fokusas klaidingai
+    // laikytų lentos pradžią turinio pradžia ir vartotojui vėl tektų ieškoti rašymo.
     return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
   }
 
@@ -8879,6 +8883,23 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
+  function alignLegacyBoardContentToViewportTop(options = {}) {
+    if (!boardUsesLegacyReadableScale() || !refs.board) return false;
+    const bounds = boardContentBounds();
+    if (!bounds) return false;
+    const zoom = currentBoardZoom();
+    // Nedidelė paraštė leidžia aiškiai matyti pirmą brūkšnį, bet nepalieka šimtų
+    // tuščių pikselių virš seno turinio. Horizontalėje taip pat pradedame nuo
+    // pirmo realaus objekto, todėl nereikia ieškoti jo milžiniškame senajame pasaulyje.
+    const paddingX = Math.max(18, Number(options.paddingX) || 28);
+    const paddingY = Math.max(12, Number(options.paddingY) || 24);
+    refs.board.scrollLeft = Math.max(0, bounds.minX * zoom - paddingX);
+    refs.board.scrollTop = Math.max(0, bounds.minY * zoom - paddingY);
+    state.camera.scrollLeft = refs.board.scrollLeft;
+    state.camera.scrollTop = refs.board.scrollTop;
+    return true;
+  }
+
   function showBoardAt100FromTop(options = {}) {
     const legacyReadable = boardUsesLegacyReadableScale();
     const targetZoom = boardUser100Zoom();
@@ -8886,25 +8907,20 @@ KOKYBĖS REIKALAVIMAI:
     state.camera.scrollLeft = 0;
     state.camera.scrollTop = 0;
     applyBoardCamera();
-    requestAnimationFrame(() => {
+    // Du rAF duoda laiko po Firebase snapshot'o galutinai sumontuoti ir DOM objektus.
+    // Pieštuko brūkšnių ribos jau žinomos iš modelio, o tekstų/paveikslų matmenys taip
+    // pat spėja susiskaičiuoti. Todėl istorinė lenta iškart atsiveria ties savo turiniu.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       if (legacyReadable) {
-        // Senose 2D lentose turinys po ankstesnių left/top plėtimų gali būti už
-        // kelių tūkstančių pasaulio pikselių nuo dabartinio (0;0). Atverdami 100 %
-        // rodome pirmą realaus turinio vietą, užuot palikę vartotoją tuščioje erdvėje.
-        const bounds = boardContentBounds();
-        const padding = 48;
-        const left = Number.isFinite(bounds?.minX) ? bounds.minX : normalizeCamera(state.camera).worldOriginX;
-        const top = Number.isFinite(bounds?.minY) ? bounds.minY : normalizeCamera(state.camera).worldOriginY;
-        refs.board.scrollLeft = Math.max(0, left * targetZoom - padding);
-        refs.board.scrollTop = Math.max(0, top * targetZoom - padding);
+        alignLegacyBoardContentToViewportTop();
       } else {
         refs.board.scrollLeft = 0;
         refs.board.scrollTop = 0;
+        state.camera.scrollLeft = 0;
+        state.camera.scrollTop = 0;
       }
-      state.camera.scrollLeft = refs.board.scrollLeft;
-      state.camera.scrollTop = refs.board.scrollTop;
       if (options.save !== false) scheduleSave();
-    });
+    }));
   }
 
   function showBoardFromTop(options = {}) {
@@ -9015,7 +9031,10 @@ KOKYBĖS REIKALAVIMAI:
   function installBoardCamera() {
     refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
-    refs.boardZoomActualButton.addEventListener('click', () => setBoardUserZoomPercent(100, { preserveCenter: true }));
+    refs.boardZoomActualButton.addEventListener('click', () => {
+      if (boardUsesLegacyReadableScale()) showBoardAt100FromTop();
+      else setBoardUserZoomPercent(100, { preserveCenter: true });
+    });
     refs.boardZoomFitButton.addEventListener('click', () => fitBoardWidth({ top: false }));
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
     refs.practiceOnlyButton.addEventListener('click', () => enterPracticeOnly());

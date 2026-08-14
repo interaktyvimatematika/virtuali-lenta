@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.14';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.15';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4056,7 +4056,7 @@
 
   function lessonHistoryForStudent(student) {
     return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
-      // P1.7.9.14: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
+      // P1.7.9.15: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
       // bet pataisymo migracija gali jį pažymėti kaip paslėptą dublikatą. Taip
       // atsarginėje kopijoje išlieka audito pėdsakas, o mokinio istorijoje
       // rodomas tik tikrasis pamokos Room.
@@ -4080,7 +4080,7 @@
 
   function studentLessonScheduleMeta(lesson) {
     const session = teacherStudentDb.classSessions?.[lesson?.classSessionId] || {};
-    // P1.7.9.14: pirmiausia naudojame classSession metaduomenis, bet turime
+    // P1.7.9.15: pirmiausia naudojame classSession metaduomenis, bet turime
     // saugų fallback į patį mokinio pamokos įrašą. Naujesnės schedule pamokos
     // šiuos laukus turi abiejose vietose, todėl statusas nepriklauso nuo to,
     // kuri Firebase šaka buvo užkrauta pirmiau.
