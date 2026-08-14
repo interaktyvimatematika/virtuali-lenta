@@ -448,7 +448,7 @@
     boardPractices: [],
     activeBoardPracticeId: null,
     activeBoardObject: null,
-    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 1000, worldHeight: 10000, layoutMode: 'vertical-strip' },
+    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 720, worldHeight: 10000, layoutMode: 'vertical-strip' },
     practiceOnly: { active: false, practiceId: null },
     mathToolbarCategory: 'Pagrindiniai',
     library: createInitialLibrary(),
@@ -521,11 +521,11 @@
     return JSON.parse(JSON.stringify(value));
   }
 
-  const BOARD_WORLD_MIN_WIDTH = 1000;
+  const BOARD_WORLD_MIN_WIDTH = 720;
   const BOARD_WORLD_MIN_HEIGHT = 1700;
-  const BOARD_STRIP_DEFAULT_WIDTH = 1000;
+  const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.7: vertikali juosta susiaurinta iki 1000 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.8: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -540,7 +540,7 @@
   const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
 
   // Jei Room buvo tik atvertas su ankstesne 2400 / 1400 px juosta, bet joje dar nėra
-  // jokio realaus lentos turinio, saugiai pritaikome naują 1000 px plotį.
+  // jokio realaus lentos turinio, saugiai pritaikome naują 720 px plotį.
   // Lentos su esamais piešiniais / objektais neliečiamos, kad niekas nebūtų suspausta.
   const boardHasPersistentContent = Boolean(
     (state.drawing || []).length ||
@@ -549,7 +549,8 @@
     (state.boardTasks || []).length ||
     (state.boardPractices || []).length
   );
-  if (!boardHasPersistentContent && state.camera?.layoutMode === 'vertical-strip' && [2400, 1400].includes(Number(state.camera?.worldWidth))) {
+  if (!boardHasPersistentContent && state.camera?.layoutMode === 'vertical-strip' && Number(state.camera?.worldWidth) !== BOARD_STRIP_DEFAULT_WIDTH) {
+    // Tuščias senas Room gali būti saugiai pritaikytas prie naujo lapo pločio.
     state.camera.worldWidth = BOARD_STRIP_DEFAULT_WIDTH;
     state.camera.scrollLeft = 0;
   }
