@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.9: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.10.1: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.

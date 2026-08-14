@@ -58,7 +58,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .board-world {
   position: absolute; left: 0; top: 0; width: 720px; height: 1700px; transform-origin: top left;
   overflow: hidden; background-color: #fbfcfe;
-  /* P1.7.9.10: aiškesnis „languoto lapo“ vaizdas 100 % režime.
+  /* P1.7.9.10.1: aiškesnis „languoto lapo“ vaizdas 100 % režime.
      Smulkūs langeliai kiek didesni ir ryškesni, o kas 5 langelius
      rodomos tamsesnės gairės – kad rašymas atrodytų natūraliai,
      ne per smulkiai ir ne per stambiai. */
@@ -7261,7 +7261,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-time-manage-pane>small{color:#8b96a5;font-size:9px;line-height:1.45}
 .p2-schedule-time-manage-pane[hidden]{display:none!important}
 
-/* P2-SPLIT-P2.5-P4-P1.7.9.9 — tvarkaraštyje mokytojas turi matyti pilną
+/* P2-SPLIT-P2.5-P4-P1.7.9.10.1 — tvarkaraštyje mokytojas turi matyti pilną
    mokinio identifikatorių (vardą, klasę ir globėją), todėl jo nekerpame ellipsis. */
 .p2-schedule-card-students span {
   overflow: visible;

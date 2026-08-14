@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.9';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.10.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
