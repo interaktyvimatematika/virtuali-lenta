@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.23';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.24';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4131,6 +4131,45 @@
     return backupRestoreModal;
   }
 
+  function backupRestoreChangeKind(kind) {
+    if (kind === 'rollback') return 'Grįš atgal';
+    if (kind === 'forward') return 'Bus naujesnė';
+    if (kind === 'restore') return 'Bus atkurta';
+    if (kind === 'remove') return 'Nebebus bazėje';
+    return 'Bus pakeista';
+  }
+
+  function backupRestoreChangeRows(items, limit = 8) {
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    const shown = list.slice(0, limit);
+    const rows = shown.map(item => `<div class="p2-backup-restore-change-row is-${escapeHtml(String(item.kind || 'changed'))}"><span class="p2-backup-restore-change-badge">${escapeHtml(backupRestoreChangeKind(item.kind))}</span><div><strong>${escapeHtml(String(item.label || item.roomId || 'Įrašas'))}</strong><small>${escapeHtml(String(item.detail || 'Duomenys bus pakeisti.'))}</small></div></div>`).join('');
+    const more = list.length > shown.length ? `<p class="p2-backup-restore-more">Ir dar ${backupRestoreCount(list.length - shown.length)} pakeitimai.</p>` : '';
+    return rows + more;
+  }
+
+  function backupRestoreDiffHtml(changes = {}) {
+    if (!changes || changes.hasChanges === false) {
+      return `<section class="p2-backup-restore-nochanges"><span aria-hidden="true">✓</span><div><strong>Reikšmingų skirtumų nerasta</strong><p>Pasirinktos kopijos mokinių bazė ir joje esantys Room šiuo metu sutampa su Firebase būsena.</p></div></section>`;
+    }
+    const students = changes.students || {};
+    const schedule = changes.schedule || {};
+    const rooms = changes.rooms || {};
+    const roomItems = Array.isArray(rooms.items) ? rooms.items : [];
+    const risky = roomItems.filter(item => item?.kind === 'rollback');
+    const otherRooms = roomItems.filter(item => item?.kind !== 'rollback');
+    const studentCount = Math.max(0, Number(students.totalChanges || 0));
+    const scheduleCount = Math.max(0, Number(schedule.totalChanges || 0));
+    const roomCount = Math.max(0, Number(rooms.changed || 0)) + Math.max(0, Number(rooms.restored || 0));
+    return `<section class="p2-backup-restore-diff">
+      <div class="p2-backup-restore-diff-head"><div><strong>Kas konkrečiai pasikeis?</strong><p>Rodoma kryptis <b>dabar → pasirinkta kopija</b>.</p></div><div class="p2-backup-restore-diff-chips"><span>${backupRestoreCount(studentCount)} mokinių</span><span>${backupRestoreCount(scheduleCount)} tvarkaraščio</span><span>${backupRestoreCount(roomCount)} Room</span>${Number(rooms.progressBack || 0) ? `<span class="is-danger">${backupRestoreCount(rooms.progressBack)} progreso grįš atgal</span>` : ''}</div></div>
+      ${risky.length ? `<div class="p2-backup-restore-change-group is-risk"><strong>Progresas, kuris bus grąžintas atgal</strong>${backupRestoreChangeRows(risky, 10)}</div>` : ''}
+      ${(students.items || []).length ? `<div class="p2-backup-restore-change-group"><strong>Mokinių bazė</strong>${backupRestoreChangeRows(students.items, 8)}</div>` : ''}
+      ${otherRooms.length ? `<div class="p2-backup-restore-change-group"><strong>Lentos ir pratybos</strong>${backupRestoreChangeRows(otherRooms, 10)}</div>` : ''}
+      ${scheduleCount ? `<div class="p2-backup-restore-change-summary"><strong>Tvarkaraštis ir pamokų istorija</strong><span>${backupRestoreCount(schedule.entries?.changed?.length || 0)} pakeisti laikai · ${backupRestoreCount(schedule.entries?.added?.length || 0)} atkurti · ${backupRestoreCount(schedule.entries?.removed?.length || 0)} pašalinti</span><span>${backupRestoreCount(schedule.sessions?.changed?.length || 0)} pakeistos pamokos · ${backupRestoreCount(schedule.sessions?.added?.length || 0)} atkurtos · ${backupRestoreCount(schedule.sessions?.removed?.length || 0)} pašalintos</span></div>` : ''}
+      ${Number(rooms.extra || 0) ? `<div class="p2-backup-restore-change-summary is-muted"><strong>${backupRestoreCount(rooms.extra)} dabartiniai Room kopijoje neegzistuoja</strong><span>Jų fiziniai duomenys Firebase nebus trinami, tačiau atkūrus senesnį profilį jie gali nebesimatyti mokinio istorijoje.</span></div>` : ''}
+    </section>`;
+  }
+
   function renderBackupRestorePreview(detail = {}) {
     const modal = ensureBackupRestoreModal();
     const body = modal.querySelector('#p2BackupRestoreBody');
@@ -4149,6 +4188,7 @@
         <span class="p2-backup-restore-arrow" aria-hidden="true">→</span>
         <section><span>Dabar Firebase</span><strong>${backupRestoreCount(current.students)} mok.</strong><small>${backupRestoreCount(current.scheduleEntries)} laikai · ${backupRestoreCount(current.classSessions)} pamokos · ${backupRestoreCount(current.rooms)} Room</small></section>
       </div>
+      ${backupRestoreDiffHtml(detail.changes || {})}
       ${warnings.length ? `<div class="p2-backup-restore-warnings"><strong>Prieš atkuriant</strong>${warnings.map(text => `<p>• ${escapeHtml(text)}</p>`).join('')}</div>` : ''}
       <div class="p2-backup-restore-policy">
         <strong>Kas bus daroma?</strong>

@@ -7304,7 +7304,7 @@ body.p2-shell .p2-task-diagram .guide { stroke:#8793a8; stroke-width:1.5; }
 body.p2-shell .p2-task-diagram text { fill:#37445a; font:600 12px/1 Inter,ui-sans-serif,system-ui,sans-serif; }
 
 /* =========================================================
-   P2-SPLIT-P2.5-P4-P1.7.9.23 — responsive lentos panelė
+   P2-SPLIT-P2.5-P4-P1.7.9.24 — responsive lentos panelė
    =========================================================
    Sprendimai remiasi ne įrenginio pavadinimu, o realiu panelės pločiu.
    Taip tas pats Padalintas režimas gali tvarkingai veikti ir dideliame
@@ -7394,7 +7394,7 @@ body.p2-shell .p2-board-tools {
   body.p2-shell .app { height: 100dvh; }
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.9.23 · saugus atsarginės kopijos atkūrimas */
+/* P2-SPLIT-P2.5-P4-P1.7.9.24 · saugus atsarginės kopijos atkūrimas */
 .p2-students-overview-actions{flex-wrap:wrap;justify-content:flex-end}
 .p2-student-restore-inline{min-height:38px;padding:0 12px;white-space:nowrap}
 .p2-backup-restore-modal[hidden]{display:none!important}
@@ -7435,3 +7435,17 @@ body.p2-shell .p2-board-tools {
 .p2-backup-restore-success p{margin:0;color:#567064;font-size:10px;line-height:1.5}
 @media(max-width:850px){.p2-student-restore-inline{min-height:36px}.p2-students-overview-actions{justify-content:flex-start}.p2-backup-restore-panel{width:min(720px,calc(100vw - 20px));max-height:calc(100dvh - 20px)}}
 @media(max-width:560px){.p2-student-restore-inline{width:100%}.p2-backup-restore-modal{padding:8px}.p2-backup-restore-panel{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:14px}.p2-backup-restore-head{padding:16px}.p2-backup-restore-body{padding:16px}.p2-backup-restore-file{align-items:flex-start;flex-direction:column}.p2-backup-restore-compare{grid-template-columns:1fr}.p2-backup-restore-arrow{transform:rotate(90deg)}.p2-backup-restore-actions{flex-direction:column-reverse}.p2-backup-restore-actions button{width:100%}}
+
+/* P2-SPLIT-P2.5-P4-P1.7.9.24 · atsarginės kopijos konkrečių skirtumų peržiūra */
+.p2-backup-restore-nochanges{display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #cfe8d8;border-radius:13px;background:#f3fbf6}
+.p2-backup-restore-nochanges>span{flex:0 0 auto;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#dff4e7;color:#25824d;font-weight:900}
+.p2-backup-restore-nochanges>div{display:grid;gap:3px}.p2-backup-restore-nochanges strong{color:#245f3d;font-size:12px}.p2-backup-restore-nochanges p{margin:0;color:#597367;font-size:10px;line-height:1.5}
+.p2-backup-restore-diff{display:grid;gap:10px;padding:14px;border:1px solid #dce3ed;border-radius:13px;background:#fbfcfe}
+.p2-backup-restore-diff-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.p2-backup-restore-diff-head>div:first-child{display:grid;gap:2px}.p2-backup-restore-diff-head strong{color:#2b394d;font-size:12px}.p2-backup-restore-diff-head p{margin:0;color:#768397;font-size:10px;line-height:1.45}
+.p2-backup-restore-diff-chips{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:5px}.p2-backup-restore-diff-chips span{padding:5px 7px;border-radius:999px;background:#edf2f8;color:#5d6c82;font-size:9px;font-weight:800;white-space:nowrap}.p2-backup-restore-diff-chips span.is-danger{background:#fff0f0;color:#a44747}
+.p2-backup-restore-change-group{display:grid;gap:6px;padding-top:9px;border-top:1px solid #e7ebf1}.p2-backup-restore-change-group>strong{color:#536176;font-size:10px;text-transform:uppercase;letter-spacing:.035em}.p2-backup-restore-change-group.is-risk>strong{color:#a44747}
+.p2-backup-restore-change-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:flex-start;gap:8px;padding:8px 9px;border:1px solid #e3e8ef;border-radius:10px;background:#fff}.p2-backup-restore-change-row>div{min-width:0;display:grid;gap:2px}.p2-backup-restore-change-row strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344257;font-size:10px}.p2-backup-restore-change-row small{color:#748196;font-size:9px;line-height:1.4}
+.p2-backup-restore-change-row.is-rollback{border-color:#efcaca;background:#fff7f7}.p2-backup-restore-change-row.is-forward{border-color:#cfe8d8;background:#f7fcf9}.p2-backup-restore-change-row.is-remove{border-color:#efd9a6;background:#fffbf2}
+.p2-backup-restore-change-badge{flex:0 0 auto;padding:4px 6px;border-radius:999px;background:#edf2f8;color:#617087;font-size:8px;font-weight:900;white-space:nowrap}.is-rollback>.p2-backup-restore-change-badge{background:#ffe4e4;color:#a64040}.is-forward>.p2-backup-restore-change-badge{background:#def3e6;color:#27784a}.is-remove>.p2-backup-restore-change-badge{background:#fff0c9;color:#8a691d}
+.p2-backup-restore-more{margin:0;color:#7a8799;font-size:9px}.p2-backup-restore-change-summary{display:grid;gap:3px;padding:9px 10px;border-top:1px solid #e7ebf1;color:#6d7a8d}.p2-backup-restore-change-summary strong{color:#4b596e;font-size:10px}.p2-backup-restore-change-summary span{font-size:9px;line-height:1.4}.p2-backup-restore-change-summary.is-muted{border:1px dashed #dce3ed;border-radius:10px;background:#fff}
+@media(max-width:560px){.p2-backup-restore-diff-head{flex-direction:column}.p2-backup-restore-diff-chips{justify-content:flex-start}.p2-backup-restore-change-row{grid-template-columns:1fr}.p2-backup-restore-change-badge{justify-self:start}}

@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.23';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.24';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1578,6 +1578,167 @@ async function otherConnectedClientsInRooms(roomIds) {
   return count;
 }
 
+function restoreStableValue(value) {
+  if (Array.isArray(value)) return value.map(restoreStableValue);
+  if (!value || typeof value !== 'object') return value ?? null;
+  const out = {};
+  for (const key of Object.keys(value).sort()) out[key] = restoreStableValue(value[key]);
+  return out;
+}
+
+function restoreSameValue(a, b) {
+  try { return JSON.stringify(restoreStableValue(a)) === JSON.stringify(restoreStableValue(b)); }
+  catch (_) { return false; }
+}
+
+function restoreCollectionDiff(currentValue, backupValue) {
+  const current = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue) ? currentValue : {};
+  const backup = backupValue && typeof backupValue === 'object' && !Array.isArray(backupValue) ? backupValue : {};
+  const currentIds = new Set(Object.keys(current));
+  const backupIds = new Set(Object.keys(backup));
+  const added = [], removed = [], changed = [];
+  for (const id of backupIds) {
+    if (!currentIds.has(id)) added.push(id);
+    else if (!restoreSameValue(current[id], backup[id])) changed.push(id);
+  }
+  for (const id of currentIds) if (!backupIds.has(id)) removed.push(id);
+  return { added, removed, changed, totalChanges: added.length + removed.length + changed.length };
+}
+
+function restoreProgressStats(roomData) {
+  const p2 = roomData?.p2 && typeof roomData.p2 === 'object' ? roomData.p2 : {};
+  const student = p2.student && typeof p2.student === 'object' ? p2.student : {};
+  const assignment = student.assignment && typeof student.assignment === 'object' ? student.assignment : {};
+  const progress = student.progress && typeof student.progress === 'object' ? student.progress : {};
+  const states = progress.taskStates && typeof progress.taskStates === 'object' ? progress.taskStates : {};
+  let good = 0, help = 0, repeat = 0;
+  for (const state of Object.values(states)) {
+    const status = String(state?.status || '');
+    if (status === 'good') good += 1;
+    else if (status === 'help') help += 1;
+    else if (status === 'repeat') repeat += 1;
+  }
+  const finished = good + help + repeat;
+  const taskCount = Math.max(0, Number(assignment.taskCount || assignment.contentSnapshot?.taskCount || 0));
+  return {
+    finished, good, help, repeat, taskCount,
+    currentTaskId: String(progress.currentTaskId || ''),
+    updatedAt: Math.max(0, Number(progress.updatedAt || 0))
+  };
+}
+
+function restoreRoomUpdatedAt(roomData) {
+  const values = [
+    roomData?.workspace?.meta?.updatedAt,
+    roomData?.workspace?.boardGeometry?.updatedAt,
+    roomData?.p2?.meta?.updatedAt,
+    roomData?.p2?.student?.profile?.updatedAt,
+    roomData?.p2?.student?.assignment?.updatedAt,
+    roomData?.p2?.student?.progress?.updatedAt,
+    roomData?.control?.updatedAt
+  ].map(value => Number(value || 0)).filter(Number.isFinite);
+  return values.length ? Math.max(...values) : 0;
+}
+
+function restoreStudentLabel(profile, studentId) {
+  const student = profile?.students?.[studentId] || {};
+  const name = String(student.name || '').trim();
+  const grade = Math.max(0, Number(student.grade || 0));
+  return name ? `${name}${grade ? ` · ${grade} kl.` : ''}` : String(studentId || 'Mokinys');
+}
+
+function restoreRoomStudentId(profile, targetRoom) {
+  const linked = String(profile?.roomLinks?.[targetRoom]?.studentId || '').trim();
+  if (linked) return linked;
+  for (const [studentId, student] of Object.entries(profile?.students || {})) {
+    if (student?.lessons && Object.prototype.hasOwnProperty.call(student.lessons, targetRoom)) return studentId;
+  }
+  return '';
+}
+
+function restoreRoomLabel(backupProfile, currentProfile, targetRoom, backupRoom, currentRoom) {
+  const studentId = restoreRoomStudentId(backupProfile, targetRoom) || restoreRoomStudentId(currentProfile, targetRoom);
+  const base = studentId ? restoreStudentLabel(backupProfile?.students?.[studentId] ? backupProfile : currentProfile, studentId) : `Room ${targetRoom}`;
+  const title = String(backupRoom?.p2?.student?.assignment?.title || currentRoom?.p2?.student?.assignment?.title || '').trim();
+  return title ? `${base} · ${title}` : base;
+}
+
+async function restoreLoadCurrentRooms(roomIds) {
+  const ids = Array.from(new Set((roomIds || []).map(safeRoom).filter(Boolean)));
+  const rooms = {};
+  let connectedOthers = 0;
+  const batchSize = 6;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    const snapshots = await Promise.all(batch.map(id => get(ref(db, `p772Rooms/${id}`))));
+    snapshots.forEach((snapshot, index) => {
+      const id = batch[index];
+      const raw = snapshot.val() || {};
+      rooms[id] = { workspace: raw.workspace || null, p2: raw.p2 || null, control: raw.control || null };
+      const presence = raw.presence && typeof raw.presence === 'object' ? raw.presence : {};
+      for (const clientId of Object.keys(presence)) if (clientId !== me) connectedOthers += 1;
+    });
+  }
+  return { rooms, connectedOthers };
+}
+
+function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) {
+  const studentDiff = restoreCollectionDiff(currentProfile?.students, backup.profile?.students);
+  const scheduleDiff = restoreCollectionDiff(currentProfile?.scheduleEntries, backup.profile?.scheduleEntries);
+  const sessionDiff = restoreCollectionDiff(currentProfile?.classSessions, backup.profile?.classSessions);
+  const runDiff = restoreCollectionDiff(currentProfile?.scheduleRuns, backup.profile?.scheduleRuns);
+  const roomItems = [];
+  let roomChanged = 0, progressBack = 0, progressForward = 0, roomNew = 0;
+  for (const targetRoom of Object.keys(backup.rooms)) {
+    const before = currentRooms[targetRoom] || null;
+    const after = backup.rooms[targetRoom] || {};
+    if (!before || (!before.workspace && !before.p2 && !before.control)) {
+      roomNew += 1;
+      roomItems.push({ roomId: targetRoom, kind: 'restore', label: restoreRoomLabel(backup.profile, currentProfile, targetRoom, after, before), detail: 'Room būsena bus atkurta iš kopijos.' });
+      continue;
+    }
+    if (restoreSameValue(before, after)) continue;
+    roomChanged += 1;
+    const currentProgress = restoreProgressStats(before);
+    const backupProgress = restoreProgressStats(after);
+    const boardChanged = !restoreSameValue(before.workspace, after.workspace);
+    const progressChanged = !restoreSameValue(before.p2?.student?.progress, after.p2?.student?.progress)
+      || !restoreSameValue(before.p2?.student?.assignment, after.p2?.student?.assignment);
+    let kind = 'changed';
+    let detail = [];
+    if (progressChanged && (currentProgress.taskCount || backupProgress.taskCount)) {
+      const currentText = `${currentProgress.finished}/${currentProgress.taskCount || '?'}`;
+      const backupText = `${backupProgress.finished}/${backupProgress.taskCount || '?'}`;
+      if (backupProgress.finished < currentProgress.finished) { kind = 'rollback'; progressBack += 1; detail.push(`pratybos ${currentText} → ${backupText}`); }
+      else if (backupProgress.finished > currentProgress.finished) { kind = 'forward'; progressForward += 1; detail.push(`pratybos ${currentText} → ${backupText}`); }
+      else if (!restoreSameValue(before.p2?.student?.progress, after.p2?.student?.progress)) detail.push(`pratybų būsena ${currentText} bus pakeista`);
+    }
+    if (boardChanged) detail.push('lentos būsena skiriasi');
+    const currentUpdated = restoreRoomUpdatedAt(before);
+    const backupUpdated = restoreRoomUpdatedAt(after);
+    if (currentUpdated && backupUpdated && backupUpdated < currentUpdated) detail.push('kopijos Room būsena senesnė');
+    else if (currentUpdated && backupUpdated && backupUpdated > currentUpdated) detail.push('kopijos Room būsena naujesnė');
+    roomItems.push({ roomId: targetRoom, kind, label: restoreRoomLabel(backup.profile, currentProfile, targetRoom, after, before), detail: detail.join(' · ') || 'Room duomenys bus pakeisti.' });
+  }
+  const extraRooms = (currentRoomIds || []).filter(id => !backup.rooms[id]);
+  const studentItems = [];
+  for (const id of studentDiff.changed) studentItems.push({ kind: 'changed', label: restoreStudentLabel(backup.profile?.students?.[id] ? backup.profile : currentProfile, id), detail: 'duomenys bus pakeisti kopijos būsena' });
+  for (const id of studentDiff.added) studentItems.push({ kind: 'restore', label: restoreStudentLabel(backup.profile, id), detail: 'mokinys bus atkurtas į aktyvią bazę' });
+  for (const id of studentDiff.removed) studentItems.push({ kind: 'remove', label: restoreStudentLabel(currentProfile, id), detail: 'mokinys nebeliks aktyvioje bazėje po atkūrimo' });
+  const hasChanges = studentDiff.totalChanges + scheduleDiff.totalChanges + sessionDiff.totalChanges + runDiff.totalChanges + roomChanged + roomNew + extraRooms.length > 0;
+  return {
+    hasChanges,
+    students: { ...studentDiff, items: studentItems },
+    schedule: {
+      entries: scheduleDiff,
+      sessions: sessionDiff,
+      runs: runDiff,
+      totalChanges: scheduleDiff.totalChanges + sessionDiff.totalChanges + runDiff.totalChanges
+    },
+    rooms: { changed: roomChanged, restored: roomNew, progressBack, progressForward, extra: extraRooms.length, items: roomItems, extraRoomIds: extraRooms }
+  };
+}
+
 window.addEventListener('p2:restore-preview-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
   try {
@@ -1591,7 +1752,10 @@ window.addEventListener('p2:restore-preview-request', async event => {
     const currentProfile = currentSnapshot.val() || {};
     const currentRoomIds = backupRoomIdsFromProfile(currentProfile);
     const backupRoomIds = Object.keys(backup.rooms);
-    const connectedOthers = await otherConnectedClientsInRooms(backupRoomIds);
+    const loaded = await restoreLoadCurrentRooms(Array.from(new Set([...backupRoomIds, ...currentRoomIds])));
+    const currentRooms = loaded.rooms;
+    const connectedOthers = loaded.connectedOthers;
+    const changes = buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds);
     const warnings = [];
     if (connectedOthers > 0) warnings.push(`Šiuo metu kopijoje esančiuose Room aptikta ${connectedOthers} kitų prisijungusių įrenginių. Atkūrimas bus blokuojamas, kol jie neatsijungs.`);
     if (backup.exportedAt && Date.now() - backup.exportedAt > 24 * 60 * 60 * 1000) warnings.push('Pasirinkta kopija yra senesnė nei 24 valandos – po jos sukūrimo atlikti pakeitimai mokinių bazėje bus grąžinti atgal.');
@@ -1606,6 +1770,7 @@ window.addEventListener('p2:restore-preview-request', async event => {
       exportedAtIso: backup.exportedAtIso,
       backupCounts: restoreBackupCounts(backup.profile, backup.rooms),
       currentCounts: { ...restoreBackupCounts(currentProfile, {}), rooms: currentRoomIds.length },
+      changes,
       warnings
     }}));
   } catch (error) {
@@ -2034,7 +2199,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.23 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.24 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
