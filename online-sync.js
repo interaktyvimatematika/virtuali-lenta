@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.7.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.8';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -1520,14 +1520,14 @@ window.addEventListener('p2:schedule-request', async event => {
 
     if (detail.action === 'slot-close-forever') {
       const fromDate = validScheduleDateKey(detail.fromDate);
-      if (!fromDate) throw new Error('Pasirink datą, nuo kurios laikas pašalinamas');
+      if (!fromDate) throw new Error('Pasirink datą, nuo kurios laikas panaikinamas');
       const payload = explicitScheduleSlotPayload(existing);
       payload.retiredFrom = fromDate;
       for (const [id, range] of Object.entries(payload.closedRanges || {})) {
         if (range.fromDate >= fromDate) { delete payload.closedRanges[id]; continue; }
         if (range.toDate >= fromDate) range.toDate = scheduleAddDays(fromDate, -1);
       }
-      await saveSlot(scheduleId, payload, 'slot-close-forever', `Pamokos laikas pašalintas visam laikui nuo ${fromDate}`);
+      await saveSlot(scheduleId, payload, 'slot-close-forever', `Pamokos laikas panaikintas nuo ${fromDate}`);
       return;
     }
 
@@ -1548,23 +1548,6 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
 
-    if (detail.action === 'slot-time-add') {
-      const effectiveFrom = validScheduleDateKey(detail.effectiveFrom);
-      if (!effectiveFrom) throw new Error('Pasirink pakeitimo datą');
-      const day = safeScheduleDay(detail.day);
-      const start = safeScheduleTime(detail.start);
-      const durationMinutes = safeScheduleDuration(detail.durationMinutes);
-      const conflict = findScheduleTimeVersionConflict({ effectiveFrom, day, start, durationMinutes }, scheduleId);
-      if (conflict) throw scheduleConflictError(conflict);
-      const payload = explicitScheduleSlotPayload(existing);
-      const versionId = newScheduleTimeVersionId();
-      payload.timeVersions[versionId] = { effectiveFrom, day, start, durationMinutes, createdAt: Date.now() };
-      payload.oneOffDate = '';
-      const todayTime = scheduleSlotTimeForDate(payload, localDateKey()) || Object.values(payload.timeVersions).sort((a,b) => a.effectiveFrom.localeCompare(b.effectiveFrom)).slice(-1)[0];
-      payload.day = safeScheduleDay(todayTime?.day); payload.start = safeScheduleTime(todayTime?.start); payload.durationMinutes = safeScheduleDuration(todayTime?.durationMinutes);
-      await saveSlot(scheduleId, payload, 'slot-time', `Pamokos laikas pakeistas nuo ${effectiveFrom}`);
-      return;
-    }
 
     if (detail.action === 'assignment-delete') {
       const assignmentId = String(detail.assignmentId || '').trim();
@@ -1709,7 +1692,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.7.1 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.8 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -1784,9 +1767,18 @@ window.addEventListener('p2:students-request', async event => {
         if (classSessionId) updates[`classSessions/${classSessionId}/students/${studentId}`] = null;
       }
       for (const [scheduleId, entry] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
-        if (!entry?.studentIds?.[studentId]) continue;
-        updates[`scheduleEntries/${scheduleId}/studentIds/${studentId}`] = null;
-        updates[`scheduleEntries/${scheduleId}/updatedAt`] = Date.now();
+        let touched = false;
+        if (entry?.studentIds?.[studentId]) {
+          updates[`scheduleEntries/${scheduleId}/studentIds/${studentId}`] = null;
+          touched = true;
+        }
+        const assignments = entry?.assignments && typeof entry.assignments === 'object' ? entry.assignments : {};
+        for (const [assignmentId, scheduleAssignment] of Object.entries(assignments)) {
+          if (safeStudentId(scheduleAssignment?.studentId) !== studentId) continue;
+          updates[`scheduleEntries/${scheduleId}/assignments/${assignmentId}`] = null;
+          touched = true;
+        }
+        if (touched) updates[`scheduleEntries/${scheduleId}/updatedAt`] = Date.now();
       }
       await update(teacherProfileRef, updates);
       await Promise.all(linkedRooms.map(linkedRoom => remove(ref(db, `p772Rooms/${safeRoom(linkedRoom)}/p2/student/profile`)).catch(() => {})));

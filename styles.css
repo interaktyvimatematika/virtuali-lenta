@@ -6763,7 +6763,7 @@ body.p2-shell.p2-student-history-nav-active.p2-lesson-student-tabs-active .app{
   .p2-lesson-student-tabs{padding-inline:9px}.p2-lesson-tabs-label{display:none}
 }
 
-/* P2-SPLIT-P2.5-P4-P1.7.7.1 · datos pagrindu veikiantis pamokų tvarkaraštis */
+/* P2-SPLIT-P2.5-P4-P1.7.7.2 · datos pagrindu veikiantis pamokų tvarkaraštis */
 body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-schedule-modal[hidden] { display:none !important; }
 .p2-schedule-modal { position:fixed; inset:0; z-index:2150; display:grid; place-items:center; padding:18px; }
@@ -7194,7 +7194,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-assign-row.is-in-lesson-card{margin-top:10px}
 @media(max-width:900px){.p2-student-lesson-card{grid-template-columns:1fr}.p2-student-lesson-state{min-height:auto}.p2-student-lesson-card-actions{justify-content:flex-start;max-width:none}}
 
-/* P2-SPLIT-P2.5-P4-P1.7.7.1 · datos, režimai ir savaitės navigacija */
+/* P2-SPLIT-P2.5-P4-P1.7.7.2 · datos, režimai ir savaitės navigacija */
 .p2-schedule-week-nav{display:flex!important;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .p2-schedule-week-nav .p2-secondary{min-width:38px;padding-inline:10px}
 .p2-schedule-card-mode{justify-self:start;padding:3px 6px;border-radius:999px;background:#eef2f7;color:#647188;font-size:8px;font-weight:900;letter-spacing:.045em;text-transform:uppercase}
@@ -7210,7 +7210,7 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 .p2-student-lesson-status.is-final{background:#fff0f0!important;color:#9a5454!important}
 @media(max-width:1200px){.p2-schedule-form-row.three{grid-template-columns:1fr}.p2-schedule-week-toolbar{align-items:flex-start}.p2-schedule-week-nav{justify-content:flex-start}}
 
-/* P2-SPLIT-P2.5-P4-P1.7.7.1 · pamokos laikas ir mokinio priskyrimai atskirti */
+/* P2-SPLIT-P2.5-P4-P1.7.7.2 · pamokos laikas ir mokinio priskyrimai atskirti */
 .p2-schedule-assignment-hint{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:11px 13px;border:1px solid #d8e1f0;border-radius:12px;background:#f7faff;color:#53637a;font-size:10px}
 .p2-schedule-assignment-hint strong{color:#34465f}.p2-schedule-assignment-hint span{color:#7d8999}
 .p2-schedule-card-students span small{margin-left:4px;color:#7a87a0;font-size:8px;font-weight:800}
@@ -7228,10 +7228,19 @@ body[data-online-role="student"] #scheduleButton { display:none !important; }
 @media(max-width:650px){.p2-schedule-assignment-hint,.p2-schedule-current-time,.p2-schedule-time-version,.p2-schedule-assignment-row{align-items:flex-start;flex-direction:column}.p2-schedule-current-time strong,.p2-schedule-time-version span{text-align:left}}
 
 
-/* P2-SPLIT-P2.5-P4-P1.7.7.1 · pamokos laiko laikinas / galutinis pašalinimas */
+/* P2-SPLIT-P2.5-P4-P1.7.7.2 · pamokos laiko laikinas / galutinis pašalinimas */
 .p2-schedule-delete-section{background:#fffafb;border-color:#eadfe2}
 .p2-schedule-delete-options{display:grid;gap:10px}
 .p2-schedule-time-version.is-closed{align-items:flex-start;background:#fffafa;border-color:#ecdfe2}
 .p2-schedule-time-version.is-closed>span{flex:1;text-align:left;line-height:1.35}
 .p2-schedule-time-version.is-closed>button{padding:5px 7px;border:1px solid #e4d9dc;border-radius:8px;background:#fff;color:#8d6570;font-size:8px;cursor:pointer;white-space:nowrap}
 @media(max-width:650px){.p2-schedule-time-version.is-closed>button{align-self:flex-start}}
+
+/* P2-SPLIT-P2.5-P4-P1.7.7.2 · vieningas pamokos laiko tvarkymas */
+.p2-schedule-time-manager{border-top:1px solid #e6ebf2;padding-top:8px}
+.p2-schedule-time-manager>summary{cursor:pointer;color:#5068bd;font-size:10px;font-weight:800}
+.p2-schedule-time-manager[open]>summary{margin-bottom:10px}
+.p2-schedule-time-manager>label{display:grid;gap:5px;margin-bottom:10px}
+.p2-schedule-time-manage-pane{display:grid;gap:10px;padding:11px;border:1px dashed #d6deea;border-radius:11px;background:#fff}
+.p2-schedule-time-manage-pane>small{color:#8b96a5;font-size:9px;line-height:1.45}
+.p2-schedule-time-manage-pane[hidden]{display:none!important}
