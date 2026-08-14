@@ -7304,7 +7304,7 @@ body.p2-shell .p2-task-diagram .guide { stroke:#8793a8; stroke-width:1.5; }
 body.p2-shell .p2-task-diagram text { fill:#37445a; font:600 12px/1 Inter,ui-sans-serif,system-ui,sans-serif; }
 
 /* =========================================================
-   P2-SPLIT-P2.5-P4-P1.7.9.22 — responsive lentos panelė
+   P2-SPLIT-P2.5-P4-P1.7.9.23 — responsive lentos panelė
    =========================================================
    Sprendimai remiasi ne įrenginio pavadinimu, o realiu panelės pločiu.
    Taip tas pats Padalintas režimas gali tvarkingai veikti ir dideliame
@@ -7393,3 +7393,45 @@ body.p2-shell .p2-board-tools {
   html, body { height: 100dvh; }
   body.p2-shell .app { height: 100dvh; }
 }
+
+/* P2-SPLIT-P2.5-P4-P1.7.9.23 · saugus atsarginės kopijos atkūrimas */
+.p2-students-overview-actions{flex-wrap:wrap;justify-content:flex-end}
+.p2-student-restore-inline{min-height:38px;padding:0 12px;white-space:nowrap}
+.p2-backup-restore-modal[hidden]{display:none!important}
+.p2-backup-restore-modal{position:fixed;inset:0;z-index:2600;display:grid;place-items:center;padding:20px}
+.p2-backup-restore-backdrop{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(3px)}
+.p2-backup-restore-panel{position:relative;width:min(760px,calc(100vw - 32px));max-height:min(760px,calc(100dvh - 32px));display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border:1px solid #dce3ed;border-radius:18px;background:#fff;box-shadow:0 28px 80px rgba(15,23,42,.24)}
+.p2-backup-restore-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:20px 22px 17px;border-bottom:1px solid #e7ebf1;background:#fbfcfe}
+.p2-backup-restore-head h2{margin:3px 0 4px;color:#1f2b40;font-size:21px}
+.p2-backup-restore-head p{margin:0;max-width:600px;color:#748196;font-size:11px;line-height:1.5}
+.p2-backup-restore-head>button{flex:0 0 auto;width:34px;height:34px;border:1px solid #dfe5ed;border-radius:10px;background:#fff;color:#667388;font:inherit;font-size:20px;cursor:pointer}
+.p2-backup-restore-body{min-height:0;overflow:auto;padding:20px 22px 22px;display:grid;gap:15px}
+.p2-backup-restore-file{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 14px;border:1px solid #dce5f0;border-radius:13px;background:#f8fbff}
+.p2-backup-restore-file>div{min-width:0;display:grid;gap:3px}
+.p2-backup-restore-file span,.p2-backup-restore-file small{color:#748196;font-size:10px}
+.p2-backup-restore-file strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#28364b;font-size:13px}
+.p2-backup-restore-ok{flex:0 0 auto;padding:6px 9px;border-radius:999px;background:#eaf8ef!important;color:#257348!important;font-weight:800}
+.p2-backup-restore-compare{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;gap:10px}
+.p2-backup-restore-compare section{display:grid;gap:4px;padding:14px;border:1px solid #e1e6ee;border-radius:13px;background:#fff}
+.p2-backup-restore-compare section>span{color:#7b8798;font-size:10px;font-weight:700}
+.p2-backup-restore-compare section>strong{color:#253247;font-size:18px}
+.p2-backup-restore-compare section>small{color:#7b8798;font-size:10px;line-height:1.4}
+.p2-backup-restore-arrow{display:grid;place-items:center;color:#8d99aa;font-size:20px}
+.p2-backup-restore-warnings,.p2-backup-restore-error{padding:13px 14px;border:1px solid #efd9a6;border-radius:13px;background:#fff9e9;color:#765c20}
+.p2-backup-restore-warnings strong,.p2-backup-restore-error strong{display:block;margin-bottom:5px;font-size:12px}
+.p2-backup-restore-warnings p,.p2-backup-restore-error p{margin:3px 0;font-size:10px;line-height:1.5}
+.p2-backup-restore-error{border-color:#efc9c9;background:#fff4f4;color:#963d3d}
+.p2-backup-restore-policy{padding:14px;border:1px solid #e1e6ee;border-radius:13px;background:#fafbfc;color:#657286}
+.p2-backup-restore-policy strong{display:block;margin-bottom:5px;color:#2c394d;font-size:12px}
+.p2-backup-restore-policy p{margin:5px 0;font-size:10px;line-height:1.55}
+.p2-backup-restore-confirm{display:flex;align-items:flex-start;gap:9px;padding:12px 13px;border:1px solid #dce3ed;border-radius:12px;background:#fff;color:#536176;font-size:10px;line-height:1.5;cursor:pointer}
+.p2-backup-restore-confirm input{margin:2px 0 0;flex:0 0 auto}
+.p2-backup-restore-actions{display:flex;justify-content:flex-end;gap:9px;padding-top:2px}
+.p2-backup-restore-actions button{min-height:39px}
+.p2-backup-restore-success{display:flex;align-items:flex-start;gap:13px;padding:17px;border:1px solid #cfe8d8;border-radius:14px;background:#f3fbf6}
+.p2-backup-restore-success>span{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#dff4e7;color:#25824d;font-size:18px;font-weight:900}
+.p2-backup-restore-success>div{display:grid;gap:5px}
+.p2-backup-restore-success strong{color:#245f3d;font-size:14px}
+.p2-backup-restore-success p{margin:0;color:#567064;font-size:10px;line-height:1.5}
+@media(max-width:850px){.p2-student-restore-inline{min-height:36px}.p2-students-overview-actions{justify-content:flex-start}.p2-backup-restore-panel{width:min(720px,calc(100vw - 20px));max-height:calc(100dvh - 20px)}}
+@media(max-width:560px){.p2-student-restore-inline{width:100%}.p2-backup-restore-modal{padding:8px}.p2-backup-restore-panel{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:14px}.p2-backup-restore-head{padding:16px}.p2-backup-restore-body{padding:16px}.p2-backup-restore-file{align-items:flex-start;flex-direction:column}.p2-backup-restore-compare{grid-template-columns:1fr}.p2-backup-restore-arrow{transform:rotate(90deg)}.p2-backup-restore-actions{flex-direction:column-reverse}.p2-backup-restore-actions button{width:100%}}

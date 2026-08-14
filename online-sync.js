@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.22';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.23';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1455,47 +1455,215 @@ function triggerJsonDownload(filename, value) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-window.addEventListener('p2:backup-request', async () => {
-  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
-  try {
-    bridge.showToast?.('Ruošiama duomenų atsarginė kopija…');
-    const profileSnapshot = await get(teacherProfileRef);
-    const profile = profileSnapshot.val() || {};
-    const roomIds = backupRoomIdsFromProfile(profile);
-    const rooms = {};
-    const batchSize = 6;
-    for (let i = 0; i < roomIds.length; i += batchSize) {
-      const batch = roomIds.slice(i, i + batchSize);
-      const results = await Promise.all(batch.map(async targetRoom => {
-        const snapshot = await get(ref(db, `p772Rooms/${targetRoom}`));
-        const raw = snapshot.val() || {};
-        return [targetRoom, {
-          workspace: raw.workspace || null,
-          p2: raw.p2 || null,
-          control: raw.control || null
-        }];
-      }));
-      for (const [targetRoom, data] of results) rooms[targetRoom] = data;
-    }
-    const now = new Date();
-    const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
-    const backup = {
+async function buildTeacherBackupSnapshot() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) throw new Error('Mokytojo profilis nepasiekiamas.');
+  const profileSnapshot = await get(teacherProfileRef);
+  const profile = profileSnapshot.val() || {};
+  const roomIds = backupRoomIdsFromProfile(profile);
+  const rooms = {};
+  const batchSize = 6;
+  for (let i = 0; i < roomIds.length; i += batchSize) {
+    const batch = roomIds.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(async targetRoom => {
+      const snapshot = await get(ref(db, `p772Rooms/${targetRoom}`));
+      const raw = snapshot.val() || {};
+      return [targetRoom, {
+        workspace: raw.workspace || null,
+        p2: raw.p2 || null,
+        control: raw.control || null
+      }];
+    }));
+    for (const [targetRoom, data] of results) rooms[targetRoom] = data;
+  }
+  const now = new Date();
+  return {
+    roomIds,
+    now,
+    backup: {
       backupFormatVersion: BACKUP_FORMAT_VERSION,
       schemaVersion: P2_DATA_SCHEMA_VERSION,
       appBuild: BUILD,
-      exportedAt: Date.now(),
+      exportedAt: now.getTime(),
       exportedAtIso: now.toISOString(),
       teacherProfileId,
       profile,
       rooms
-    };
-    triggerJsonDownload(`virtuali-lenta-atsargine-kopija-${stamp}.json`, backup);
+    }
+  };
+}
+
+function backupStamp(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}`;
+}
+
+window.addEventListener('p2:backup-request', async () => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
+  try {
+    bridge.showToast?.('Ruošiama duomenų atsarginė kopija…');
+    const { backup, roomIds, now } = await buildTeacherBackupSnapshot();
+    triggerJsonDownload(`virtuali-lenta-atsargine-kopija-${backupStamp(now)}.json`, backup);
     bridge.showToast?.(`Atsarginė kopija paruošta · ${roomIds.length} Room`);
     window.dispatchEvent(new CustomEvent('p2:backup-complete', { detail: { roomCount: roomIds.length } }));
   } catch (error) {
     console.error('P2 duomenų atsarginės kopijos klaida', error);
     bridge.showToast?.('Nepavyko paruošti atsarginės kopijos');
     window.dispatchEvent(new CustomEvent('p2:backup-error'));
+  }
+});
+
+let pendingRestoreBackup = null;
+let pendingRestoreFileName = '';
+
+function objectCount(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).length : 0;
+}
+
+function restoreBackupCounts(profile, rooms) {
+  return {
+    students: objectCount(profile?.students),
+    scheduleEntries: objectCount(profile?.scheduleEntries),
+    classSessions: objectCount(profile?.classSessions),
+    scheduleRuns: objectCount(profile?.scheduleRuns),
+    roomLinks: objectCount(profile?.roomLinks),
+    rooms: objectCount(rooms)
+  };
+}
+
+function validateRestoreBackup(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('Failas nėra Virtualios lentos atsarginė kopija.');
+  const format = Number(source.backupFormatVersion || 0);
+  if (format !== BACKUP_FORMAT_VERSION) throw new Error(`Nepalaikoma atsarginės kopijos formato versija (${format || 'nenurodyta'}).`);
+  const schema = Number(source.schemaVersion || 0);
+  if (!schema || schema > P2_DATA_SCHEMA_VERSION) throw new Error('Atsarginė kopija sukurta naujesne duomenų schema ir šia versija negali būti saugiai atkurta.');
+  const sourceTeacher = String(source.teacherProfileId || '').trim();
+  if (!sourceTeacher) throw new Error('Atsarginėje kopijoje nėra mokytojo profilio identifikatoriaus.');
+  if (sourceTeacher !== teacherProfileId) throw new Error('Ši atsarginė kopija priklauso kitam mokytojo profiliui. Saugumo sumetimais jos į šį profilį atkurti negalima.');
+  if (!source.profile || typeof source.profile !== 'object' || Array.isArray(source.profile)) throw new Error('Atsarginėje kopijoje nerasta mokinių bazės būsena.');
+  if (!source.rooms || typeof source.rooms !== 'object' || Array.isArray(source.rooms)) throw new Error('Atsarginėje kopijoje nerasta Room duomenų.');
+  const rooms = {};
+  for (const [key, value] of Object.entries(source.rooms)) {
+    const safe = safeRoom(key);
+    if (!safe || safe !== key) throw new Error(`Atsarginėje kopijoje rastas netinkamas Room identifikatorius: ${String(key).slice(0, 40)}.`);
+    const data = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    rooms[safe] = {
+      workspace: data.workspace ?? null,
+      p2: data.p2 ?? null,
+      control: data.control ?? null
+    };
+  }
+  return {
+    backupFormatVersion: format,
+    schemaVersion: schema,
+    appBuild: String(source.appBuild || '').slice(0, 120),
+    exportedAt: Math.max(0, Number(source.exportedAt || 0)),
+    exportedAtIso: String(source.exportedAtIso || '').slice(0, 80),
+    teacherProfileId: sourceTeacher,
+    profile: source.profile,
+    rooms
+  };
+}
+
+async function otherConnectedClientsInRooms(roomIds) {
+  const ids = Array.from(new Set((roomIds || []).map(safeRoom).filter(Boolean)));
+  let count = 0;
+  const batchSize = 8;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    const snapshots = await Promise.all(batch.map(id => get(ref(db, `p772Rooms/${id}/presence`))));
+    snapshots.forEach(snapshot => {
+      const presence = snapshot.val() || {};
+      for (const clientId of Object.keys(presence)) if (clientId !== me) count += 1;
+    });
+  }
+  return count;
+}
+
+window.addEventListener('p2:restore-preview-request', async event => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
+  try {
+    const text = String(event.detail?.text || '');
+    const fileName = String(event.detail?.fileName || 'atsargine-kopija.json').slice(0, 180);
+    if (!text || text.length > 25 * 1024 * 1024) throw new Error('Atsarginės kopijos failas tuščias arba per didelis.');
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (_) { throw new Error('Pasirinktas failas nėra taisyklingas JSON.'); }
+    const backup = validateRestoreBackup(parsed);
+    const currentSnapshot = await get(teacherProfileRef);
+    const currentProfile = currentSnapshot.val() || {};
+    const currentRoomIds = backupRoomIdsFromProfile(currentProfile);
+    const backupRoomIds = Object.keys(backup.rooms);
+    const connectedOthers = await otherConnectedClientsInRooms(backupRoomIds);
+    const warnings = [];
+    if (connectedOthers > 0) warnings.push(`Šiuo metu kopijoje esančiuose Room aptikta ${connectedOthers} kitų prisijungusių įrenginių. Atkūrimas bus blokuojamas, kol jie neatsijungs.`);
+    if (backup.exportedAt && Date.now() - backup.exportedAt > 24 * 60 * 60 * 1000) warnings.push('Pasirinkta kopija yra senesnė nei 24 valandos – po jos sukūrimo atlikti pakeitimai mokinių bazėje bus grąžinti atgal.');
+    const currentExtraRooms = currentRoomIds.filter(id => !backup.rooms[id]).length;
+    if (currentExtraRooms) warnings.push(`${currentExtraRooms} dabartiniai Room nėra šioje kopijoje. Jie fiziškai nebus trinami, tačiau atkūrus senesnį profilį gali nebesimatyti mokinio istorijoje.`);
+    pendingRestoreBackup = backup;
+    pendingRestoreFileName = fileName;
+    window.dispatchEvent(new CustomEvent('p2:restore-preview', { detail: {
+      fileName,
+      appBuild: backup.appBuild,
+      exportedAt: backup.exportedAt,
+      exportedAtIso: backup.exportedAtIso,
+      backupCounts: restoreBackupCounts(backup.profile, backup.rooms),
+      currentCounts: { ...restoreBackupCounts(currentProfile, {}), rooms: currentRoomIds.length },
+      warnings
+    }}));
+  } catch (error) {
+    pendingRestoreBackup = null;
+    pendingRestoreFileName = '';
+    console.error('P2 atsarginės kopijos patikros klaida', error);
+    window.dispatchEvent(new CustomEvent('p2:restore-preview-error', { detail: { message: String(error?.message || error || 'Nepavyko patikrinti atsarginės kopijos.') } }));
+  }
+});
+
+window.addEventListener('p2:restore-apply-request', async () => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId || !pendingRestoreBackup) return;
+  try {
+    const backup = validateRestoreBackup(pendingRestoreBackup);
+    const roomIds = Object.keys(backup.rooms);
+    const connectedOthers = await otherConnectedClientsInRooms(roomIds);
+    if (connectedOthers > 0) throw new Error(`Atkūrimas sustabdytas: ${connectedOthers} kiti įrenginiai vis dar prisijungę prie atkuriamų Room. Paprašyk mokinių atsijungti ir bandyk dar kartą.`);
+
+    bridge.showToast?.('Kuriama saugos kopija prieš atkūrimą…');
+    const safety = await buildTeacherBackupSnapshot();
+    triggerJsonDownload(`virtuali-lenta-pries-atkurima-${backupStamp(safety.now)}.json`, safety.backup);
+
+    bridge.showToast?.('Atkuriami mokinių ir pamokų duomenys…');
+    const restoredAt = Date.now();
+    let restoredProfile;
+    try { restoredProfile = JSON.parse(JSON.stringify(backup.profile)); }
+    catch (_) { throw new Error('Nepavyko paruošti mokinių bazės atkūrimui.'); }
+    restoredProfile.meta = {
+      ...(restoredProfile.meta && typeof restoredProfile.meta === 'object' ? restoredProfile.meta : {}),
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      lastCompatibleBuild: BUILD,
+      restoredAt,
+      restoredFromBackup: {
+        exportedAt: backup.exportedAt || null,
+        exportedAtIso: backup.exportedAtIso || '',
+        appBuild: backup.appBuild || '',
+        fileName: pendingRestoreFileName || ''
+      }
+    };
+
+    const updates = {};
+    updates[`p772TeacherProfiles/${teacherProfileId}`] = restoredProfile;
+    for (const targetRoom of roomIds) {
+      const data = backup.rooms[targetRoom] || {};
+      updates[`p772Rooms/${targetRoom}/workspace`] = data.workspace ?? null;
+      updates[`p772Rooms/${targetRoom}/p2`] = data.p2 ?? null;
+      updates[`p772Rooms/${targetRoom}/control`] = data.control ?? null;
+    }
+    await update(ref(db), updates);
+
+    pendingRestoreBackup = null;
+    pendingRestoreFileName = '';
+    bridge.showToast?.(`Atkūrimas baigtas · ${roomIds.length} Room`);
+    window.dispatchEvent(new CustomEvent('p2:restore-complete', { detail: { roomCount: roomIds.length, message: `Atkurta mokinių bazė ir ${roomIds.length} susietų Room būsena.` } }));
+  } catch (error) {
+    console.error('P2 atsarginės kopijos atkūrimo klaida', error);
+    bridge.showToast?.('Atkūrimas sustabdytas');
+    window.dispatchEvent(new CustomEvent('p2:restore-error', { detail: { message: String(error?.message || error || 'Atkūrimas nepavyko.') } }));
   }
 });
 
@@ -1866,7 +2034,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.22 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.23 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

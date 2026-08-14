@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.22';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.23';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2147,6 +2147,9 @@
   // konkrečios pamokos lenta. Čia laikome tik mokytojo mokinių indekso kopiją;
   // tikrasis įrašymas vyksta online-sync.js, atskirai nuo p772Rooms.
   let studentsModal = null;
+  let backupRestoreModal = null;
+  let backupRestorePreview = null;
+  let backupRestoreFileInput = null;
   let scheduleModal = null;
   let editingScheduleId = '';
   let scheduleCreateMode = false;
@@ -4092,6 +4095,109 @@
     window.dispatchEvent(new CustomEvent('p2:students-request', { detail }));
   }
 
+  function backupRestoreCount(value) {
+    const number = Math.max(0, Number(value) || 0);
+    return new Intl.NumberFormat('lt-LT').format(number);
+  }
+
+  function backupRestoreDate(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return 'Data nenurodyta';
+    try { return new Intl.DateTimeFormat('lt-LT', { dateStyle: 'medium', timeStyle: 'short' }).format(date); }
+    catch (_) { return date.toLocaleString('lt-LT'); }
+  }
+
+  function closeBackupRestoreModal() {
+    if (backupRestoreModal) backupRestoreModal.hidden = true;
+    backupRestorePreview = null;
+  }
+
+  function ensureBackupRestoreModal() {
+    if (backupRestoreModal) return backupRestoreModal;
+    backupRestoreModal = document.createElement('div');
+    backupRestoreModal.className = 'p2-backup-restore-modal';
+    backupRestoreModal.hidden = true;
+    backupRestoreModal.innerHTML = `
+      <div class="p2-backup-restore-backdrop" data-backup-restore-close></div>
+      <section class="p2-backup-restore-panel" role="dialog" aria-modal="true" aria-label="Atkurti atsarginę kopiją">
+        <header class="p2-backup-restore-head">
+          <div><span class="p2-side-kicker">DUOMENŲ SAUGA</span><h2>Atkurti atsarginę kopiją</h2><p>Pirmiausia patikriname failą. Duomenys į Firebase neįrašomi, kol aiškiai nepatvirtinsi atkūrimo.</p></div>
+          <button type="button" data-backup-restore-close aria-label="Uždaryti">×</button>
+        </header>
+        <div class="p2-backup-restore-body" id="p2BackupRestoreBody"></div>
+      </section>`;
+    document.body.appendChild(backupRestoreModal);
+    backupRestoreModal.querySelectorAll('[data-backup-restore-close]').forEach(el => el.addEventListener('click', closeBackupRestoreModal));
+    return backupRestoreModal;
+  }
+
+  function renderBackupRestorePreview(detail = {}) {
+    const modal = ensureBackupRestoreModal();
+    const body = modal.querySelector('#p2BackupRestoreBody');
+    if (!body) return;
+    backupRestorePreview = detail;
+    const backup = detail.backupCounts || {};
+    const current = detail.currentCounts || {};
+    const warnings = Array.isArray(detail.warnings) ? detail.warnings.filter(Boolean) : [];
+    body.innerHTML = `
+      <section class="p2-backup-restore-file">
+        <div><span>Pasirinktas failas</span><strong>${escapeHtml(detail.fileName || 'Atsarginė kopija')}</strong><small>${escapeHtml(backupRestoreDate(detail.exportedAtIso || detail.exportedAt))} · ${escapeHtml(detail.appBuild || 'versija nenurodyta')}</small></div>
+        <span class="p2-backup-restore-ok">✓ Failas patikrintas</span>
+      </section>
+      <div class="p2-backup-restore-compare">
+        <section><span>Atsarginėje kopijoje</span><strong>${backupRestoreCount(backup.students)} mok.</strong><small>${backupRestoreCount(backup.scheduleEntries)} laikai · ${backupRestoreCount(backup.classSessions)} pamokos · ${backupRestoreCount(backup.rooms)} Room</small></section>
+        <span class="p2-backup-restore-arrow" aria-hidden="true">→</span>
+        <section><span>Dabar Firebase</span><strong>${backupRestoreCount(current.students)} mok.</strong><small>${backupRestoreCount(current.scheduleEntries)} laikai · ${backupRestoreCount(current.classSessions)} pamokos · ${backupRestoreCount(current.rooms)} Room</small></section>
+      </div>
+      ${warnings.length ? `<div class="p2-backup-restore-warnings"><strong>Prieš atkuriant</strong>${warnings.map(text => `<p>• ${escapeHtml(text)}</p>`).join('')}</div>` : ''}
+      <div class="p2-backup-restore-policy">
+        <strong>Kas bus daroma?</strong>
+        <p>Mokinių bazė, tvarkaraštis ir pamokų istorija bus grąžinti į pasirinktos kopijos būseną. Kopijoje esantys Room atkurs savo lentą ir pratybų progresą.</p>
+        <p><b>Saugiklis:</b> prieš įrašymą programa automatiškai atsisiųs dar vieną dabartinės būsenos kopiją „prieš atkūrimą“. Room, kurių pasirinktoje kopijoje nėra, fiziškai nebus ištrinami.</p>
+      </div>
+      <label class="p2-backup-restore-confirm"><input type="checkbox" id="p2BackupRestoreConfirm"> <span>Suprantu, kad dabartinė mokinių bazės būsena bus pakeista pasirinktos atsarginės kopijos būsena.</span></label>
+      <div class="p2-backup-restore-actions"><button type="button" class="p2-secondary" data-backup-restore-close-action>Atšaukti</button><button type="button" class="p2-primary p2-backup-restore-apply" data-backup-restore-apply disabled>Atkurti šią kopiją</button></div>`;
+    const checkbox = body.querySelector('#p2BackupRestoreConfirm');
+    const apply = body.querySelector('[data-backup-restore-apply]');
+    checkbox?.addEventListener('change', () => { if (apply) apply.disabled = !checkbox.checked; });
+    body.querySelector('[data-backup-restore-close-action]')?.addEventListener('click', closeBackupRestoreModal);
+    apply?.addEventListener('click', () => {
+      if (!checkbox?.checked || !backupRestorePreview) return;
+      apply.disabled = true;
+      apply.textContent = 'Atkuriama…';
+      body.querySelector('[data-backup-restore-close-action]')?.setAttribute('disabled', '');
+      window.dispatchEvent(new CustomEvent('p2:restore-apply-request'));
+    });
+    modal.hidden = false;
+  }
+
+  function beginBackupRestoreFileSelection() {
+    if (role() !== 'teacher') return;
+    if (!backupRestoreFileInput) {
+      backupRestoreFileInput = document.createElement('input');
+      backupRestoreFileInput.type = 'file';
+      backupRestoreFileInput.accept = '.json,application/json';
+      backupRestoreFileInput.hidden = true;
+      document.body.appendChild(backupRestoreFileInput);
+      backupRestoreFileInput.addEventListener('change', async () => {
+        const file = backupRestoreFileInput.files?.[0] || null;
+        backupRestoreFileInput.value = '';
+        if (!file) return;
+        if (file.size > 25 * 1024 * 1024) {
+          window.alert('Atsarginės kopijos failas per didelis. Didžiausias leidžiamas dydis – 25 MB.');
+          return;
+        }
+        try {
+          const text = await file.text();
+          window.dispatchEvent(new CustomEvent('p2:restore-preview-request', { detail: { fileName: file.name, text } }));
+        } catch (_) {
+          window.alert('Nepavyko perskaityti pasirinkto failo.');
+        }
+      });
+    }
+    backupRestoreFileInput.click();
+  }
+
   function ensureStudentsModal() {
     if (studentsModal) return studentsModal;
     studentsModal = document.createElement('div');
@@ -4592,6 +4698,7 @@
           <div class="p2-students-overview-actions">
             <span class="p2-student-overview-summary">${presentGrades.length ? `${presentGrades.length} ${presentGrades.length === 1 ? 'klasė' : 'klasės'}` : 'Klasės dar nenurodytos'}</span>
             <button type="button" class="p2-secondary p2-student-backup-inline" data-student-backup title="Atsisiųsti mokinių bazės ir susietų pamokų atsarginę kopiją">↓ Atsarginė kopija</button>
+            <button type="button" class="p2-secondary p2-student-restore-inline" data-student-restore title="Patikrinti ir atkurti anksčiau atsisiųstą atsarginę kopiją">↥ Atkurti</button>
           </div>
         </div>
         <div class="p2-students-overview-groups">${overviewMarkup}</div>
@@ -4775,6 +4882,7 @@
       if (button) { button.disabled = true; button.textContent = 'Ruošiama…'; }
       window.dispatchEvent(new CustomEvent('p2:backup-request'));
     });
+    host.querySelector('[data-student-restore]')?.addEventListener('click', () => beginBackupRestoreFileSelection());
 
     host.querySelectorAll('[data-student-create-open]').forEach(button => button.addEventListener('click', () => {
       selectedStudentId = null;
@@ -5856,6 +5964,32 @@
   };
   window.addEventListener('p2:backup-complete', resetBackupButton);
   window.addEventListener('p2:backup-error', resetBackupButton);
+
+  window.addEventListener('p2:restore-preview', event => renderBackupRestorePreview(event.detail || {}));
+  window.addEventListener('p2:restore-preview-error', event => {
+    backupRestorePreview = null;
+    const message = String(event.detail?.message || 'Pasirinkta atsarginė kopija netinkama.');
+    window.alert(message);
+  });
+  window.addEventListener('p2:restore-complete', event => {
+    const body = backupRestoreModal?.querySelector('#p2BackupRestoreBody');
+    if (body) {
+      body.innerHTML = `<section class="p2-backup-restore-success"><span aria-hidden="true">✓</span><div><strong>Atkūrimas baigtas</strong><p>${escapeHtml(String(event.detail?.message || 'Pasirinktos kopijos duomenys atkurti.'))}</p><p>Dabartinės būsenos kopija prieš atkūrimą taip pat buvo automatiškai atsisiųsta.</p></div></section><div class="p2-backup-restore-actions"><button type="button" class="p2-primary" data-backup-restore-finish>Gerai</button></div>`;
+      body.querySelector('[data-backup-restore-finish]')?.addEventListener('click', () => { closeBackupRestoreModal(); renderStudentsModal(); });
+    }
+    backupRestorePreview = null;
+  });
+  window.addEventListener('p2:restore-error', event => {
+    const body = backupRestoreModal?.querySelector('#p2BackupRestoreBody');
+    const message = String(event.detail?.message || 'Atkūrimas nepavyko. Duomenys nebuvo pakeisti.');
+    if (body) {
+      body.insertAdjacentHTML('afterbegin', `<div class="p2-backup-restore-error"><strong>Atkūrimas sustabdytas</strong><p>${escapeHtml(message)}</p></div>`);
+      const apply = body.querySelector('[data-backup-restore-apply]');
+      const cancel = body.querySelector('[data-backup-restore-close-action]');
+      if (apply) { apply.disabled = false; apply.textContent = 'Bandyti dar kartą'; }
+      cancel?.removeAttribute('disabled');
+    } else window.alert(message);
+  });
 
   window.addEventListener('p2:schedule-saved', event => {
     const scheduleId = String(event.detail?.scheduleId || '').trim();
