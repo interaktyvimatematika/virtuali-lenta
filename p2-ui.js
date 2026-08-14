@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.8';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.8.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -2212,12 +2212,22 @@
     const sameName = studentSameNameGroup(student, students);
     const sameNameGrade = studentSameNameGradeGroup(student, students);
     const parts = [];
-    if ((options.alwaysGrade || sameName.length > 1) && grade) parts.push(`${grade} kl.`);
-    if (sameNameGrade.length > 1) {
-      const guardian = studentGuardianLabel(student);
-      if (guardian) parts.push(guardian);
+    if (options.alwaysGrade) parts.push(grade ? `${grade} kl.` : 'klasė nenurodyta');
+    else if (sameName.length > 1 && grade) parts.push(`${grade} kl.`);
+    const guardian = studentGuardianLabel(student);
+    if (options.alwaysGuardian) {
+      parts.push(guardian || 'globėjas nenurodytas');
+    } else if (sameNameGrade.length > 1 && guardian) {
+      parts.push(guardian);
     }
     return parts.length ? `${name} · ${parts.join(' · ')}` : name;
+  }
+
+  // Tvarkaraštis yra mokytojo darbo aplinka, todėl čia sąmoningai rodome
+  // pilną mokinio identifikatorių net ir tada, kai šiuo metu dublikatų nėra.
+  // Globėjo duomenys niekur nekopijuojami į mokinio Room / mokinio sąsają.
+  function scheduleStudentTeacherLabel(student, students = studentList()) {
+    return studentTeacherLabel(student, students, { alwaysGrade: true, alwaysGuardian: true });
   }
 
   function studentMatchesSearch(student, query = studentSearchQuery) {
@@ -2550,7 +2560,7 @@
     return formatStudentDate(lesson?.createdAt || lesson?.linkedAt);
   }
 
-  // P2-SPLIT-P2.5-P4-P1.7.8: būsimos mokinio pamokos skaičiuojamos ne iš
+  // P2-SPLIT-P2.5-P4-P1.7.8.1: būsimos mokinio pamokos skaičiuojamos ne iš
   // paties pamokos laiko, o iš konkrečių mokinio priskyrimų tam laikui.
   function studentScheduleNextOccurrence(entry, studentId, now = new Date()) {
     const id = String(studentId || '').trim();
@@ -3349,7 +3359,7 @@
     renderStudentsModal();
   }
 
-  // P2-SPLIT-P2.5-P4-P1.7.8: tvarkaraštis turi tris atskirus sluoksnius:
+  // P2-SPLIT-P2.5-P4-P1.7.8.1: tvarkaraštis turi tris atskirus sluoksnius:
   // 1) nepriklausomas pamokos laikas, 2) neribotas mokinio priskyrimų rinkinys
   // prie vieno ar kelių laikų, 3) konkrečios datos pamoka / Room. Pamokos laiko
   // laikinas išjungimas ar panaikinimas nekeičia kitų to paties mokinio laikų.
@@ -3606,10 +3616,10 @@
 
   function scheduleStudentNames(entry, dateKey = '') {
     const students = studentList();
-    if (!dateKey) return scheduleStudentIds(entry).map(id => studentTeacherLabel(studentRecord(id), students, { alwaysGrade: true }));
+    if (!dateKey) return scheduleStudentIds(entry).map(id => scheduleStudentTeacherLabel(studentRecord(id), students));
     return scheduleActiveAssignments(entry, dateKey).map(assignment => ({
       id: assignment.studentId,
-      name: studentTeacherLabel(studentRecord(assignment.studentId), students, { alwaysGrade: true }),
+      name: scheduleStudentTeacherLabel(studentRecord(assignment.studentId), students),
       mode: scheduleMode(assignment)
     }));
   }
@@ -3757,7 +3767,7 @@
     } catch (_) {}
     const presetStudent = scheduleCreatePreset?.studentId ? studentRecord(scheduleCreatePreset.studentId) : null;
     const assignHint = presetStudent && !editing
-      ? `<div class="p2-schedule-assignment-hint"><strong>Priskiriamas mokinys: ${escapeHtml(studentTeacherLabel(presetStudent, students, { alwaysGrade: true }))}</strong><span>Pasirink vieną iš sukurtų pamokos laikų.</span></div>`
+      ? `<div class="p2-schedule-assignment-hint"><strong>Priskiriamas mokinys: ${escapeHtml(scheduleStudentTeacherLabel(presetStudent, students))}</strong><span>Pasirink vieną iš sukurtų pamokos laikų.</span></div>`
       : '';
 
     weekHost.innerHTML = `
@@ -3776,7 +3786,7 @@
     const dayOptionsFor = selectedDay => SCHEDULE_DAYS.map(day => `<option value="${day.id}" ${day.id === selectedDay ? 'selected' : ''}>${escapeHtml(day.label)}</option>`).join('');
     const lessonOptionsFor = selectedId => LESSON_CATALOG.map(lesson => `<option value="${escapeHtml(lesson.id)}" ${lesson.id === selectedId ? 'selected' : ''}>${escapeHtml(lesson.shortTitle)} · ${lesson.taskCount} užd.</option>`).join('');
     const studentOptionsFor = selectedId => students.length
-      ? students.map(student => `<option value="${escapeHtml(student.id)}" ${student.id === selectedId ? 'selected' : ''}>${escapeHtml(studentTeacherLabel(student, students, { alwaysGrade: true }))}</option>`).join('')
+      ? students.map(student => `<option value="${escapeHtml(student.id)}" ${student.id === selectedId ? 'selected' : ''}>${escapeHtml(scheduleStudentTeacherLabel(student, students))}</option>`).join('')
       : '<option value="">Mokinių dar nėra</option>';
 
     if (scheduleCreateMode && !editing) {
@@ -3802,7 +3812,7 @@
       const presetId = scheduleCreatePreset?.studentId && teacherStudentDb.students?.[scheduleCreatePreset.studentId] ? scheduleCreatePreset.studentId : '';
       const assignmentRows = assignments.length ? assignments.map(item => {
         const student = studentRecord(item.studentId);
-        return `<div class="p2-schedule-assignment-row"><div><strong>${escapeHtml(studentTeacherLabel(student, students, { alwaysGrade: true }))}</strong><span class="p2-student-lesson-status is-${escapeHtml(scheduleMode(item))}">${escapeHtml(scheduleModeLabel(item, true))}</span><small>${escapeHtml(scheduleAssignmentSummary(item))}</small></div>${item.legacy ? '<em>Senas įrašas</em>' : `<button type="button" class="is-muted" data-schedule-assignment-delete="${escapeHtml(item.id)}">Pašalinti</button>`}</div>`;
+        return `<div class="p2-schedule-assignment-row"><div><strong>${escapeHtml(scheduleStudentTeacherLabel(student, students))}</strong><span class="p2-student-lesson-status is-${escapeHtml(scheduleMode(item))}">${escapeHtml(scheduleModeLabel(item, true))}</span><small>${escapeHtml(scheduleAssignmentSummary(item))}</small></div>${item.legacy ? '<em>Senas įrašas</em>' : `<button type="button" class="is-muted" data-schedule-assignment-delete="${escapeHtml(item.id)}">Pašalinti</button>`}</div>`;
       }).join('') : '<div class="p2-schedule-no-students">Mokiniai dar nepriskirti.</div>';
       const versions = scheduleSlotTimeVersions(editing);
       const versionRows = versions.map((item, index) => {
@@ -3844,7 +3854,7 @@
               <button type="button" class="p2-primary" data-schedule-assignment-add>Priskirti mokinį</button>
             </div>
           </section>
-          <section class="p2-schedule-editor-section"><h4>${escapeHtml(selectedDate)} pamoka</h4><div class="p2-schedule-open-box ${run ? 'is-running' : ''}"><div><strong>${run ? 'Pamoka jau atidaryta' : (activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra')}</strong><span>${activeAssignments.length ? activeAssignments.map(item => `${studentTeacherLabel(studentRecord(item.studentId), students, { alwaysGrade: true })} · ${scheduleModeLabel(item, true)}`).join(' · ') : 'Priskirk mokinius šiai datai.'}</span></div><button type="button" class="p2-primary" data-schedule-open-lesson ${(runRooms.length || activeAssignments.length) ? '' : 'disabled'}>Atidaryti pamoką</button></div></section>
+          <section class="p2-schedule-editor-section"><h4>${escapeHtml(selectedDate)} pamoka</h4><div class="p2-schedule-open-box ${run ? 'is-running' : ''}"><div><strong>${run ? 'Pamoka jau atidaryta' : (activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra')}</strong><span>${activeAssignments.length ? activeAssignments.map(item => `${scheduleStudentTeacherLabel(studentRecord(item.studentId), students)} · ${scheduleModeLabel(item, true)}`).join(' · ') : 'Priskirk mokinius šiai datai.'}</span></div><button type="button" class="p2-primary" data-schedule-open-lesson ${(runRooms.length || activeAssignments.length) ? '' : 'disabled'}>Atidaryti pamoką</button></div></section>
         </div>`;
     }
 
