@@ -524,7 +524,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.18: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.19: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -9251,18 +9251,52 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
+  // P1.7.9.19: pieštuko koordinatės skaičiuojamos iš pačios lentos kameros,
+  // o ne iš slankiojančio viewport canvas stačiakampio. Viewport canvas gali būti
+  // perstatomas po scroll / resize / split pokyčio; jei tuo pat metu tęsiamas
+  // pointer brūkšnys, jo DOM rect ir canvasViewport akimirkai gali nesutapti.
+  // Kamera + board scroller yra vienintelis stabilus koordinačių šaltinis.
   function pointFromEvent(event) {
+    if (!refs.board) return null;
     const world = getBoardWorldRect();
-    const rect = refs.canvas.getBoundingClientRect();
-    const viewport = canvasViewport || { left: 0, top: 0, width: world.width, height: world.height };
-    const localX = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
-    const localY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0;
-    const worldX = viewport.left + localX * viewport.width;
-    const worldY = viewport.top + localY * viewport.height;
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const boardRect = refs.board.getBoundingClientRect();
+    const viewportWidth = Math.max(1, refs.board.clientWidth);
+    const viewportHeight = Math.max(1, refs.board.clientHeight);
+    if (!(boardRect.width > 1 && boardRect.height > 1 && viewportWidth > 1 && viewportHeight > 1)) return null;
+
+    const centerOffsetX = boardHorizontalCenterOffsetScreen(zoom, world);
+    const clientX = Number(event?.clientX);
+    const clientY = Number(event?.clientY);
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+
+    // clientLeft/clientTop pašalina scrollerio rėmelį; scrollLeft/scrollTop
+    // grąžina ekraninę poziciją į mastelio turinio koordinates.
+    const viewportX = clientX - boardRect.left - (refs.board.clientLeft || 0);
+    const viewportY = clientY - boardRect.top - (refs.board.clientTop || 0);
+    const worldX = (refs.board.scrollLeft + viewportX - centerOffsetX) / zoom;
+    const worldY = (refs.board.scrollTop + viewportY) / zoom;
+
     return {
       x: Math.max(0, Math.min(1, worldX / Math.max(1, world.width))),
       y: Math.max(0, Math.min(1, worldY / Math.max(1, world.height)))
     };
+  }
+
+  let boardDrawNotReadyToastAt = 0;
+  function ensureCanvasReadyForDrawing() {
+    if (drawingContext && canvasViewport && refs.canvas?.width > 1 && refs.canvas?.height > 1
+      && refs.board?.clientWidth > 1 && refs.board?.clientHeight > 1) return true;
+    // Pabandome sinchroniškai užbaigti canvas inicializaciją. Jei darbo sritis dar
+    // neturi realaus dydžio, brūkšnio visai nekuriame — ypač ne (0;0) taške.
+    resizeCanvas({ force: true });
+    const ready = Boolean(drawingContext && canvasViewport && refs.canvas?.width > 1 && refs.canvas?.height > 1
+      && refs.board?.clientWidth > 1 && refs.board?.clientHeight > 1);
+    if (!ready && Date.now() - boardDrawNotReadyToastAt > 1600) {
+      boardDrawNotReadyToastAt = Date.now();
+      showToast('Lenta dar kraunama – pabandyk rašyti dar kartą po akimirkos');
+    }
+    return ready;
   }
 
   function createStrokeId() {
@@ -9340,6 +9374,12 @@ KOKYBĖS REIKALAVIMAI:
   function startDrawing(event) {
     if (!['pen', 'eraser'].includes(state.activeTool)) return;
     event.preventDefault();
+    if (!ensureCanvasReadyForDrawing()) return;
+    const startPoint = pointFromEvent(event);
+    if (!startPoint) {
+      scheduleCanvasViewportRefresh({ force: true });
+      return;
+    }
     refs.canvas.setPointerCapture(event.pointerId);
     drawingActive = true;
     activeStroke = {
@@ -9347,7 +9387,7 @@ KOKYBĖS REIKALAVIMAI:
       mode: state.activeTool,
       width: state.activeTool === 'eraser' ? 22 : 2.6,
       color: state.activeTool === 'pen' ? currentPenStrokeColor() : undefined,
-      points: [pointFromEvent(event)]
+      points: [startPoint]
     };
     // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
     drawStrokePoint(drawingContext, activeStroke, activeStroke.points[0]);
@@ -9359,6 +9399,7 @@ KOKYBĖS REIKALAVIMAI:
     event.preventDefault();
     const previousPoint = activeStroke.points[activeStroke.points.length - 1];
     const nextPoint = pointFromEvent(event);
+    if (!nextPoint) return;
     activeStroke.points.push(nextPoint);
     // Ankstesnė versija čia kiekvienam pointermove išvalydavo canvas ir iš naujo
     // perpiešdavo visą state.drawing. Ilgesnėje pamokoje tai tapdavo O(visos lentos)

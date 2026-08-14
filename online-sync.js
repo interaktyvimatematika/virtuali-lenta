@@ -21,9 +21,11 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.18';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.19';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
+const BOARD_STRIP_DEFAULT_WIDTH = 720;
+const BOARD_STRIP_INITIAL_HEIGHT = 10000;
 
 function safeAssignmentKey(value) {
   return String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 96);
@@ -320,6 +322,11 @@ let remoteCache = {
   drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: ''
 };
 let p2AssignmentCache = null;
+let p2ProgressCache = null;
+// P1.7.9.19: mokinio pratybų UI negali pradėti rašyti, kol negauti abu
+// pradiniai Firebase snapshot'ai — assignment IR progress. Taip reload metu
+// tuščia lokali būsena nebegali aplenkti dar neatėjusio seno progreso.
+let p2PracticeSyncReady = false;
 let pendingRemoteNotes = null;
 let localNotesRevision = 0;
 let notesLiveTimer = null;
@@ -370,6 +377,8 @@ function resetRoomRuntimeState() {
   localNotesRevision = 0;
   remoteCache = { drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: '' };
   p2AssignmentCache = null;
+  p2ProgressCache = null;
+  p2PracticeSyncReady = false;
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -677,7 +686,7 @@ function cacheWorkspace(data) {
 function applyInitialWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   cacheWorkspace(workspace);
-  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', workspace.boardGeometry || { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
   bridge.applySharedPart('drawing', mapToArray(workspace.drawing || {}));
   bridge.applySharedPart('notes', mapToArray(workspace.notes || {}));
   bridge.applySharedPart('boardImages', mapToArray(workspace.boardImages || {}));
@@ -722,7 +731,7 @@ function emptyWorkspace() {
     boardTasks: {},
     boardPractices: {},
     window: {},
-    boardGeometry: { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 }
+    boardGeometry: { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 }
   };
 }
 
@@ -733,7 +742,7 @@ function clearLocalSharedWorkspace() {
   bridge.applySharedPart('boardTasks', []);
   bridge.applySharedPart('boardPractices', []);
   bridge.applySharedPart('window', {});
-  bridge.applySharedPart('boardGeometry', { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: 2400, worldHeight: 10000, worldOriginX: 0, worldOriginY: 0 });
+  bridge.applySharedPart('boardGeometry', { schemaVersion: 2, layoutMode: 'vertical-strip', worldWidth: BOARD_STRIP_DEFAULT_WIDTH, worldHeight: BOARD_STRIP_INITIAL_HEIGHT, worldOriginX: 0, worldOriginY: 0 });
   bridge.setRemoteLiveStrokes([]);
 }
 
@@ -778,7 +787,29 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       if (generation !== roomGeneration || targetRoom !== roomId) return;
       applyInitialWorkspace(blank);
     } else {
-      applyInitialWorkspace(snapshot.val());
+      let workspaceValue = snapshot.val() || {};
+      // P1.7.9.19: kai senesnė online-sync versija buvo sukūrusi visiškai tuščią
+      // 2400 px Room, jį saugu pataisyti iki dabartinio 720 px lapo. Room su bent
+      // vienu realiu brūkšniu / objektu neliečiame, kad neišjudintume istorinio darbo.
+      const hasBoardContent = ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices']
+        .some(key => workspaceValue?.[key] && typeof workspaceValue[key] === 'object' && Object.keys(workspaceValue[key]).length > 0);
+      const geometry = workspaceValue.boardGeometry && typeof workspaceValue.boardGeometry === 'object'
+        ? workspaceValue.boardGeometry
+        : null;
+      if (!hasBoardContent && Number(geometry?.worldWidth || 0) > BOARD_STRIP_DEFAULT_WIDTH) {
+        const fixedGeometry = {
+          schemaVersion: 2,
+          layoutMode: 'vertical-strip',
+          worldWidth: BOARD_STRIP_DEFAULT_WIDTH,
+          worldHeight: Math.max(1700, Number(geometry?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT),
+          worldOriginX: 0,
+          worldOriginY: Math.max(0, Number(geometry?.worldOriginY) || 0)
+        };
+        workspaceValue = { ...workspaceValue, boardGeometry: fixedGeometry };
+        await update(localWorkspaceRef, { boardGeometry: fixedGeometry });
+        if (generation !== roomGeneration || targetRoom !== roomId) return;
+      }
+      applyInitialWorkspace(workspaceValue);
     }
 
     bootstrapped = true;
@@ -1835,7 +1866,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.18 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.19 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -2364,12 +2395,51 @@ window.addEventListener('p2:students-request', async event => {
 // P2 priskyrimo / eigos kanalas. UI yra klasikiniame p2-ui.js, todėl
 // Firebase modulis su juo kalbasi per CustomEvent ir neturi valdyti DOM.
 function subscribeP2AssignmentAndProgress() {
+  // P1.7.9.19: pirmojo puslapio užkrovimo metu assignment ir progress Firebase
+  // listeneriai gali atsakyti skirtingu laiku. Iki šiol assignment galėdavo
+  // aktyvuoti užduotis dar prieš ateinant senam progress snapshot'ui. Abu pirmus
+  // atsakymus buferizuojame ir UI atiduodame tik kaip vieną porą.
+  p2PracticeSyncReady = false;
+  p2ProgressCache = null;
+  let initialAssignmentSeen = false;
+  let initialProgressSeen = false;
+  let initialPairDispatched = false;
+  let bufferedAssignment = null;
+  let bufferedProgress = null;
+
+  const flushInitialPair = () => {
+    if (initialPairDispatched || !initialAssignmentSeen || !initialProgressSeen) return;
+    initialPairDispatched = true;
+    p2AssignmentCache = bufferedAssignment;
+    p2ProgressCache = bufferedProgress;
+    window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: p2AssignmentCache }));
+    window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: p2ProgressCache }));
+    p2PracticeSyncReady = true;
+    window.dispatchEvent(new CustomEvent('p2:practice-sync-ready', { detail: { roomId } }));
+  };
+
   roomOnValue(p2AssignmentRef, snapshot => {
-    p2AssignmentCache = snapshot.val() || null;
+    const value = snapshot.val() || null;
+    if (!initialPairDispatched) {
+      bufferedAssignment = value;
+      initialAssignmentSeen = true;
+      flushInitialPair();
+      return;
+    }
+    p2AssignmentCache = value;
     window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: p2AssignmentCache }));
   });
+
   roomOnValue(p2ProgressRef, snapshot => {
     const value = snapshot.val() || null;
+    p2ProgressCache = value;
+
+    if (!initialPairDispatched) {
+      bufferedProgress = value;
+      initialProgressSeen = true;
+      flushInitialPair();
+      return;
+    }
 
     // P2-SPLIT-P2.1.1: mokinio paties Firebase įrašo echo negrąžiname atgal į jo UI.
     // Sprendimo MathLive laukas jau turi naujausią vietinę būseną. Greitai rašant
@@ -2542,22 +2612,95 @@ window.addEventListener('p2:assignment-request', async event => {
   }
 });
 
+function mergeP2TaskStatePreservingProgress(previousValue, nextValue) {
+  const previous = previousValue && typeof previousValue === 'object' ? previousValue : {};
+  const next = nextValue && typeof nextValue === 'object' ? nextValue : {};
+  // Išspręsta užduotis negali tapti neišspręsta dėl pavėlavusio lokalaus snapshot'o.
+  if (previous.solved === true && next.solved !== true) return { ...previous };
+  const merged = { ...previous, ...next };
+  merged.attempts = Math.max(Number(previous.attempts || 0), Number(next.attempts || 0));
+  merged.wrongAttempts = Math.max(Number(previous.wrongAttempts || 0), Number(next.wrongAttempts || 0));
+  merged.hintUsed = Boolean(previous.hintUsed || next.hintUsed);
+  merged.solved = Boolean(previous.solved || next.solved);
+  const opened = [Number(previous.openedAt || 0), Number(next.openedAt || 0)].filter(value => value > 0);
+  if (opened.length) merged.openedAt = Math.min(...opened);
+  if (Number(previous.submittedAt || 0) > Number(next.submittedAt || 0)) merged.submittedAt = previous.submittedAt;
+  if (Number(previous.selectionUpdatedAt || 0) > Number(next.selectionUpdatedAt || 0)) merged.selectionUpdatedAt = previous.selectionUpdatedAt;
+  return merged;
+}
+
+function mergeP2ProgressPreservingExisting(previousValue, nextValue, currentAssignment) {
+  const previous = previousValue && typeof previousValue === 'object' ? previousValue : {};
+  const next = nextValue && typeof nextValue === 'object' ? nextValue : {};
+  const previousStates = previous.taskStates && typeof previous.taskStates === 'object' ? previous.taskStates : {};
+  const nextStates = next.taskStates && typeof next.taskStates === 'object' ? next.taskStates : {};
+  const taskStates = { ...previousStates };
+  for (const [taskId, taskState] of Object.entries(nextStates)) {
+    taskStates[taskId] = mergeP2TaskStatePreservingProgress(previousStates[taskId], taskState);
+  }
+  const assignmentKey = currentAssignment.assignmentKey || assignmentKeyFor(currentAssignment, currentAssignment.lessonId);
+  const status = previous.status === 'completed' ? 'completed' : String(next.status || previous.status || 'not_started');
+  return {
+    ...previous,
+    ...next,
+    schemaVersion: Number(next.schemaVersion || previous.schemaVersion || P2_DATA_SCHEMA_VERSION),
+    assignmentId: String(next.assignmentId || previous.assignmentId || currentAssignment.lessonId || ''),
+    assignmentKey,
+    assignmentContentVersion: Number(next.assignmentContentVersion || previous.assignmentContentVersion || currentAssignment.contentVersion || 1),
+    status,
+    currentTaskId: String(next.currentTaskId || previous.currentTaskId || ''),
+    taskStates,
+    startedAt: Number(previous.startedAt || next.startedAt || 0) || null
+  };
+}
+
 async function persistP2PracticeProgress(event) {
   if (onlineRole !== 'student') return;
   const value = event.detail;
   if (!value || typeof value !== 'object') return;
+
+  if (!p2PracticeSyncReady) {
+    console.warn('P1.7.9.19: progreso įrašymas praleistas, kol kraunamas pradinis Firebase snapshot.');
+    return;
+  }
+
   try {
-    const currentAssignment = p2AssignmentCache || {};
-    await set(p2ProgressRef, {
-      ...value,
-      schemaVersion: Number(value.schemaVersion || P2_DATA_SCHEMA_VERSION),
-      assignmentKey: value.assignmentKey || currentAssignment.assignmentKey || assignmentKeyFor(currentAssignment, currentAssignment.lessonId),
-      assignmentContentVersion: Number(value.assignmentContentVersion || currentAssignment.contentVersion || 1),
-      updatedAt: Date.now(),
+    const currentAssignment = p2AssignmentCache && typeof p2AssignmentCache === 'object' ? p2AssignmentCache : null;
+    if (!currentAssignment?.lessonId) return;
+    const expectedAssignmentKey = currentAssignment.assignmentKey || assignmentKeyFor(currentAssignment, currentAssignment.lessonId);
+    const incomingAssignmentKey = String(value.assignmentKey || '').trim();
+
+    if (incomingAssignmentKey && expectedAssignmentKey && incomingAssignmentKey !== expectedAssignmentKey) {
+      console.warn('P1.7.9.19: atmestas pasenusio assignment progreso įrašymas.', incomingAssignmentKey, expectedAssignmentKey);
+      return;
+    }
+
+    const merged = mergeP2ProgressPreservingExisting(p2ProgressCache, value, currentAssignment);
+    const now = Date.now();
+    const updates = {
+      schemaVersion: merged.schemaVersion,
+      assignmentId: merged.assignmentId,
+      assignmentKey: merged.assignmentKey,
+      assignmentContentVersion: merged.assignmentContentVersion,
+      status: merged.status,
+      currentTaskId: merged.currentTaskId,
+      updatedAt: now,
       updatedBy: me
-    });
+    };
+    if (merged.startedAt) updates.startedAt = merged.startedAt;
+
+    // Nebenaudojame set() visam progress objektui. Kiekvieną taskState įrašome
+    // į jo kelią, todėl net tuščias / dalinis snapshot'as negali ištrinti kitų
+    // jau Firebase esančių mokinio atsakymų.
+    for (const [taskId, taskState] of Object.entries(merged.taskStates || {})) {
+      if (!/^[a-z0-9_-]{1,80}$/i.test(String(taskId))) continue;
+      updates[`taskStates/${taskId}`] = taskState;
+    }
+
+    await update(p2ProgressRef, updates);
+    p2ProgressCache = { ...merged, updatedAt: now, updatedBy: me };
   } catch (error) {
-    console.error('P2-SPLIT-P2.1.1 mokinio eigos klaida', error);
+    console.error('P1.7.9.19 mokinio eigos klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
   }
 }
