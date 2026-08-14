@@ -448,7 +448,7 @@
     boardPractices: [],
     activeBoardPracticeId: null,
     activeBoardObject: null,
-    camera: { zoom: 0.72, scrollLeft: 0, scrollTop: 0, worldWidth: 1000, worldHeight: 10000, layoutMode: 'vertical-strip' },
+    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 1000, worldHeight: 10000, layoutMode: 'vertical-strip' },
     practiceOnly: { active: false, practiceId: null },
     mathToolbarCategory: 'Pagrindiniai',
     library: createInitialLibrary(),
@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 1000;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.6: vertikali juosta susiaurinta iki 1000 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.7: vertikali juosta susiaurinta iki 1000 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -555,7 +555,7 @@
   }
 
   function clampCameraZoom(value) {
-    return Math.max(0.2, Math.min(1.8, Number(value) || 0.72));
+    return Math.max(0.2, Math.min(1.8, Number(value) || 1));
   }
 
   function normalizeCamera(camera) {
@@ -8670,7 +8670,7 @@ KOKYBĖS REIKALAVIMAI:
     if (!id || !refs.board) return;
     const saved = roomBoardViews.get(id) || null;
     if (!saved) {
-      showBoardFromTop({ fitWidth: true, save: false });
+      showBoardAt100FromTop({ save: false });
       return;
     }
     const camera = normalizeCamera(state.camera);
@@ -8700,20 +8700,33 @@ KOKYBĖS REIKALAVIMAI:
     if (event.detail?.switched) return;
     const id = String(event.detail?.roomId || '').trim().toUpperCase();
     if (id && roomBoardViews.has(id)) restoreBoardViewForRoom(id);
-    else showBoardFromTop({ fitWidth: true, save: false });
+    else showBoardAt100FromTop({ save: false });
   });
 
 
-  // P1.7.9.3: tiek Padalintame, tiek pilnos Lentos režime darbinė juosta turi
-  // tą patį vizualų plotį. Po režimo perskaičiavimo pritaikome juostą pagal jos
-  // konteinerio plotį, bet išlaikome tą pačią vertikalią skaitymo vietą.
+  // P1.7.9.7: perjungiant Padalintas ↔ Lenta mastelis nebekeičiamas automatiškai.
+  // Abu režimai turi tą patį lentos konteinerio plotį, todėl pakanka perskaičiuoti
+  // kamerą ir horizontalaus centravimo paraštes, išlaikant tą pačią vertikalią vietą.
   window.addEventListener('p2:view-changed', event => {
     const nextView = String(event.detail?.view || '');
     if (!['board', 'split'].includes(nextView) || state.practiceOnly?.active) return;
+    const zoom = currentBoardZoom();
+    const logicalTop = refs.board.scrollTop / Math.max(0.001, zoom);
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      fitBoardWidth({ top: false, save: false });
+      applyBoardCamera();
+      requestAnimationFrame(() => {
+        refs.board.scrollTop = Math.max(0, logicalTop * currentBoardZoom());
+        state.camera.scrollTop = refs.board.scrollTop;
+      });
     }));
   });
+
+  function boardHorizontalCenterOffsetScreen(zoom = currentBoardZoom(), world = getBoardWorldRect()) {
+    if (!refs.board) return 0;
+    const viewportWidth = Math.max(1, refs.board.clientWidth);
+    const renderedWidth = Math.max(1, world.width * Math.max(0.001, zoom));
+    return Math.max(0, (viewportWidth - renderedWidth) / 2);
+  }
 
   function applyBoardCamera(options = {}) {
     state.camera = normalizeCamera(state.camera);
@@ -8726,19 +8739,20 @@ KOKYBĖS REIKALAVIMAI:
     let anchorViewportX = null;
     let anchorViewportY = null;
 
+    const world = getBoardWorldRect();
+    const oldCenterOffsetX = boardHorizontalCenterOffsetScreen(oldZoom, world);
     if (options.anchorViewportX !== undefined && options.anchorViewportY !== undefined) {
       anchorViewportX = Number(options.anchorViewportX) || 0;
       anchorViewportY = Number(options.anchorViewportY) || 0;
-      anchorWorldX = (refs.board.scrollLeft + anchorViewportX) / Math.max(0.001, oldZoom);
+      anchorWorldX = (refs.board.scrollLeft + anchorViewportX - oldCenterOffsetX) / Math.max(0.001, oldZoom);
       anchorWorldY = (refs.board.scrollTop + anchorViewportY) / Math.max(0.001, oldZoom);
     } else if (options.preserveCenter) {
       anchorViewportX = viewportWidth / 2;
       anchorViewportY = viewportHeight / 2;
-      anchorWorldX = (refs.board.scrollLeft + anchorViewportX) / Math.max(0.001, oldZoom);
+      anchorWorldX = (refs.board.scrollLeft + anchorViewportX - oldCenterOffsetX) / Math.max(0.001, oldZoom);
       anchorWorldY = (refs.board.scrollTop + anchorViewportY) / Math.max(0.001, oldZoom);
     }
 
-    const world = getBoardWorldRect();
     refs.boardWorld.style.width = `${world.width}px`;
     refs.boardWorld.style.height = `${world.height}px`;
     // Chromium CSS zoom perskaičiuoja MathLive geometriją prieš piešimą. Tai nepalieka
@@ -8747,14 +8761,20 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardWorld.dataset.cameraScaleMode = useLayoutZoom ? 'layout-zoom' : 'transform';
     refs.boardWorld.style.zoom = useLayoutZoom ? String(zoom) : '';
     refs.boardWorld.style.transform = useLayoutZoom ? 'none' : `scale(${zoom})`;
-    refs.boardStage.style.width = `${Math.max(viewportWidth, Math.round(world.width * zoom))}px`;
+    const renderedWorldWidth = Math.round(world.width * zoom);
+    const centerOffsetX = boardHorizontalCenterOffsetScreen(zoom, world);
+    // Kai lapas mažesnis už matomą sritį, jis centruojamas pačiame viewport'e.
+    // CSS zoom masteliuoja ir poziciją, todėl Chrome režime offsetą paverčiame
+    // atgal į nemastelio pasaulio vienetus; transform fallback'e paliekame px.
+    refs.boardWorld.style.left = `${useLayoutZoom ? centerOffsetX / Math.max(0.001, zoom) : centerOffsetX}px`;
+    refs.boardStage.style.width = `${Math.max(viewportWidth, renderedWorldWidth)}px`;
     refs.boardStage.style.height = `${Math.max(viewportHeight, Math.round(world.height * zoom))}px`;
     refs.boardZoomLabel.textContent = `${Math.round(zoom * 100)} %`;
 
     cameraApplying = true;
     requestAnimationFrame(() => {
       if (anchorWorldX !== null && anchorWorldY !== null) {
-        refs.board.scrollLeft = Math.max(0, anchorWorldX * zoom - anchorViewportX);
+        refs.board.scrollLeft = Math.max(0, anchorWorldX * zoom + centerOffsetX - anchorViewportX);
         refs.board.scrollTop = Math.max(0, anchorWorldY * zoom - anchorViewportY);
       } else if (options.restoreScroll) {
         refs.board.scrollLeft = Math.max(0, Number(state.camera.scrollLeft) || 0);
@@ -8821,6 +8841,20 @@ KOKYBĖS REIKALAVIMAI:
       refs.board.scrollTop = options.top ? 0 : Math.max(0, logicalTop * targetZoom);
       state.camera.scrollLeft = refs.board.scrollLeft;
       state.camera.scrollTop = refs.board.scrollTop;
+      if (options.save !== false) scheduleSave();
+    });
+  }
+
+  function showBoardAt100FromTop(options = {}) {
+    state.camera.zoom = 1;
+    state.camera.scrollLeft = 0;
+    state.camera.scrollTop = 0;
+    applyBoardCamera();
+    requestAnimationFrame(() => {
+      refs.board.scrollLeft = 0;
+      refs.board.scrollTop = 0;
+      state.camera.scrollLeft = 0;
+      state.camera.scrollTop = 0;
       if (options.save !== false) scheduleSave();
     });
   }
