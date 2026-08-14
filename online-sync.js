@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.11';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.13';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 
@@ -916,6 +916,17 @@ function scheduleSlotTimeForDate(entry, dateKeyRaw) {
   const versions = scheduleTimeVersionsForEntry(entry).filter(item => item.effectiveFrom <= dateKey);
   return versions.length ? versions[versions.length - 1] : null;
 }
+
+function scheduleOccurrenceBounds(entry, dateKeyRaw) {
+  const dateKey = validScheduleDateKey(dateKeyRaw);
+  const date = scheduleDateFromKey(dateKey);
+  const time = scheduleSlotTimeForDate(entry, dateKey);
+  if (!date || !time) return null;
+  const startMinutes = scheduleTimeMinutes(time.start);
+  const startAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+  const durationMinutes = safeScheduleDuration(time.durationMinutes);
+  return { startAt, endAt: new Date(startAt.getTime() + durationMinutes * 60000), time, durationMinutes };
+}
 function scheduleClosureRangesForEntry(entry) {
   const raw = entry?.closedRanges && typeof entry.closedRanges === 'object' ? entry.closedRanges : {};
   return Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
@@ -1223,6 +1234,130 @@ async function applyP1756RequestedScheduleOnce() {
     p1756ScheduleMigrationRunning = false;
   }
 }
+
+// P1.7.9.13 vienkartinė saugi korekcija po P1.7.5.6 migracijos.
+// 2026-08-13 Adomo pamoka realiai vyko jau egzistavusiame Room, tačiau
+// tvarkaraščio modelis buvo sukurtas tik po pamokos. Vėliau pasirinkus tą
+// praeities datą senesnis kodas sukūrė naują tuščią Room. Ši migracija
+// perriša tik tvarkaraščio nuorodas į vienintelį tikrą Room, kuris buvo
+// sukurtas arti suplanuoto pradžios laiko ir turi realų pratybų progresą.
+// Klaidingo Room duomenų fiziškai netriname: jo istorijos įrašas tik
+// pažymimas kaip paslėptas dublikatas, todėl backup'e lieka audito pėdsakas.
+const P17913_HISTORY_REPAIR_KEY = 'p17913_repair_legacy_schedule_room';
+let p17913HistoryRepairRunning = false;
+
+async function applyP17913LegacyScheduleRoomRepairOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== P1756_TARGET_PROFILE_ID) return;
+  if (p17913HistoryRepairRunning) return;
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[P17913_HISTORY_REPAIR_KEY]?.status === 'done') return;
+  const base = migrations[P1756_SCHEDULE_MIGRATION_KEY];
+  if (!base || base.status !== 'done') return;
+
+  const studentId = safeStudentId(base.studentId || P1756_TARGET_STUDENT_ID);
+  const scheduleId = safeScheduleId(base.scheduleId);
+  const student = teacherProfileCache.students?.[studentId];
+  const entry = teacherProfileCache.scheduleEntries?.[scheduleId];
+  if (!studentId || !scheduleId || !student || !entry) return;
+
+  const runs = teacherProfileCache.scheduleRuns?.[scheduleId] || {};
+  const now = Date.now();
+  for (const [dateKeyRaw, run] of Object.entries(runs)) {
+    const dateKey = validScheduleDateKey(dateKeyRaw);
+    const bounds = scheduleOccurrenceBounds(entry, dateKey);
+    if (!dateKey || !bounds || bounds.endAt.getTime() >= now) continue;
+
+    const currentRoom = safeRoom(run?.rooms?.[studentId]?.roomId || run?.rooms?.[studentId]);
+    if (!currentRoom) continue;
+    const currentLesson = student.lessons?.[currentRoom] || null;
+    const summary = currentLesson?.summary && typeof currentLesson.summary === 'object' ? currentLesson.summary : {};
+    const currentLooksEmpty = Boolean(currentLesson)
+      && !String(currentLesson.lessonId || '').trim()
+      && !String(currentLesson.assignmentKey || currentLesson.currentAssignmentKey || '').trim()
+      && Math.max(0, Number(currentLesson.taskCount || summary.taskCount || 0)) === 0
+      && Math.max(0, Number(summary.finished || summary.solved || 0)) === 0;
+    // Taisome tik Room, kuris pats buvo sukurtas jau PASIBAIGUS istorinei pamokai.
+    if (!currentLooksEmpty || Number(run?.startedAt || currentLesson?.createdAt || 0) <= bounds.endAt.getTime()) continue;
+
+    const candidates = Object.entries(student.lessons && typeof student.lessons === 'object' ? student.lessons : {})
+      .filter(([roomId, lesson]) => {
+        if (safeRoom(roomId) === currentRoom || !lesson || lesson.historyHidden === true) return false;
+        const createdAt = Number(lesson.createdAt || lesson.linkedAt || 0);
+        if (!createdAt || Math.abs(createdAt - bounds.startAt.getTime()) > 60 * 60 * 1000) return false;
+        const lessonSummary = lesson.summary && typeof lesson.summary === 'object' ? lesson.summary : {};
+        return Boolean(String(lesson.lessonId || lesson.assignmentKey || lesson.currentAssignmentKey || '').trim())
+          || Math.max(0, Number(lesson.taskCount || lessonSummary.taskCount || 0)) > 0
+          || Math.max(0, Number(lessonSummary.finished || lessonSummary.solved || 0)) > 0;
+      })
+      .map(([roomId, lesson]) => ({ roomId: safeRoom(roomId), lesson, distance: Math.abs(Number(lesson.createdAt || lesson.linkedAt || 0) - bounds.startAt.getTime()) }))
+      .filter(item => item.roomId)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (candidates.length !== 1) continue;
+    const target = candidates[0];
+    const targetRoom = target.roomId;
+    const targetLesson = target.lesson;
+    const targetRoomLink = teacherProfileCache.roomLinks?.[targetRoom] || {};
+    const classSessionId = safeClassSessionId(targetLesson.classSessionId || targetRoomLink.classSessionId) || newClassSessionId();
+    const oldSession = teacherProfileCache.classSessions?.[classSessionId] || {};
+    const attendanceMode = safeAttendanceMode(run?.attendanceModes?.[studentId] || currentLesson?.attendanceMode || 'recurring');
+    const originalStartedAt = Number(targetLesson.createdAt || targetLesson.linkedAt || run.startedAt || now) || now;
+    const currentRoomLink = teacherProfileCache.roomLinks?.[currentRoom] || {};
+    const updates = {
+      [`scheduleRuns/${scheduleId}/${dateKey}/classSessionId`]: classSessionId,
+      [`scheduleRuns/${scheduleId}/${dateKey}/rooms/${studentId}`]: targetRoom,
+      [`scheduleRuns/${scheduleId}/${dateKey}/attendanceModes/${studentId}`]: attendanceMode,
+      [`scheduleRuns/${scheduleId}/${dateKey}/startedAt`]: originalStartedAt,
+      [`scheduleRuns/${scheduleId}/${dateKey}/scheduledDay`]: safeScheduleDay(bounds.time.day),
+      [`scheduleRuns/${scheduleId}/${dateKey}/scheduledStart`]: safeScheduleTime(bounds.time.start),
+      [`scheduleRuns/${scheduleId}/${dateKey}/durationMinutes`]: bounds.durationMinutes,
+      [`classSessions/${classSessionId}/schemaVersion`]: P2_DATA_SCHEMA_VERSION,
+      [`classSessions/${classSessionId}/scheduleModelVersion`]: 2,
+      [`classSessions/${classSessionId}/createdAt`]: Number(oldSession.createdAt || originalStartedAt) || originalStartedAt,
+      [`classSessions/${classSessionId}/updatedAt`]: now,
+      [`classSessions/${classSessionId}/scheduleId`]: scheduleId,
+      [`classSessions/${classSessionId}/scheduleDate`]: dateKey,
+      [`classSessions/${classSessionId}/scheduledDay`]: safeScheduleDay(bounds.time.day),
+      [`classSessions/${classSessionId}/scheduledStart`]: safeScheduleTime(bounds.time.start),
+      [`classSessions/${classSessionId}/durationMinutes`]: bounds.durationMinutes,
+      [`classSessions/${classSessionId}/label`]: cleanScheduleLabel(oldSession.label || entry.label),
+      [`classSessions/${classSessionId}/students/${studentId}`]: { roomId: targetRoom, addedAt: Number(oldSession.students?.[studentId]?.addedAt || originalStartedAt) || originalStartedAt, attendanceMode },
+      [`roomLinks/${targetRoom}`]: { studentId, classSessionId, scheduleId, linkedAt: Number(targetRoomLink.linkedAt || targetLesson.linkedAt || originalStartedAt) || originalStartedAt },
+      [`students/${studentId}/lessons/${targetRoom}/classSessionId`]: classSessionId,
+      [`students/${studentId}/lessons/${targetRoom}/scheduleId`]: scheduleId,
+      [`students/${studentId}/lessons/${targetRoom}/scheduleDate`]: dateKey,
+      [`students/${studentId}/lessons/${targetRoom}/scheduledDay`]: safeScheduleDay(bounds.time.day),
+      [`students/${studentId}/lessons/${targetRoom}/scheduledStart`]: safeScheduleTime(bounds.time.start),
+      [`students/${studentId}/lessons/${targetRoom}/durationMinutes`]: bounds.durationMinutes,
+      [`students/${studentId}/lessons/${targetRoom}/scheduleMode`]: attendanceMode,
+      [`students/${studentId}/lessons/${targetRoom}/attendanceMode`]: attendanceMode,
+      [`students/${studentId}/lessons/${targetRoom}/updatedAt`]: now,
+      [`students/${studentId}/lessons/${currentRoom}/historyHidden`]: true,
+      [`students/${studentId}/lessons/${currentRoom}/supersededByRoomId`]: targetRoom,
+      [`students/${studentId}/lessons/${currentRoom}/supersededReason`]: 'late-empty-room-for-past-occurrence',
+      [`students/${studentId}/lessons/${currentRoom}/updatedAt`]: now,
+      [`roomLinks/${currentRoom}/supersededByRoomId`]: targetRoom,
+      [`roomLinks/${currentRoom}/supersededAt`]: now,
+      [`meta/migrations/${P17913_HISTORY_REPAIR_KEY}`]: { status: 'done', appliedAt: now, studentId, scheduleId, dateKey, fromRoomId: currentRoom, toRoomId: targetRoom }
+    };
+    if (currentRoomLink.studentId) updates[`roomLinks/${currentRoom}/studentId`] = currentRoomLink.studentId;
+    if (currentRoomLink.classSessionId) updates[`roomLinks/${currentRoom}/classSessionId`] = currentRoomLink.classSessionId;
+    if (currentRoomLink.scheduleId) updates[`roomLinks/${currentRoom}/scheduleId`] = currentRoomLink.scheduleId;
+    if (currentRoomLink.linkedAt) updates[`roomLinks/${currentRoom}/linkedAt`] = currentRoomLink.linkedAt;
+
+    p17913HistoryRepairRunning = true;
+    try {
+      await update(teacherProfileRef, updates);
+      bridge.showToast?.('Vakarykštės Adomo pamokos istorija susieta su tikruoju Room.');
+    } catch (error) {
+      console.error('P1.7.9.13 istorinio Room susiejimo klaida', error);
+    } finally {
+      p17913HistoryRepairRunning = false;
+    }
+    return;
+  }
+}
 if (teacherProfileRef) {
   onValue(teacherProfileRef, snapshot => {
     const value = snapshot.val() || {};
@@ -1247,6 +1382,7 @@ if (teacherProfileRef) {
     }
     emitTeacherProfile();
     applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
+    applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.13 istorinio Room pataisa neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
@@ -1614,9 +1750,13 @@ window.addEventListener('p2:schedule-request', async event => {
         return;
       }
 
+      const bounds = scheduleOccurrenceBounds(existing, dateKey);
+      if (bounds && Date.now() >= bounds.endAt.getTime()) {
+        throw new Error('Ši pamoka jau įvyko. Naujas tuščias Room praeities pamokai nekuriamas.');
+      }
       const activeAssignments = scheduleActiveAssignmentsForDate(existing, dateKey);
       if (!activeAssignments.length) throw new Error('Šiai datai nėra priskirtų mokinių');
-      const time = scheduleSlotTimeForDate(existing, dateKey);
+      const time = bounds?.time || scheduleSlotTimeForDate(existing, dateKey);
       const classSessionId = newClassSessionId();
       const now = Date.now();
       const lessonId = String(existing.lessonId || '').trim().slice(0, 80);
@@ -1695,7 +1835,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.11 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.13 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));

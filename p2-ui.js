@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.11';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.13';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -1114,7 +1114,7 @@
 
   const GRADE10_REVIEW_LESSON = Object.freeze({
     "id": "p2-grade10-review-01",
-    "contentVersion": 1,
+    "contentVersion": 2,
     "title": "10 klasės matematikos pakartojimas",
     "shortTitle": "10 klasės pakartojimas",
     "description": "30 įvairių 10 klasės kurso kartojimo užduočių: proporcingoji dalyba, sudėtiniai procentai ir mišiniai, racionaliosios lygtys, kvadratinės nelygybės, lygčių sistemos, panašumas, trikampių ir apskritimų geometrija, trigonometrija, statistika, kombinatorika ir tikimybės.",
@@ -1224,15 +1224,21 @@
             "section": "class",
             "label": "Kvadratinės nelygybės",
             "title": "Nelygybės sprendiniai",
-            "prompt": "Išspręsk x²−5x+6<0.",
-            "promptDisplay": "Išspręsk \\(x^2-5x+6<0\\).",
+            "prompt": "Išspręsk nelygybę x²−5x+6<0. Pasirink sprendinių intervalą.",
+            "promptDisplay": "Išspręsk nelygybę \\(x^2-5x+6<0\\). Pasirink sprendinių intervalą.",
             "choices": [
-                "x<2",
-                "2<x<3",
-                "x>3",
-                "x<2 arba x>3"
+                "(−∞;2)",
+                "(2;3)",
+                "(3;+∞)",
+                "(−∞;2)∪(3;+∞)"
             ],
-            "answer": "2<x<3",
+            "choicesDisplay": [
+                "\\(({-}\\infty;2)\\)",
+                "\\((2;3)\\)",
+                "\\((3;+\\infty)\\)",
+                "\\(({-}\\infty;2)\\cup(3;+\\infty)\\)"
+            ],
+            "answer": "(2;3)",
             "hint": "Išskaidyk (x−2)(x−3) ir nustatyk, kur sandauga neigiama."
         },
         {
@@ -1241,15 +1247,21 @@
             "section": "class",
             "label": "Kvadratinės nelygybės",
             "title": "Parabolė ir nelygybė",
-            "prompt": "Kuri aibė tenkina x²−4≥0?",
-            "promptDisplay": "Kuri aibė tenkina \\(x^2-4\\ge0\\)?",
+            "prompt": "Išspręsk nelygybę x²−4≥0. Pasirink sprendinių aibę intervalais.",
+            "promptDisplay": "Išspręsk nelygybę \\(x^2-4\\ge0\\). Pasirink sprendinių aibę intervalais.",
             "choices": [
-                "−2≤x≤2",
-                "x≤−2 arba x≥2",
-                "x<−2 arba x>2",
-                "visi realieji skaičiai"
+                "[−2;2]",
+                "(−∞;−2]∪[2;+∞)",
+                "(−∞;−2)∪(2;+∞)",
+                "(−∞;+∞)"
             ],
-            "answer": "x≤−2 arba x≥2",
+            "choicesDisplay": [
+                "\\([{-}2;2]\\)",
+                "\\(({-}\\infty;{-}2]\\cup[2;+\\infty)\\)",
+                "\\(({-}\\infty;{-}2)\\cup(2;+\\infty)\\)",
+                "\\(({-}\\infty;+\\infty)\\)"
+            ],
+            "answer": "(−∞;−2]∪[2;+∞)",
             "hint": "Kvadratų skirtumas (x−2)(x+2) yra neneigiamas už šaknų intervalo."
         },
         {
@@ -1258,8 +1270,8 @@
             "section": "class",
             "label": "Lygčių sistemos",
             "title": "Tiesė ir parabolė",
-            "prompt": "Kuris taškas tenkina sistemą y=x² ir y=2x?",
-            "promptDisplay": "Kuris taškas tenkina sistemą \\(y=x^2\\), \\(y=2x\\)?",
+            "prompt": "Kuris taškas tenkina lygčių sistemą y=x², y=2x?",
+            "promptDisplay": "Kuris taškas tenkina lygčių sistemą \\(\\begin{cases}y=x^2,\\\\y=2x.\\end{cases}\\)?",
             "choices": [
                 "(1;2)",
                 "(2;4)",
@@ -1318,8 +1330,11 @@
             "section": "class",
             "label": "Trikampiai",
             "title": "Pusiaukampinės savybė",
-            "prompt": "Trikampyje kampo pusiaukampinė padalija priešingą kraštinę į 6 ir 9. Gretimų kraštinių santykis yra 2:3. Jei trumpesnė gretima kraštinė 8, kokia ilgesnė?",
-            "promptDisplay": "Pusiaukampinė priešingą kraštinę padalija santykiu \\(6:9=2:3\\). Jei trumpesnė gretima kraštinė \\(8\\), kokia ilgesnė?",
+            "prompt": "Trikampyje ABC kampo A pusiaukampinė AD kerta kraštinę BC taške D. BD=6, DC=9, AB=8. Rask kraštinės AC ilgį.",
+            "promptDisplay": "Trikampyje \\(ABC\\) kampo \\(A\\) pusiaukampinė \\(AD\\) kerta kraštinę \\(BC\\) taške \\(D\\). Duota \\(BD=6\\), \\(DC=9\\), \\(AB=8\\). Rask \\(AC\\).",
+            "diagram": {
+                "type": "angle-bisector"
+            },
             "answer": "12",
             "answerType": "number",
             "inputLabel": "Atsakymas",
@@ -1349,13 +1364,16 @@
             "section": "class",
             "label": "Įbrėžtas apskritimas",
             "title": "Trikampio plotas S=rp",
-            "prompt": "Trikampio pusperimetris p=15 cm, įbrėžto apskritimo spindulys r=4 cm. Rask plotą.",
-            "promptDisplay": "\\(p=15\\text{ cm}\\), \\(r=4\\text{ cm}\\). Naudok \\(S=rp\\).",
+            "prompt": "Trikampio ABC pusperimetris p=15 cm. Į trikampį įbrėžto apskritimo spindulys r=4 cm. Rask trikampio plotą.",
+            "promptDisplay": "Trikampio \\(ABC\\) pusperimetris \\(p=15\\text{ cm}\\). Į trikampį įbrėžto apskritimo spindulys \\(r=4\\text{ cm}\\). Rask trikampio plotą.",
+            "diagram": {
+                "type": "incircle"
+            },
             "answer": "60",
             "answerType": "number",
             "inputLabel": "Plotas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "Tiesiog pritaikyk S=rp.",
+            "hint": "Naudok formulę S=rp.",
             "inputSuffix": "cm²"
         },
         {
@@ -1364,13 +1382,17 @@
             "section": "class",
             "label": "Apibrėžtas apskritimas",
             "title": "Trikampio plotas S=abc/(4R)",
-            "prompt": "Trikampio kraštinės 6, 8 ir 10, o apie jį apibrėžto apskritimo spindulys R=5. Rask plotą pagal S=abc/(4R).",
-            "promptDisplay": "Kraštinės \\(6,8,10\\), \\(R=5\\). Naudok \\(S=\\frac{abc}{4R}\\).",
+            "prompt": "Trikampio ABC kraštinių ilgiai yra 6 cm, 8 cm ir 10 cm. Apie trikampį apibrėžto apskritimo spindulys R=5 cm. Rask trikampio plotą.",
+            "promptDisplay": "Trikampio \\(ABC\\) kraštinės yra \\(6\\text{ cm}\\), \\(8\\text{ cm}\\) ir \\(10\\text{ cm}\\). Apie trikampį apibrėžto apskritimo spindulys \\(R=5\\text{ cm}\\). Rask trikampio plotą.",
+            "diagram": {
+                "type": "circumcircle"
+            },
             "answer": "24",
             "answerType": "number",
             "inputLabel": "Plotas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "Apskaičiuok 6·8·10/(4·5)."
+            "hint": "Naudok S=abc/(4R).",
+            "inputSuffix": "cm²"
         },
         {
             "id": "g10-17",
@@ -1427,8 +1449,11 @@
             "section": "class",
             "label": "Trigonometrija",
             "title": "Trikampio plotas",
-            "prompt": "Dvi trikampio kraštinės yra 8 ir 10, o kampas tarp jų 30°. Rask plotą.",
-            "promptDisplay": "Dvi kraštinės \\(8\\) ir \\(10\\), kampas tarp jų \\(30^\\circ\\). Rask plotą.",
+            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 8 ir 10, o kampas C tarp jų lygus 30°. Rask trikampio plotą.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=8\\), \\(BC=10\\), o kampas tarp jų \\(\\angle C=30^\\circ\\). Rask trikampio plotą.",
+            "diagram": {
+                "type": "included-angle"
+            },
             "answer": "20",
             "answerType": "number",
             "inputLabel": "Plotas",
@@ -1441,13 +1466,16 @@
             "section": "self",
             "label": "Trigonometrija",
             "title": "Kosinusų teorema",
-            "prompt": "Trikampio kraštinės 5 ir 7 sudaro 60° kampą. Rask trečiosios kraštinės kvadratą c².",
-            "promptDisplay": "Kraštinės \\(5\\) ir \\(7\\), kampas \\(60^\\circ\\). Rask \\(c^2\\).",
+            "prompt": "Trikampyje ABC kraštinių AC ir BC ilgiai yra 5 ir 7, o kampas C tarp jų lygus 60°. Rask trečiosios kraštinės AB ilgio kvadratą.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(AC=5\\), \\(BC=7\\), \\(\\angle C=60^\\circ\\). Rask \\(AB^2\\).",
+            "diagram": {
+                "type": "cosine-law"
+            },
             "answer": "39",
             "answerType": "number",
             "inputLabel": "Atsakymas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "c²=a²+b²−2ab cos C."
+            "hint": "Naudok kosinusų teoremą."
         },
         {
             "id": "g10-22",
@@ -1455,13 +1483,16 @@
             "section": "self",
             "label": "Trigonometrija",
             "title": "Sinusų teorema",
-            "prompt": "Trikampyje a=10, A=30°, B=90°. Rask b.",
-            "promptDisplay": "Trikampyje \\(a=10\\), \\(A=30^\\circ\\), \\(B=90^\\circ\\). Rask \\(b\\).",
+            "prompt": "Trikampyje ABC kraštinė a=BC=10, kampas A=30°, o kampas B=90°. Rask kraštinės b=AC ilgį.",
+            "promptDisplay": "Trikampyje \\(ABC\\) duota \\(a=BC=10\\), \\(\\angle A=30^\\circ\\), \\(\\angle B=90^\\circ\\). Rask \\(b=AC\\).",
+            "diagram": {
+                "type": "sine-law"
+            },
             "answer": "20",
             "answerType": "number",
             "inputLabel": "Atsakymas",
             "placeholder": "Įrašyk skaičių",
-            "hint": "a/sin A = b/sin B."
+            "hint": "Naudok sinusų teoremą: a/sin A = b/sin B."
         },
         {
             "id": "g10-23",
@@ -1531,35 +1562,27 @@
             "section": "self",
             "label": "Tikimybės",
             "title": "Klasikinė tikimybė",
-            "prompt": "Metamas taisyklingas šešiasienis kauliukas. Kokia tikimybė išmesti lyginį skaičių? Įrašyk dešimtainiu skaičiumi.",
-            "promptDisplay": "Metamas taisyklingas šešiasienis kauliukas. Kokia tikimybė išmesti lyginį skaičių?",
+            "prompt": "Metamas taisyklingas šešiasienis kauliukas. Kokia tikimybė išmesti lyginį skaičių? Atsakymą gali pateikti paprastąja trupmena, dešimtainiu skaičiumi arba procentais.",
+            "promptDisplay": "Metamas taisyklingas šešiasienis kauliukas. Kokia tikimybė išmesti lyginį skaičių? Atsakymą gali pateikti paprastąja trupmena, dešimtainiu skaičiumi arba procentais.",
             "answer": "0,5",
-            "answerType": "number",
-            "inputLabel": "Atsakymas",
-            "placeholder": "Įrašyk skaičių",
-            "hint": "Palankūs 2, 4, 6 – trys iš šešių.",
-            "acceptedAnswers": [
-                "0,5",
-                "0.5"
-            ]
+            "answerType": "probability",
+            "inputLabel": "Tikimybė",
+            "placeholder": "Pvz., 1/2, 0,5 arba 50 %",
+            "hint": "Palankūs 2, 4, 6 – trys iš šešių."
         },
         {
             "id": "g10-28",
             "type": "input",
             "section": "self",
             "label": "Tikimybės",
-            "title": "Kelių pasirinkimų tikimybė",
-            "prompt": "Dėžėje 3 raudoni ir 2 mėlyni rutuliukai. Atsitiktinai traukiamas vienas. Kokia tikimybė ištraukti mėlyną?",
-            "promptDisplay": "Dėžėje \\(3\\) raudoni ir \\(2\\) mėlyni rutuliukai. Kokia tikimybė ištraukti mėlyną?",
+            "title": "Klasikinė tikimybė",
+            "prompt": "Dėžėje yra 3 raudoni ir 2 mėlyni vienodi rutuliukai. Atsitiktinai ištraukiamas vienas rutuliukas. Kokia tikimybė, kad jis bus mėlynas? Atsakymą gali pateikti paprastąja trupmena, dešimtainiu skaičiumi arba procentais.",
+            "promptDisplay": "Dėžėje yra \\(3\\) raudoni ir \\(2\\) mėlyni vienodi rutuliukai. Atsitiktinai ištraukiamas vienas. Kokia tikimybė, kad jis bus mėlynas? Atsakymą gali pateikti trupmena, dešimtainiu skaičiumi arba procentais.",
             "answer": "0,4",
-            "answerType": "number",
-            "inputLabel": "Atsakymas",
-            "placeholder": "Įrašyk skaičių",
-            "hint": "2 palankūs iš 5 visų.",
-            "acceptedAnswers": [
-                "0,4",
-                "0.4"
-            ]
+            "answerType": "probability",
+            "inputLabel": "Tikimybė",
+            "placeholder": "Pvz., 2/5, 0,4 arba 40 %",
+            "hint": "2 palankūs rezultatai iš 5 vienodai galimų."
         },
         {
             "id": "g10-29",
@@ -1567,16 +1590,22 @@
             "section": "self",
             "label": "Kvadratinės nelygybės",
             "title": "Grafinė interpretacija",
-            "prompt": "Parabolė y=x²−9 kerta x ašį ties −3 ir 3. Kur y<0?",
-            "promptDisplay": "Parabolė \\(y=x^2-9\\) kerta \\(x\\) ašį ties \\(-3\\) ir \\(3\\). Kur \\(y<0\\)?",
+            "prompt": "Parabolė y=x²−9 kerta x ašį taškuose, kurių x koordinatės −3 ir 3. Kuriame intervale y<0?",
+            "promptDisplay": "Parabolė \\(y=x^2-9\\) kerta \\(x\\) ašį ties \\(x=-3\\) ir \\(x=3\\). Kuriame intervale \\(y<0\\)?",
             "choices": [
-                "x<−3",
-                "−3<x<3",
-                "x>3",
-                "x<−3 arba x>3"
+                "(−∞;−3)",
+                "(−3;3)",
+                "(3;+∞)",
+                "(−∞;−3)∪(3;+∞)"
             ],
-            "answer": "−3<x<3",
-            "hint": "Aukštyn atversta parabolė žemiau ašies yra tarp šaknų."
+            "choicesDisplay": [
+                "\\(({-}\\infty;{-}3)\\)",
+                "\\(({-}3;3)\\)",
+                "\\((3;+\\infty)\\)",
+                "\\(({-}\\infty;{-}3)\\cup(3;+\\infty)\\)"
+            ],
+            "answer": "(−3;3)",
+            "hint": "Aukštyn atversta parabolė žemiau x ašies yra tarp šaknų."
         },
         {
             "id": "g10-30",
@@ -2201,8 +2230,31 @@
     }
   }
 
+  // P1.7.9.12: aktyvus priskyrimas visada naudoja savo išsaugotą turinio
+  // snapshot. Taip Bibliotekoje atnaujinus tą patį lessonId jau pradėto mokinio
+  // užduotys, jų ID ir progresas nepasikeičia. Tik naujas priskyrimas gauna
+  // naujausią katalogo versiją.
+  function lessonFromAssignmentSnapshot(record = assignment) {
+    const snapshot = record?.contentSnapshot && typeof record.contentSnapshot === 'object'
+      ? record.contentSnapshot
+      : null;
+    if (!snapshot || !Array.isArray(snapshot.tasks) || !snapshot.tasks.length) return null;
+    const lessonId = String(snapshot.lessonId || record?.lessonId || '').trim();
+    return {
+      ...snapshot,
+      id: lessonId,
+      lessonId,
+      title: String(snapshot.title || record?.title || ''),
+      shortTitle: String(snapshot.shortTitle || snapshot.title || record?.title || ''),
+      taskCount: Math.max(0, Number(snapshot.taskCount) || snapshot.tasks.length),
+      classCount: Math.max(0, Number(snapshot.classCount) || snapshot.tasks.filter(task => task?.section === 'class').length),
+      selfCount: Math.max(0, Number(snapshot.selfCount) || snapshot.tasks.filter(task => task?.section === 'self').length),
+      tasks: snapshot.tasks
+    };
+  }
+
   function activeLesson() {
-    return lessonForId(assignment?.lessonId) || DEMO_LESSON;
+    return lessonFromAssignmentSnapshot() || lessonForId(assignment?.lessonId) || DEMO_LESSON;
   }
 
   function isSimpleInputTask(task) {
@@ -2219,6 +2271,26 @@
     return Number(normalized);
   }
 
+  // Tikimybei priimame lygiavertes mokiniams įprastas formas:
+  // 1/2, 0,5, 0.5 ir 50 % turi būti tas pats skaičius.
+  function parseProbabilityValue(value) {
+    const normalized = String(value ?? '').trim().replace(/\s+/g, '').replace(/−/g, '-').replace(',', '.');
+    if (!normalized) return NaN;
+    if (normalized.endsWith('%')) {
+      const percent = parseLocalizedNumber(normalized.slice(0, -1));
+      return Number.isFinite(percent) ? percent / 100 : NaN;
+    }
+    const fraction = normalized.match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\/([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/);
+    if (fraction) {
+      const numerator = Number(fraction[1]);
+      const denominator = Number(fraction[2]);
+      return Number.isFinite(numerator) && Number.isFinite(denominator) && Math.abs(denominator) > 1e-12
+        ? numerator / denominator
+        : NaN;
+    }
+    return parseLocalizedNumber(normalized);
+  }
+
   function simpleAnswerMatches(task, value) {
     const candidates = Array.isArray(task?.acceptedAnswers) && task.acceptedAnswers.length
       ? task.acceptedAnswers
@@ -2228,6 +2300,14 @@
       if (!Number.isFinite(actual)) return false;
       return candidates.some(candidate => {
         const expected = parseLocalizedNumber(candidate);
+        return Number.isFinite(expected) && Math.abs(actual - expected) < 1e-9;
+      });
+    }
+    if (task?.answerType === 'probability') {
+      const actual = parseProbabilityValue(value);
+      if (!Number.isFinite(actual)) return false;
+      return candidates.some(candidate => {
+        const expected = parseProbabilityValue(candidate);
         return Number.isFinite(expected) && Math.abs(actual - expected) < 1e-9;
       });
     }
@@ -2281,6 +2361,35 @@
   function taskDisplayChoice(task, index, fallback) {
     const displays = Array.isArray(task?.choicesDisplay) ? task.choicesDisplay : [];
     return displays[index] ?? fallback ?? '';
+  }
+
+  function taskDiagramMarkup(task) {
+    const type = String(task?.diagram?.type || '');
+    if (!type) return '';
+    const wrap = (label, body) => `<figure class="p2-task-diagram" aria-label="${escapeHtml(label)}"><svg viewBox="0 0 240 160" role="img" aria-hidden="true">${body}</svg></figure>`;
+    if (type === 'angle-bisector') return wrap('Trikampio kampo pusiaukampinės schema', `
+      <path d="M120 18 L24 138 L218 138 Z"/><path d="M120 18 L102 138" class="guide"/>
+      <text x="116" y="14">A</text><text x="11" y="151">B</text><text x="219" y="151">C</text><text x="97" y="153">D</text>
+      <text x="48" y="132">6</text><text x="157" y="132">9</text><text x="63" y="72">8</text><text x="171" y="72">?</text>`);
+    if (type === 'incircle') return wrap('Trikampis ir į jį įbrėžtas apskritimas', `
+      <path d="M120 18 L28 139 L214 139 Z"/><circle cx="121" cy="102" r="35" class="guide"/>
+      <text x="116" y="14">A</text><text x="16" y="151">B</text><text x="216" y="151">C</text><text x="129" y="99">r</text>`);
+    if (type === 'circumcircle') return wrap('Trikampis ir apie jį apibrėžtas apskritimas', `
+      <circle cx="120" cy="82" r="70" class="guide"/><path d="M120 12 L56 121 L191 121 Z"/>
+      <text x="116" y="10">A</text><text x="45" y="134">B</text><text x="194" y="134">C</text><path d="M120 82 L191 121" class="guide"/><text x="157" y="96">R</text>`);
+    if (type === 'included-angle') return wrap('Trikampis su dviem kraštinėmis ir kampu tarp jų', `
+      <path d="M31 137 L105 35 L215 137 Z"/><path d="M53 137 A22 22 0 0 1 45 119" class="guide"/>
+      <text x="19" y="151">C</text><text x="101" y="30">A</text><text x="217" y="151">B</text>
+      <text x="54" y="79">8</text><text x="121" y="151">10</text><text x="52" y="122">30°</text>`);
+    if (type === 'cosine-law') return wrap('Trikampis kosinusų teoremai', `
+      <path d="M30 137 L106 35 L218 137 Z"/><path d="M54 137 A24 24 0 0 1 45 118" class="guide"/>
+      <text x="18" y="151">C</text><text x="102" y="30">A</text><text x="220" y="151">B</text>
+      <text x="55" y="79">5</text><text x="127" y="151">7</text><text x="50" y="121">60°</text><text x="164" y="83">AB = ?</text>`);
+    if (type === 'sine-law') return wrap('Trikampis sinusų teoremai', `
+      <path d="M29 137 L29 42 L215 137 Z"/><path d="M29 55 L42 55 L42 42" class="guide"/>
+      <text x="16" y="151">A</text><text x="15" y="35">B</text><text x="217" y="151">C</text>
+      <text x="51" y="132">30°</text><text x="102" y="151">b = ?</text><text x="96" y="80">a = 10</text>`);
+    return '';
   }
 
   const practiceEngine = window.P772PracticeEngine || null;
@@ -2909,7 +3018,7 @@
           <math-field class="p2-static-math p2-task-equation" read-only tabindex="-1">${escapeHtml(task.prompt)}</math-field>
           ${expressionTask && task.response?.options?.domain ? `<p class="p2-expression-domain">Apibrėžimo sąlyga: ${escapeHtml(task.response.options.domain)}</p>` : ''}
         </div>`
-      : `<p class="p2-task-prompt">${renderRichMathText(taskDisplayPrompt(task))}</p>`;
+      : `<p class="p2-task-prompt">${renderRichMathText(taskDisplayPrompt(task))}</p>${taskDiagramMarkup(task)}`;
 
     const dots = activeLesson().tasks.map((candidate, index) => {
       const cstate = taskState(candidate.id);
@@ -3947,6 +4056,11 @@
 
   function lessonHistoryForStudent(student) {
     return Object.entries(student?.lessons && typeof student.lessons === 'object' ? student.lessons : {})
+      // P1.7.9.13: klaidingai vėliau sukurto tuščio Room metaduomenų netriname,
+      // bet pataisymo migracija gali jį pažymėti kaip paslėptą dublikatą. Taip
+      // atsarginėje kopijoje išlieka audito pėdsakas, o mokinio istorijoje
+      // rodomas tik tikrasis pamokos Room.
+      .filter(([, item]) => !(item && typeof item === 'object' && item.historyHidden === true))
       .map(([roomId, item]) => ({ roomId, ...(item && typeof item === 'object' ? item : {}) }))
       .sort((a, b) => Number(b.createdAt || b.linkedAt || 0) - Number(a.createdAt || a.linkedAt || 0));
   }
@@ -3966,9 +4080,13 @@
 
   function studentLessonScheduleMeta(lesson) {
     const session = teacherStudentDb.classSessions?.[lesson?.classSessionId] || {};
-    const dateKey = String(session.scheduleDate || '').trim();
-    const start = String(session.scheduledStart || '').trim();
-    const duration = Math.max(0, Number(session.durationMinutes || 0));
+    // P1.7.9.13: pirmiausia naudojame classSession metaduomenis, bet turime
+    // saugų fallback į patį mokinio pamokos įrašą. Naujesnės schedule pamokos
+    // šiuos laukus turi abiejose vietose, todėl statusas nepriklauso nuo to,
+    // kuri Firebase šaka buvo užkrauta pirmiau.
+    const dateKey = String(session.scheduleDate || lesson?.scheduleDate || '').trim();
+    const start = String(session.scheduledStart || lesson?.scheduledStart || '').trim();
+    const duration = Math.max(0, Number(session.durationMinutes || lesson?.durationMinutes || 0));
     let dateLabel = '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
       try {
@@ -3987,6 +4105,11 @@
     if (schedule.duration) parts.push(`${schedule.duration} min.`);
     if (parts.length) return parts.join(' · ');
     return formatStudentDate(lesson?.createdAt || lesson?.linkedAt);
+  }
+
+  function studentLessonOccurrenceState(lesson, now = new Date()) {
+    const schedule = studentLessonScheduleMeta(lesson);
+    return scheduleOccurrenceStateFromParts(schedule.dateKey, schedule.start, schedule.duration, now);
   }
 
   // P2-SPLIT-P2.5-P4-P1.7.8.1: būsimos mokinio pamokos skaičiuojamos ne iš
@@ -4447,11 +4570,30 @@
       const guardianNameDisplay = String(selected.guardianName || '').trim() || 'Nenurodytas';
       const participantRoomId = String(selectedClassParticipant?.roomId || '').trim().toUpperCase();
       const participantLesson = participantRoomId ? (selected?.lessons?.[participantRoomId] || null) : null;
-      const runningRoomId = selectedOwnsActiveRoom ? roomId : (selectedClassParticipant && participantRoomId ? participantRoomId : '');
-      const runningLesson = runningRoomId ? (selected?.lessons?.[runningRoomId] || (runningRoomId === roomId ? currentLesson : participantLesson) || null) : null;
+      const activeCandidateRoomId = selectedOwnsActiveRoom ? roomId : (selectedClassParticipant && participantRoomId ? participantRoomId : '');
+      const activeCandidateLesson = activeCandidateRoomId ? (selected?.lessons?.[activeCandidateRoomId] || (activeCandidateRoomId === roomId ? currentLesson : participantLesson) || null) : null;
+      const activeCandidateState = activeCandidateLesson ? studentLessonOccurrenceState(activeCandidateLesson) : { known: false, state: '' };
+      const timedRunningLesson = history.find(item => {
+        const state = studentLessonOccurrenceState(item);
+        return state.known && state.state === 'running';
+      }) || null;
+      // Aktyvi classSession pati savaime nebereiškia „Vyksta“. Jei turime
+      // konkrečią datą ir laiką, ši būsena galioja tik realiame pamokos lange.
+      // Seniems nesuplanuotiems Room paliekame ankstesnį aktyvaus Room elgesį.
+      const runningRoomId = activeCandidateRoomId && (!activeCandidateState.known || activeCandidateState.state === 'running')
+        ? activeCandidateRoomId
+        : String(timedRunningLesson?.roomId || '').trim().toUpperCase();
+      const runningLesson = runningRoomId
+        ? (selected?.lessons?.[runningRoomId] || (runningRoomId === activeCandidateRoomId ? activeCandidateLesson : timedRunningLesson) || null)
+        : null;
       const runningIsOpenRoom = Boolean(runningRoomId && runningRoomId === roomId);
       const runningExpanded = Boolean(runningRoomId && expandedStudentHistoryRoomId === runningRoomId);
-      const pastHistory = history.filter(item => !runningRoomId || item.roomId !== runningRoomId);
+      const pastHistory = history.filter(item => {
+        if (runningRoomId && item.roomId === runningRoomId) return false;
+        const state = studentLessonOccurrenceState(item);
+        if (state.known) return state.state === 'past';
+        return true;
+      });
       const upcomingLessons = studentUpcomingScheduleLessons(selectedStudentId);
 
       const runningMarkup = runningRoomId ? (() => {
@@ -4830,6 +4972,24 @@
 
   function scheduleDateKeyValid(value) { return Boolean(scheduleDateFromKey(value)); }
 
+  function scheduleOccurrenceStateFromParts(dateKeyRaw, startRaw, durationRaw, now = new Date()) {
+    const date = scheduleDateFromKey(dateKeyRaw);
+    const startMinutes = scheduleTimeToMinutes(startRaw);
+    const duration = Math.max(0, Number(durationRaw || 0));
+    if (!date || startMinutes === null || !duration) return { known: false, state: '', startAt: null, endAt: null };
+    const startAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+    const endAt = new Date(startAt.getTime() + duration * 60000);
+    const nowMs = now instanceof Date ? now.getTime() : Number(now);
+    if (nowMs < startAt.getTime()) return { known: true, state: 'future', startAt, endAt };
+    if (nowMs < endAt.getTime()) return { known: true, state: 'running', startAt, endAt };
+    return { known: true, state: 'past', startAt, endAt };
+  }
+
+  function scheduleOccurrenceState(entry, dateKey, now = new Date()) {
+    const time = scheduleSlotTimeForDate(entry, dateKey);
+    return scheduleOccurrenceStateFromParts(dateKey, time?.start, time?.durationMinutes, now);
+  }
+
   function scheduleAddDays(value, days) {
     const date = value instanceof Date ? new Date(value.getTime()) : scheduleDateFromKey(value);
     if (!date) return '';
@@ -5166,6 +5326,7 @@
         const time = scheduleSlotTimeForDate(entry, day.dateKey) || {};
         const active = scheduleStudentNames(entry, day.dateKey);
         const run = teacherStudentDb.scheduleRuns?.[entry.id]?.[day.dateKey] || null;
+        const occurrenceState = scheduleOccurrenceState(entry, day.dateKey);
         const practice = entry.lessonId ? (entry.practiceTitle || lessonForId(entry.lessonId)?.shortTitle || 'Pratybos') : '';
         const label = String(entry.label || '').trim() || 'Pamokos laikas';
         const conflict = scheduleOccurrenceConflict(entry, day.dateKey);
@@ -5175,7 +5336,7 @@
             <h4>${escapeHtml(label)}</h4>
             <div class="p2-schedule-card-students">${active.length ? active.map(item => `<span>${escapeHtml(item.name)} <small>${escapeHtml(scheduleModeLabel({ mode: item.mode }, true))}</small></span>`).join('') : '<em>Laisvas laikas · mokinių šiai datai nėra</em>'}</div>
             ${practice ? `<p>▦ ${escapeHtml(practice)}</p>` : '<p>□ Tik lenta</p>'}
-            ${run ? `<small>✓ Atidaryta ${escapeHtml(formatScheduleClock(run.startedAt || 0))}</small>` : ''}
+            ${run ? `<small>${occurrenceState.state === 'past' ? '✓ Įvyko' : occurrenceState.state === 'running' ? '● Vyksta' : '◷ Atidaryta'}${run.startedAt ? ` · ${escapeHtml(formatScheduleClock(run.startedAt || 0))}` : ''}</small>` : ''}
             ${conflict ? '<small class="p2-schedule-conflict">⚠ Persidengia su kitu laiku</small>' : ''}
           </div>
         </article>`;
@@ -5237,6 +5398,7 @@
       const assignments = scheduleAttendanceAssignments(editing);
       const activeAssignments = scheduleActiveAssignments(editing, selectedDate);
       const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[selectedDate] || null;
+      const occurrenceState = scheduleOccurrenceState(editing, selectedDate);
       const runRooms = scheduleRunRooms(run);
       const presetId = scheduleCreatePreset?.studentId && teacherStudentDb.students?.[scheduleCreatePreset.studentId] ? scheduleCreatePreset.studentId : '';
       const assignmentRows = assignments.length ? assignments.map(item => {
@@ -5283,7 +5445,7 @@
               <button type="button" class="p2-primary" data-schedule-assignment-add>Priskirti mokinį</button>
             </div>
           </section>
-          <section class="p2-schedule-editor-section"><h4>${escapeHtml(selectedDate)} pamoka</h4><div class="p2-schedule-open-box ${run ? 'is-running' : ''}"><div><strong>${run ? 'Pamoka jau atidaryta' : (activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra')}</strong><span>${activeAssignments.length ? activeAssignments.map(item => `${scheduleStudentTeacherLabel(studentRecord(item.studentId), students)} · ${scheduleModeLabel(item, true)}`).join(' · ') : 'Priskirk mokinius šiai datai.'}</span></div><button type="button" class="p2-primary" data-schedule-open-lesson ${(runRooms.length || activeAssignments.length) ? '' : 'disabled'}>Atidaryti pamoką</button></div></section>
+          <section class="p2-schedule-editor-section"><h4>${escapeHtml(selectedDate)} pamoka</h4><div class="p2-schedule-open-box ${run && occurrenceState.state === 'running' ? 'is-running' : ''}"><div><strong>${run ? (occurrenceState.state === 'past' ? 'Pamoka įvyko' : occurrenceState.state === 'running' ? 'Pamoka vyksta' : 'Pamoka atidaryta') : (occurrenceState.state === 'past' ? 'Pamokos laikas jau praėjo' : activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra')}</strong><span>${activeAssignments.length ? activeAssignments.map(item => `${scheduleStudentTeacherLabel(studentRecord(item.studentId), students)} · ${scheduleModeLabel(item, true)}`).join(' · ') : 'Priskirk mokinius šiai datai.'}</span></div><button type="button" class="p2-primary" data-schedule-open-lesson ${(runRooms.length || (activeAssignments.length && occurrenceState.state !== 'past')) ? '' : 'disabled'}>${runRooms.length ? 'Atidaryti pamoką' : occurrenceState.state === 'past' ? 'Pamoka įvyko' : 'Atidaryti pamoką'}</button></div></section>
         </div>`;
     }
 
@@ -6046,14 +6208,14 @@
       answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
       responseMarkup = teacherExpressionMarkup(previewTask, item);
     } else if (simpleInputTask) {
-      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction">${renderRichMathText(taskDisplayPrompt(previewTask))}</p>`;
+      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction">${renderRichMathText(taskDisplayPrompt(previewTask))}</p>${taskDiagramMarkup(previewTask)}`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${escapeHtml(previewTask.answer)}${previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong></div>`;
       responseMarkup = `<div class="p2-teacher-simple-answer"><span>Mokinio įrašas</span><strong>${liveAnswer ? escapeHtml(liveAnswer) : '—'}${liveAnswer && previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong><small>● gyvai</small></div>`;
     } else {
       const choices = Array.isArray(previewTask.choices) ? previewTask.choices : [];
       const correctIndex = Math.max(0, choices.findIndex(choice => choice === previewTask.answer));
       const correctLetter = String.fromCharCode(65 + correctIndex);
-      conditionMarkup = `<h3>${renderRichMathText(taskDisplayPrompt(previewTask))}</h3>`;
+      conditionMarkup = `<h3>${renderRichMathText(taskDisplayPrompt(previewTask))}</h3>${taskDiagramMarkup(previewTask)}`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${renderRichMathText(taskDisplayChoice(previewTask, correctIndex, previewTask.answer))}</strong></div>`;
       const choiceMarkup = choices.map((choice, index) => {
         const isSelected = liveAnswer === choice;
