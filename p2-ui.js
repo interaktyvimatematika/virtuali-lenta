@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.25';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.26';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4184,9 +4184,9 @@
         <span class="p2-backup-restore-ok">✓ Failas patikrintas</span>
       </section>
       <div class="p2-backup-restore-compare">
-        <section><span>Atsarginėje kopijoje</span><strong>${backupRestoreCount(backup.students)} mok.</strong><small>${backupRestoreCount(backup.scheduleEntries)} laikai · ${backupRestoreCount(backup.classSessions)} pamokos · ${backupRestoreCount(backup.rooms)} Room</small></section>
+        <section><span>Atsarginėje kopijoje</span><strong>${backupRestoreCount(backup.students)} mok.</strong><small>${backupRestoreCount(backup.scheduleEntries)} laikai · ${backupRestoreCount(backup.classSessions)} pamokos · ${backupRestoreCount(backup.libraryTasks)} bibliotekoje · ${backupRestoreCount(backup.rooms)} Room</small></section>
         <span class="p2-backup-restore-arrow" aria-hidden="true">→</span>
-        <section><span>Dabar Firebase</span><strong>${backupRestoreCount(current.students)} mok.</strong><small>${backupRestoreCount(current.scheduleEntries)} laikai · ${backupRestoreCount(current.classSessions)} pamokos · ${backupRestoreCount(current.rooms)} Room</small></section>
+        <section><span>Dabar Firebase</span><strong>${backupRestoreCount(current.students)} mok.</strong><small>${backupRestoreCount(current.scheduleEntries)} laikai · ${backupRestoreCount(current.classSessions)} pamokos · ${backupRestoreCount(current.libraryTasks)} bibliotekoje · ${backupRestoreCount(current.rooms)} Room</small></section>
       </div>
       ${backupRestoreDiffHtml(detail.changes || {})}
       ${warnings.length ? `<div class="p2-backup-restore-warnings"><strong>Prieš atkuriant</strong>${warnings.map(text => `<p>• ${escapeHtml(text)}</p>`).join('')}</div>` : ''}
@@ -4737,8 +4737,8 @@
           </div>
           <div class="p2-students-overview-actions">
             <span class="p2-student-overview-summary">${presentGrades.length ? `${presentGrades.length} ${presentGrades.length === 1 ? 'klasė' : 'klasės'}` : 'Klasės dar nenurodytos'}</span>
-            <button type="button" class="p2-secondary p2-student-backup-inline" data-student-backup title="Atsisiųsti mokinių bazės ir susietų pamokų atsarginę kopiją">↓ Atsarginė kopija</button>
-            <button type="button" class="p2-secondary p2-student-restore-inline" data-student-restore title="Patikrinti ir atkurti anksčiau atsisiųstą atsarginę kopiją">↥ Atkurti</button>
+            <button type="button" class="p2-secondary p2-student-backup-inline" data-student-backup title="Atsisiųsti mokinių bazės, bibliotekos, susietų pamokų ir mokytojo profilio atkūrimo kopiją">↓ Atsarginė kopija</button>
+            <button type="button" class="p2-secondary p2-student-restore-inline" data-student-restore title="Atkurti duomenis arba po naršyklės duomenų išvalymo vėl prijungti mokytojo profilį">↥ Atkurti</button>
           </div>
         </div>
         <div class="p2-students-overview-groups">${overviewMarkup}</div>

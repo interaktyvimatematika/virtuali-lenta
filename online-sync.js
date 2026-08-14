@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.25';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.26';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -263,7 +263,7 @@ function resolveTeacherProfileId() {
 }
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
-let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {}, library: null };
 
 let roomRef;
 let workspaceRef;
@@ -1345,10 +1345,47 @@ function emitTeacherProfile() {
       roomLinks: teacherProfileCache.roomLinks || {},
       classSessions: teacherProfileCache.classSessions || {},
       scheduleEntries: teacherProfileCache.scheduleEntries || {},
-      scheduleRuns: teacherProfileCache.scheduleRuns || {}
+      scheduleRuns: teacherProfileCache.scheduleRuns || {},
+      library: teacherProfileCache.library || null
     }
   }));
 }
+
+function emitTeacherLibraryState() {
+  if (!teacherProfileId || onlineRole !== 'teacher') return;
+  const library = teacherProfileCache.library && typeof teacherProfileCache.library === 'object' ? teacherProfileCache.library : null;
+  window.dispatchEvent(new CustomEvent('p772:teacher-library-state', {
+    detail: {
+      exists: Boolean(library),
+      library,
+      updatedAt: Math.max(0, Number(library?.updatedAt || 0))
+    }
+  }));
+}
+
+function sanitizeTeacherLibrary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Netinkama bibliotekos būsena.');
+  const tasks = Array.isArray(value.tasks) ? value.tasks : [];
+  const practiceSets = Array.isArray(value.practiceSets) ? value.practiceSets : [];
+  const payload = { schemaVersion: 1, tasks, practiceSets };
+  const json = JSON.stringify(payload);
+  if (json.length > 12 * 1024 * 1024) throw new Error('Biblioteka per didelė sinchronizuoti vienu įrašu.');
+  return JSON.parse(json);
+}
+
+window.addEventListener('p772:teacher-library-write', async event => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
+  try {
+    const library = sanitizeTeacherLibrary(event.detail?.library);
+    const payload = { ...library, updatedAt: Date.now(), updatedBy: me, appBuild: BUILD };
+    await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/library`), payload);
+    if (event.detail?.initialSeed) bridge.showToast?.(`Biblioteka apsaugota Firebase · ${library.tasks.length} užduotys`);
+  } catch (error) {
+    console.error('P1.7.9.26 bibliotekos sinchronizacijos klaida', error);
+    window.dispatchEvent(new CustomEvent('p772:teacher-library-write-error', { detail: { message: String(error?.message || error || '') } }));
+    bridge.showToast?.('Nepavyko išsaugoti bibliotekos debesyje');
+  }
+});
 
 // P1.7.5.6 vienkartinis vartotojo paprašytas duomenų pataisymas.
 // Svarbu: būsimos pamokos saugomos TIK scheduleEntries. Mokinio kortelė jų
@@ -1578,7 +1615,8 @@ if (teacherProfileRef) {
       roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {},
       classSessions: value.classSessions && typeof value.classSessions === 'object' ? value.classSessions : {},
       scheduleEntries: value.scheduleEntries && typeof value.scheduleEntries === 'object' ? value.scheduleEntries : {},
-      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {}
+      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {},
+      library: value.library && typeof value.library === 'object' ? value.library : null
     };
     const profileMeta = teacherProfileCache.meta || {};
     if (Number(profileMeta.schemaVersion || 0) < P2_DATA_SCHEMA_VERSION || profileMeta.lastCompatibleBuild !== BUILD) {
@@ -1592,6 +1630,13 @@ if (teacherProfileRef) {
       update(teacherProfileRef, metaUpdates).catch(error => console.warn('Nepavyko papildyti duomenų schemos metaduomenų', error));
     }
     emitTeacherProfile();
+    emitTeacherLibraryState();
+    try {
+      if (sessionStorage.getItem('p772-profile-recovered-v1') === teacherProfileId) {
+        sessionStorage.removeItem('p772-profile-recovered-v1');
+        bridge.showToast?.('Mokytojo profilis ir Firebase duomenys vėl prijungti');
+      }
+    } catch (_) {}
     applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
     applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.18 istorinio Room pataisa neįvykdyta', error));
   }, error => {
@@ -1709,6 +1754,8 @@ function restoreBackupCounts(profile, rooms) {
     classSessions: objectCount(profile?.classSessions),
     scheduleRuns: objectCount(profile?.scheduleRuns),
     roomLinks: objectCount(profile?.roomLinks),
+    libraryTasks: Array.isArray(profile?.library?.tasks) ? profile.library.tasks.length : 0,
+    libraryPracticeSets: Array.isArray(profile?.library?.practiceSets) ? profile.library.practiceSets.length : 0,
     rooms: objectCount(rooms)
   };
 }
@@ -1923,6 +1970,45 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
   };
 }
 
+
+function teacherProfileHasLinkedData(profile) {
+  const value = profile && typeof profile === 'object' ? profile : {};
+  return objectCount(value.students) > 0
+    || objectCount(value.roomLinks) > 0
+    || objectCount(value.classSessions) > 0
+    || objectCount(value.scheduleEntries) > 0
+    || objectCount(value.scheduleRuns) > 0;
+}
+
+function safeTeacherProfileId(value) {
+  const id = String(value || '').trim().toUpperCase();
+  return /^T-[A-Z2-9]{12,32}$/.test(id) ? id : '';
+}
+
+async function recoverTeacherProfileFromBackupIfNeeded(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  if (Number(parsed.backupFormatVersion || 0) !== BACKUP_FORMAT_VERSION) return false;
+  const schema = Number(parsed.schemaVersion || 0);
+  if (!schema || schema > P2_DATA_SCHEMA_VERSION) return false;
+  if (!parsed.profile || typeof parsed.profile !== 'object' || Array.isArray(parsed.profile)) return false;
+  if (!parsed.rooms || typeof parsed.rooms !== 'object' || Array.isArray(parsed.rooms)) return false;
+  const sourceTeacher = safeTeacherProfileId(parsed.teacherProfileId);
+  if (!sourceTeacher || sourceTeacher === teacherProfileId) return false;
+  const currentSnapshot = await get(teacherProfileRef);
+  const currentProfile = currentSnapshot.val() || {};
+  if (teacherProfileHasLinkedData(currentProfile)) return false;
+
+  // P1.7.9.26: po localStorage išvalymo programa būna sukūrusi naują tuščią
+  // T-... profilį. Patikima vartotojo atsarginė kopija gali grąžinti seną profilio
+  // identitetą; po reload duomenys vėl skaitomi tiesiai iš ankstesnio Firebase mazgo.
+  try { localStorage.setItem(TEACHER_PROFILE_STORAGE_KEY, sourceTeacher); }
+  catch (_) { throw new Error('Naršyklė neleido atkurti mokytojo profilio identifikatoriaus.'); }
+  try { sessionStorage.setItem('p772-profile-recovered-v1', sourceTeacher); } catch (_) {}
+  bridge.showToast?.('Mokytojo profilis atkurtas · atnaujinamas puslapis');
+  setTimeout(() => location.reload(), 220);
+  return true;
+}
+
 window.addEventListener('p2:restore-preview-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
   try {
@@ -1931,6 +2017,7 @@ window.addEventListener('p2:restore-preview-request', async event => {
     if (!text || text.length > 25 * 1024 * 1024) throw new Error('Atsarginės kopijos failas tuščias arba per didelis.');
     let parsed;
     try { parsed = JSON.parse(text); } catch (_) { throw new Error('Pasirinktas failas nėra taisyklingas JSON.'); }
+    if (await recoverTeacherProfileFromBackupIfNeeded(parsed)) return;
     const backup = validateRestoreBackup(parsed);
     const currentSnapshot = await get(teacherProfileRef);
     const currentProfile = currentSnapshot.val() || {};
