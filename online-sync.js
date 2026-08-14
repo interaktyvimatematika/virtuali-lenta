@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.24';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.25';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -334,6 +334,182 @@ let notesLiveQueued = false;
 let notesLivePublishing = false;
 let lastNotesLivePublishAt = 0;
 const NOTES_LIVE_INTERVAL_MS = 55;
+
+// P1.7.9.25 — automatinė techninė diagnostika.
+// Viename Room saugome tik kelias naujausias technines sesijas. Diagnostika
+// nerenka mokinio atsakymų ar lentos turinio; jos paskirtis — po reto gedimo
+// atsarginėje kopijoje matyti viewport/canvas/geometrijos ir sinchronizacijos būseną.
+const DIAGNOSTIC_SCHEMA_VERSION = 1;
+const DIAGNOSTIC_MAX_EVENTS = 60;
+const DIAGNOSTIC_MAX_SESSIONS_PER_ROOM = 10;
+const DIAGNOSTIC_FLUSH_MS = 12000;
+let diagnosticSessionId = '';
+let diagnosticSessionRoom = '';
+let diagnosticSessionStartedAt = 0;
+let diagnosticEvents = [];
+let diagnosticSequence = 0;
+let diagnosticFlushTimer = null;
+let diagnosticFlushInFlight = false;
+let diagnosticFlushQueued = false;
+let diagnosticLastFlushAt = 0;
+let diagnosticSyncState = {
+  connected: false, workspaceReadyAt: 0, assignmentSnapshotAt: 0, progressSnapshotAt: 0,
+  practiceSyncReadyAt: 0, progressWriteAt: 0, progressWriteErrorAt: 0,
+  progressWriteSkippedAt: 0, lastProgressStatus: '', lastCurrentTaskId: ''
+};
+
+function diagnosticSafeData(value, depth = 0) {
+  if (depth > 4) return null;
+  if (value == null || ['string', 'number', 'boolean'].includes(typeof value)) {
+    if (typeof value === 'string') return value.slice(0, 240);
+    return Number.isFinite(value) || typeof value !== 'number' ? value : null;
+  }
+  if (Array.isArray(value)) return value.slice(0, 24).map(item => diagnosticSafeData(item, depth + 1));
+  if (typeof value !== 'object') return String(value).slice(0, 120);
+  const out = {};
+  for (const [key, item] of Object.entries(value).slice(0, 40)) {
+    if (/answer|content|text|note/i.test(String(key))) continue;
+    out[String(key).slice(0, 80)] = diagnosticSafeData(item, depth + 1);
+  }
+  return out;
+}
+
+function diagnosticDeviceSnapshot() {
+  const vv = window.visualViewport;
+  const orientation = screen.orientation;
+  return {
+    userAgent: String(navigator.userAgent || '').slice(0, 240),
+    platform: String(navigator.platform || '').slice(0, 80),
+    maxTouchPoints: Math.max(0, Number(navigator.maxTouchPoints || 0)),
+    devicePixelRatio: Math.round((Number(window.devicePixelRatio || 1)) * 100) / 100,
+    screenWidth: Math.round(screen.width || 0),
+    screenHeight: Math.round(screen.height || 0),
+    viewportWidth: Math.round(window.innerWidth || 0),
+    viewportHeight: Math.round(window.innerHeight || 0),
+    visualViewportWidth: Math.round(vv?.width || 0),
+    visualViewportHeight: Math.round(vv?.height || 0),
+    visualViewportScale: Math.round(Number(vv?.scale || 1) * 1000) / 1000,
+    orientationType: String(orientation?.type || ''),
+    orientationAngle: Number(orientation?.angle || 0),
+    coarsePointer: Boolean(window.matchMedia?.('(pointer: coarse)')?.matches),
+    finePointer: Boolean(window.matchMedia?.('(pointer: fine)')?.matches),
+    hover: Boolean(window.matchMedia?.('(hover: hover)')?.matches)
+  };
+}
+
+function diagnosticCurrentSnapshot() {
+  let board = null;
+  try { board = bridge.getDiagnosticSnapshot?.() || null; } catch (_) { board = null; }
+  return {
+    at: Date.now(),
+    roomId, role: onlineRole, build: BUILD,
+    p2View: String(document.body?.dataset?.p2View || ''),
+    visibility: String(document.visibilityState || ''),
+    online: Boolean(navigator.onLine),
+    connected: Boolean(connectedNow),
+    roomGeneration,
+    p2PracticeSyncReady: Boolean(p2PracticeSyncReady),
+    device: diagnosticDeviceSnapshot(),
+    board: diagnosticSafeData(board),
+    sync: diagnosticSafeData(diagnosticSyncState)
+  };
+}
+
+function diagnosticSessionKey() {
+  return `${String(me).slice(0, 18)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.replace(/[^A-Za-z0-9_-]/g, '-');
+}
+
+function diagnosticLog(type, data = {}, options = {}) {
+  if (!diagnosticSessionId || diagnosticSessionRoom !== roomId) return;
+  diagnosticSequence += 1;
+  diagnosticEvents.push({
+    seq: diagnosticSequence, at: Date.now(), type: String(type || 'event').slice(0, 80),
+    data: diagnosticSafeData(data)
+  });
+  if (diagnosticEvents.length > DIAGNOSTIC_MAX_EVENTS) diagnosticEvents.splice(0, diagnosticEvents.length - DIAGNOSTIC_MAX_EVENTS);
+  scheduleDiagnosticFlush(Boolean(options.urgent));
+}
+
+function scheduleDiagnosticFlush(urgent = false) {
+  if (!diagnosticSessionId) return;
+  if (diagnosticFlushTimer) clearTimeout(diagnosticFlushTimer);
+  const elapsed = Date.now() - diagnosticLastFlushAt;
+  const delay = urgent ? Math.max(150, 900 - elapsed) : Math.max(800, DIAGNOSTIC_FLUSH_MS - elapsed);
+  diagnosticFlushTimer = setTimeout(() => { diagnosticFlushTimer = null; flushDiagnostics(); }, delay);
+}
+
+async function flushDiagnostics(options = {}) {
+  if (!diagnosticSessionId || !diagnosticSessionRoom) return;
+  if (diagnosticFlushInFlight) { diagnosticFlushQueued = true; return; }
+  diagnosticFlushInFlight = true;
+  const targetRoom = diagnosticSessionRoom;
+  const sessionId = diagnosticSessionId;
+  const payload = {
+    schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, appBuild: BUILD, roomId: targetRoom,
+    role: onlineRole, clientId: String(me).slice(0, 80), sessionId,
+    startedAt: diagnosticSessionStartedAt, updatedAt: Date.now(),
+    device: diagnosticDeviceSnapshot(), snapshot: diagnosticCurrentSnapshot(),
+    events: Object.fromEntries(diagnosticEvents.map(item => [`e${String(item.seq).padStart(4, '0')}`, item]))
+  };
+  try {
+    await set(ref(db, `p772Rooms/${targetRoom}/diagnostics/sessions/${sessionId}`), payload);
+    diagnosticLastFlushAt = Date.now();
+  } catch (error) {
+    console.warn('P1.7.9.25 diagnostikos įrašymo klaida', error);
+  } finally {
+    diagnosticFlushInFlight = false;
+    if (diagnosticFlushQueued) { diagnosticFlushQueued = false; scheduleDiagnosticFlush(true); }
+  }
+}
+
+async function pruneDiagnosticSessions(targetRoom = roomId) {
+  try {
+    const target = safeRoom(targetRoom);
+    if (!target) return;
+    const snap = await get(ref(db, `p772Rooms/${target}/diagnostics/sessions`));
+    const sessions = snap.val() || {};
+    const rows = Object.entries(sessions).map(([id, value]) => ({ id, updatedAt: Math.max(0, Number(value?.updatedAt || value?.startedAt || 0)) }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const stale = rows.slice(DIAGNOSTIC_MAX_SESSIONS_PER_ROOM);
+    if (!stale.length) return;
+    const updates = {};
+    for (const row of stale) updates[`p772Rooms/${target}/diagnostics/sessions/${row.id}`] = null;
+    await update(ref(db), updates);
+  } catch (_) { /* diagnostikos valymas nėra kritinis */ }
+}
+
+function beginDiagnosticSession(reason = 'room-open') {
+  if (diagnosticFlushTimer) { clearTimeout(diagnosticFlushTimer); diagnosticFlushTimer = null; }
+  diagnosticSessionRoom = roomId;
+  diagnosticSessionId = diagnosticSessionKey();
+  diagnosticSessionStartedAt = Date.now();
+  diagnosticSequence = 0;
+  diagnosticEvents = [];
+  diagnosticLastFlushAt = 0;
+  diagnosticSyncState = {
+    connected: Boolean(connectedNow), workspaceReadyAt: 0, assignmentSnapshotAt: 0, progressSnapshotAt: 0,
+    practiceSyncReadyAt: 0, progressWriteAt: 0, progressWriteErrorAt: 0, progressWriteSkippedAt: 0,
+    lastProgressStatus: '', lastCurrentTaskId: ''
+  };
+  diagnosticLog(reason, { startsBlank: Boolean(roomInfo.startsBlank) }, { urgent: true });
+  const pruneRoom = diagnosticSessionRoom;
+  setTimeout(() => pruneDiagnosticSessions(pruneRoom), 2500);
+}
+
+window.addEventListener('p772:diagnostic-event', event => {
+  const detail = event.detail || {};
+  const { type = 'board-event', at, ...data } = detail;
+  diagnosticLog(type, data, { urgent: /not-ready|invalid|outside|jump|error/i.test(String(type)) });
+});
+window.addEventListener('p2:view-changed', event => diagnosticLog('view-changed', { view: event.detail?.view }, { urgent: true }));
+window.addEventListener('resize', () => diagnosticLog('window-resize', { width: window.innerWidth, height: window.innerHeight }));
+window.addEventListener('orientationchange', () => diagnosticLog('orientation-change', diagnosticDeviceSnapshot(), { urgent: true }));
+document.addEventListener('visibilitychange', () => diagnosticLog('visibility-change', { visibility: document.visibilityState }));
+window.addEventListener('online', () => diagnosticLog('browser-online', {}, { urgent: true }));
+window.addEventListener('offline', () => diagnosticLog('browser-offline', {}, { urgent: true }));
+setInterval(() => {
+  if (diagnosticSessionId && document.visibilityState !== 'hidden') scheduleDiagnosticFlush(false);
+}, 30000);
 
 // P2-SPLIT-P2.5-P4-P1.2: mokytojo pamokos skirtukai gali pakeisti aktyvų Room
 // neperkraudami viso puslapio. Visi su Room susieti listeneriai registruojami
@@ -819,6 +995,8 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     activateCurrentRoomPresence(generation);
     if (generation !== roomGeneration || targetRoom !== roomId) return;
     setUi('online', location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta');
+    diagnosticSyncState.workspaceReadyAt = Date.now();
+    diagnosticLog('workspace-ready', { startsBlank: Boolean(startsBlank), switched: Boolean(switched) }, { urgent: true });
     window.dispatchEvent(new CustomEvent('p2:workspace-ready', {
       detail: { roomId: targetRoom, startsBlank: Boolean(startsBlank), switched: Boolean(switched) }
     }));
@@ -828,11 +1006,13 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
   } catch (error) {
     if (generation !== roomGeneration) return;
     console.error('P2-SPLIT-P2.5-P4-P1.2 workspace inicijavimo klaida', error);
+    diagnosticLog('workspace-init-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
     setUi('error', 'Firebase Rules klaida');
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
 }
 
+beginDiagnosticSession('room-open');
 initializeWorkspace({ startsBlank: roomInfo.startsBlank, generation: roomGeneration });
 
 
@@ -1470,7 +1650,8 @@ async function buildTeacherBackupSnapshot() {
       return [targetRoom, {
         workspace: raw.workspace || null,
         p2: raw.p2 || null,
-        control: raw.control || null
+        control: raw.control || null,
+        diagnostics: raw.diagnostics || null
       }];
     }));
     for (const [targetRoom, data] of results) rooms[targetRoom] = data;
@@ -1486,6 +1667,7 @@ async function buildTeacherBackupSnapshot() {
       exportedAt: now.getTime(),
       exportedAtIso: now.toISOString(),
       teacherProfileId,
+      diagnosticSchemaVersion: DIAGNOSTIC_SCHEMA_VERSION,
       profile,
       rooms
     }
@@ -1500,6 +1682,8 @@ window.addEventListener('p2:backup-request', async () => {
   if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
   try {
     bridge.showToast?.('Ruošiama duomenų atsarginė kopija…');
+    diagnosticLog('backup-requested', {}, { urgent: true });
+    try { await flushDiagnostics({ final: true }); } catch (_) {}
     const { backup, roomIds, now } = await buildTeacherBackupSnapshot();
     triggerJsonDownload(`virtuali-lenta-atsargine-kopija-${backupStamp(now)}.json`, backup);
     bridge.showToast?.(`Atsarginė kopija paruošta · ${roomIds.length} Room`);
@@ -2199,7 +2383,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.24 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.25 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -2745,6 +2929,14 @@ function subscribeP2AssignmentAndProgress() {
     initialPairDispatched = true;
     p2AssignmentCache = bufferedAssignment;
     p2ProgressCache = bufferedProgress;
+    diagnosticSyncState.practiceSyncReadyAt = Date.now();
+    diagnosticSyncState.lastProgressStatus = String(bufferedProgress?.status || '');
+    diagnosticSyncState.lastCurrentTaskId = String(bufferedProgress?.currentTaskId || '');
+    diagnosticLog('practice-initial-snapshots-ready', {
+      hasAssignment: Boolean(bufferedAssignment), hasProgress: Boolean(bufferedProgress),
+      assignmentKey: String(bufferedAssignment?.assignmentKey || '').slice(0, 96),
+      status: String(bufferedProgress?.status || ''), currentTaskId: String(bufferedProgress?.currentTaskId || '')
+    }, { urgent: true });
     window.dispatchEvent(new CustomEvent('p2:assignment-state', { detail: p2AssignmentCache }));
     window.dispatchEvent(new CustomEvent('p2:progress-state', { detail: p2ProgressCache }));
     p2PracticeSyncReady = true;
@@ -2753,6 +2945,7 @@ function subscribeP2AssignmentAndProgress() {
 
   roomOnValue(p2AssignmentRef, snapshot => {
     const value = snapshot.val() || null;
+    diagnosticSyncState.assignmentSnapshotAt = Date.now();
     if (!initialPairDispatched) {
       bufferedAssignment = value;
       initialAssignmentSeen = true;
@@ -2765,6 +2958,9 @@ function subscribeP2AssignmentAndProgress() {
 
   roomOnValue(p2ProgressRef, snapshot => {
     const value = snapshot.val() || null;
+    diagnosticSyncState.progressSnapshotAt = Date.now();
+    diagnosticSyncState.lastProgressStatus = String(value?.status || '');
+    diagnosticSyncState.lastCurrentTaskId = String(value?.currentTaskId || '');
     p2ProgressCache = value;
 
     if (!initialPairDispatched) {
@@ -2993,6 +3189,8 @@ async function persistP2PracticeProgress(event) {
   if (!value || typeof value !== 'object') return;
 
   if (!p2PracticeSyncReady) {
+    diagnosticSyncState.progressWriteSkippedAt = Date.now();
+    diagnosticLog('progress-write-skipped-before-sync-ready', {}, { urgent: true });
     console.warn('P1.7.9.19: progreso įrašymas praleistas, kol kraunamas pradinis Firebase snapshot.');
     return;
   }
@@ -3004,6 +3202,7 @@ async function persistP2PracticeProgress(event) {
     const incomingAssignmentKey = String(value.assignmentKey || '').trim();
 
     if (incomingAssignmentKey && expectedAssignmentKey && incomingAssignmentKey !== expectedAssignmentKey) {
+      diagnosticLog('progress-write-rejected-stale-assignment', { incomingAssignmentKey, expectedAssignmentKey }, { urgent: true });
       console.warn('P1.7.9.19: atmestas pasenusio assignment progreso įrašymas.', incomingAssignmentKey, expectedAssignmentKey);
       return;
     }
@@ -3031,8 +3230,17 @@ async function persistP2PracticeProgress(event) {
     }
 
     await update(p2ProgressRef, updates);
+    diagnosticSyncState.progressWriteAt = now;
+    diagnosticSyncState.lastProgressStatus = String(merged.status || '');
+    diagnosticSyncState.lastCurrentTaskId = String(merged.currentTaskId || '');
+    diagnosticLog('progress-write-ok', {
+      status: String(merged.status || ''), currentTaskId: String(merged.currentTaskId || ''),
+      taskStateCount: Object.keys(merged.taskStates || {}).length
+    });
     p2ProgressCache = { ...merged, updatedAt: now, updatedBy: me };
   } catch (error) {
+    diagnosticSyncState.progressWriteErrorAt = Date.now();
+    diagnosticLog('progress-write-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
     console.error('P1.7.9.19 mokinio eigos klaida', error);
     bridge.showToast?.('Nepavyko išsaugoti pratybų eigos');
   }
@@ -3071,6 +3279,8 @@ function subscribeRoomRealtimeListeners(generation = roomGeneration) {
 
 onValue(connectedRef, snapshot => {
   connectedNow = snapshot.val() === true;
+  diagnosticSyncState.connected = connectedNow;
+  diagnosticLog(connectedNow ? 'firebase-connected' : 'firebase-disconnected', {}, { urgent: true });
   if (connectedNow) {
     if (bootstrapped) activateCurrentRoomPresence(roomGeneration);
     const localNote = location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta';
@@ -3080,6 +3290,8 @@ onValue(connectedRef, snapshot => {
   }
 }, error => {
   connectedNow = false;
+  diagnosticSyncState.connected = false;
+  diagnosticLog('firebase-connection-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
   console.error('P2-SPLIT-P2.5-P4-P1.2 connection klaida', error);
   setUi('error', 'Nepavyko prisijungti');
 });
@@ -3094,6 +3306,8 @@ async function switchActiveTeacherRoom(targetRoom, { preserveStay = true } = {})
   setUi('online', 'Perjungiama lenta…');
 
   // Prieš atjungdami seną Room įrašome paskutinę vietinę teksto / objektų būseną.
+  diagnosticLog('room-switch-start', { toRoom: nextRoom }, { urgent: true });
+  try { await flushDiagnostics({ final: true }); } catch (_) {}
   try { await publishLocalChanges(); } catch (_) {}
 
   clearRoomSubscriptions();
@@ -3109,6 +3323,7 @@ async function switchActiveTeacherRoom(targetRoom, { preserveStay = true } = {})
   stayOnRoom = preserveStay ? previousStay : false;
   transitionInProgress = false;
   bindRoomRefs(roomId);
+  beginDiagnosticSession('room-switch-enter');
 
   if (roomEl) roomEl.textContent = roomId;
   if (usersEl) {
@@ -3314,6 +3529,8 @@ if (newButton) {
 }
 
 window.addEventListener('beforeunload', () => {
+  diagnosticLog('page-unload', {}, { urgent: true });
+  flushDiagnostics({ final: true }).catch(() => {});
   remove(myLiveRootRef).catch(() => {});
   remove(presenceRef).catch(() => {});
 });

@@ -9259,6 +9259,66 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
+  // P1.7.9.25: tylus techninės diagnostikos kanalas. Jis nesiunčia mokinio
+  // atsakymų ar rašomo turinio — tik lentos geometrijos / pointer / canvas būseną.
+  let lastDiagnosticEventAt = 0;
+  function emitBoardDiagnostic(type, detail = {}, throttleMs = 0) {
+    const now = Date.now();
+    if (throttleMs > 0 && now - lastDiagnosticEventAt < throttleMs) return;
+    lastDiagnosticEventAt = now;
+    try {
+      window.dispatchEvent(new CustomEvent('p772:diagnostic-event', {
+        detail: { type: String(type || 'board-event').slice(0, 80), at: now, ...detail }
+      }));
+    } catch (_) { /* diagnostika negali trukdyti lentai */ }
+  }
+
+  function boardDiagnosticSnapshot() {
+    const world = getBoardWorldRect();
+    const zoom = Math.max(0.001, currentBoardZoom());
+    const boardRect = refs.board?.getBoundingClientRect?.() || null;
+    const canvasRect = refs.canvas?.getBoundingClientRect?.() || null;
+    return {
+      at: Date.now(),
+      view: String(document.body?.dataset?.p2View || ''),
+      tool: String(state.activeTool || ''),
+      practiceOnly: Boolean(state.practiceOnly?.active),
+      board: {
+        viewportWidth: Math.round(refs.board?.clientWidth || 0),
+        viewportHeight: Math.round(refs.board?.clientHeight || 0),
+        rectWidth: Math.round((boardRect?.width || 0) * 10) / 10,
+        rectHeight: Math.round((boardRect?.height || 0) * 10) / 10,
+        scrollLeft: Math.round((refs.board?.scrollLeft || 0) * 10) / 10,
+        scrollTop: Math.round((refs.board?.scrollTop || 0) * 10) / 10,
+        worldWidth: Math.round(world.width || 0),
+        worldHeight: Math.round(world.height || 0),
+        zoom: Math.round(zoom * 10000) / 10000,
+        userZoomPercent: boardUserZoomPercent(zoom),
+        fitZoom: Math.round(boardUser100Zoom() * 10000) / 10000,
+        centerOffsetX: Math.round(boardHorizontalCenterOffsetScreen(zoom, world) * 10) / 10
+      },
+      canvas: {
+        ready: Boolean(drawingContext && canvasViewport && refs.canvas?.width > 1 && refs.canvas?.height > 1),
+        cssWidth: Math.round((canvasRect?.width || 0) * 10) / 10,
+        cssHeight: Math.round((canvasRect?.height || 0) * 10) / 10,
+        backingWidth: Math.round(refs.canvas?.width || 0),
+        backingHeight: Math.round(refs.canvas?.height || 0),
+        viewport: canvasViewport ? {
+          left: Math.round(Number(canvasViewport.left || 0) * 10) / 10,
+          top: Math.round(Number(canvasViewport.top || 0) * 10) / 10,
+          width: Math.round(Number(canvasViewport.width || 0) * 10) / 10,
+          height: Math.round(Number(canvasViewport.height || 0) * 10) / 10,
+          zoom: Math.round(Number(canvasViewport.zoom || 0) * 10000) / 10000
+        } : null
+      },
+      drawing: {
+        strokeCount: Array.isArray(state.drawing) ? state.drawing.length : 0,
+        active: Boolean(drawingActive),
+        activePointCount: activeStroke?.points?.length || 0
+      }
+    };
+  }
+
   // P1.7.9.19: pieštuko koordinatės skaičiuojamos iš pačios lentos kameros,
   // o ne iš slankiojančio viewport canvas stačiakampio. Viewport canvas gali būti
   // perstatomas po scroll / resize / split pokyčio; jei tuo pat metu tęsiamas
@@ -9271,12 +9331,18 @@ KOKYBĖS REIKALAVIMAI:
     const boardRect = refs.board.getBoundingClientRect();
     const viewportWidth = Math.max(1, refs.board.clientWidth);
     const viewportHeight = Math.max(1, refs.board.clientHeight);
-    if (!(boardRect.width > 1 && boardRect.height > 1 && viewportWidth > 1 && viewportHeight > 1)) return null;
+    if (!(boardRect.width > 1 && boardRect.height > 1 && viewportWidth > 1 && viewportHeight > 1)) {
+      emitBoardDiagnostic('pointer-invalid-board-rect', { viewportWidth, viewportHeight, rectWidth: boardRect.width, rectHeight: boardRect.height }, 1500);
+      return null;
+    }
 
     const centerOffsetX = boardHorizontalCenterOffsetScreen(zoom, world);
     const clientX = Number(event?.clientX);
     const clientY = Number(event?.clientY);
-    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      emitBoardDiagnostic('pointer-invalid-client-coordinates', { clientX, clientY }, 1500);
+      return null;
+    }
 
     // clientLeft/clientTop pašalina scrollerio rėmelį; scrollLeft/scrollTop
     // grąžina ekraninę poziciją į mastelio turinio koordinates.
@@ -9285,9 +9351,20 @@ KOKYBĖS REIKALAVIMAI:
     const worldX = (refs.board.scrollLeft + viewportX - centerOffsetX) / zoom;
     const worldY = (refs.board.scrollTop + viewportY) / zoom;
 
+    const normalizedX = worldX / Math.max(1, world.width);
+    const normalizedY = worldY / Math.max(1, world.height);
+    if (normalizedX < -0.02 || normalizedX > 1.02 || normalizedY < -0.02 || normalizedY > 1.02) {
+      emitBoardDiagnostic('pointer-outside-world', {
+        pointerType: String(event?.pointerType || ''),
+        clientX: Math.round(clientX), clientY: Math.round(clientY),
+        normalizedX: Math.round(normalizedX * 10000) / 10000,
+        normalizedY: Math.round(normalizedY * 10000) / 10000
+      }, 1200);
+    }
+
     return {
-      x: Math.max(0, Math.min(1, worldX / Math.max(1, world.width))),
-      y: Math.max(0, Math.min(1, worldY / Math.max(1, world.height)))
+      x: Math.max(0, Math.min(1, normalizedX)),
+      y: Math.max(0, Math.min(1, normalizedY))
     };
   }
 
@@ -9302,6 +9379,11 @@ KOKYBĖS REIKALAVIMAI:
       && refs.board?.clientWidth > 1 && refs.board?.clientHeight > 1);
     if (!ready && Date.now() - boardDrawNotReadyToastAt > 1600) {
       boardDrawNotReadyToastAt = Date.now();
+      emitBoardDiagnostic('canvas-not-ready-for-drawing', {
+        boardWidth: refs.board?.clientWidth || 0, boardHeight: refs.board?.clientHeight || 0,
+        canvasWidth: refs.canvas?.width || 0, canvasHeight: refs.canvas?.height || 0,
+        hasContext: Boolean(drawingContext), hasViewport: Boolean(canvasViewport)
+      });
       showToast('Lenta dar kraunama – pabandyk rašyti dar kartą po akimirkos');
     }
     return ready;
@@ -9408,6 +9490,17 @@ KOKYBĖS REIKALAVIMAI:
     const previousPoint = activeStroke.points[activeStroke.points.length - 1];
     const nextPoint = pointFromEvent(event);
     if (!nextPoint) return;
+    const pointerJump = Math.hypot(nextPoint.x - previousPoint.x, nextPoint.y - previousPoint.y);
+    if (pointerJump > 0.12) {
+      emitBoardDiagnostic('pointer-coordinate-jump', {
+        pointerType: String(event?.pointerType || ''),
+        jump: Math.round(pointerJump * 10000) / 10000,
+        fromX: Math.round(previousPoint.x * 10000) / 10000,
+        fromY: Math.round(previousPoint.y * 10000) / 10000,
+        toX: Math.round(nextPoint.x * 10000) / 10000,
+        toY: Math.round(nextPoint.y * 10000) / 10000
+      }, 1200);
+    }
     activeStroke.points.push(nextPoint);
     // Ankstesnė versija čia kiekvienam pointermove išvalydavo canvas ir iš naujo
     // perpiešdavo visą state.drawing. Ilgesnėje pamokoje tai tapdavo O(visos lentos)
@@ -12182,6 +12275,7 @@ KOKYBĖS REIKALAVIMAI:
       window.dispatchEvent(new CustomEvent('p772:open-student-preview'));
     },
     getSharedSnapshot: onlineSharedSnapshot,
+    getDiagnosticSnapshot: boardDiagnosticSnapshot,
     applySharedPart: applyOnlineSharedPart,
     isSharedNoteEditing: sharedNoteEditingActive,
     setRemoteLiveStrokes(strokes) {
