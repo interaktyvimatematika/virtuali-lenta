@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.40';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.41';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1437,7 +1437,7 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       applyInitialWorkspace(blank);
     } else {
       let workspaceValue = snapshot.val() || {};
-      // P1.7.9.40 DIAGNOSTIC: atkūrimo tyrimo metu jokios senų Room geometrijos
+      // P1.7.9.41 RECOVERY: atkūrimo tyrimo metu jokios senų Room geometrijos
       // automatiškai nekeičiame, net jei lenta tuščia. Šis build'as turi tik perskaityti
       // esamą Firebase būseną ir parodyti ją palyginime su atsargine kopija.
       applyInitialWorkspace(workspaceValue);
@@ -2309,6 +2309,43 @@ function restoreRoomLabel(backupProfile, currentProfile, targetRoom, backupRoom,
   return title ? `${base} · ${title}` : base;
 }
 
+function restoreWorkspacePersistentContentCount(workspace) {
+  const source = workspace && typeof workspace === 'object' ? workspace : {};
+  let total = 0;
+  for (const key of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices']) {
+    const value = source[key];
+    if (Array.isArray(value)) total += value.filter(Boolean).length;
+    else if (value && typeof value === 'object') total += Object.keys(value).length;
+  }
+  return total;
+}
+
+function restoreScaleExperimentSignature(currentWorkspace, backupWorkspace) {
+  const current = currentWorkspace && typeof currentWorkspace === 'object' ? currentWorkspace : {};
+  const backup = backupWorkspace && typeof backupWorkspace === 'object' ? backupWorkspace : {};
+  const currentGeometry = current.boardGeometry && typeof current.boardGeometry === 'object' ? current.boardGeometry : {};
+  const backupGeometry = backup.boardGeometry && typeof backup.boardGeometry === 'object' ? backup.boardGeometry : {};
+  const currentWidth = Number(currentGeometry.worldWidth || 0);
+  const currentHeight = Number(currentGeometry.worldHeight || 0);
+  const currentOriginX = Number(currentGeometry.worldOriginX || 0);
+  const currentOriginY = Number(currentGeometry.worldOriginY || 0);
+  const backupWidth = Number(backupGeometry.worldWidth || 0);
+  const backupHeight = Number(backupGeometry.worldHeight || 0);
+  const contentCount = restoreWorkspacePersistentContentCount(backup);
+
+  // P1.7.9.35 / .36 klaidinga migracija turėjo labai konkretų parašą:
+  // turininga sena lenta (>720 px) buvo pakeista į 720 px, aukštį skaičiuojant
+  // max(10000, ceil(oldHeight * 720 / oldWidth)), o pasaulio pradžią nustatant į 0,0.
+  // Žyma workspace.meta galėjo vėliau būti prarasta, todėl remiamės pačios
+  // transformacijos matematiniu parašu. Tuščios lentos sąmoningai neįtraukiamos.
+  if (!(contentCount > 0 && backupWidth > BOARD_STRIP_DEFAULT_WIDTH + 1 && currentWidth === BOARD_STRIP_DEFAULT_WIDTH)) return null;
+  const scale = BOARD_STRIP_DEFAULT_WIDTH / backupWidth;
+  const expectedHeight = Math.max(BOARD_STRIP_INITIAL_HEIGHT, Math.ceil(backupHeight * scale));
+  if (Math.abs(currentHeight - expectedHeight) > 1) return null;
+  if (Math.abs(currentOriginX) > 0.001 || Math.abs(currentOriginY) > 0.001) return null;
+  return { backupWidth, backupHeight, currentWidth, currentHeight, expectedHeight, scale, contentCount };
+}
+
 async function restoreLoadCurrentRooms(roomIds) {
   const ids = Array.from(new Set((roomIds || []).map(safeRoom).filter(Boolean)));
   const rooms = {};
@@ -2355,9 +2392,13 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
       ? before.workspace.meta.boardCoordinateMigration
       : null;
     const migrationBuild = String(migrationMeta?.build || '');
-    const isScaleExperimentMigration = boardChanged
+    const backupContentCount = restoreWorkspacePersistentContentCount(after?.workspace);
+    const migrationSignature = boardChanged ? restoreScaleExperimentSignature(before?.workspace, after?.workspace) : null;
+    const markerMatches = boardChanged
+      && backupContentCount > 0
       && Number(migrationMeta?.version || 0) === RECOVERY_SCALE_MIGRATION_VERSION
       && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36');
+    const isScaleExperimentMigration = Boolean(migrationSignature || markerMatches);
     let kind = 'changed';
     let detail = [];
     if (progressChanged && (currentProgress.taskCount || backupProgress.taskCount)) {
@@ -2380,6 +2421,7 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
       if (currentWidth || backupWidth) detail.push(`geometrija: dabar ${currentWidth || '?'}×${currentHeight || '?'} · kopijoje ${backupWidth || '?'}×${backupHeight || '?'}`);
       if (currentCoord || backupCoord) detail.push(`koord. versija: dabar ${currentCoord || '—'} · kopijoje ${backupCoord || '—'}`);
       detail.push(migrationMeta ? `migracijos žyma: ${migrationBuild || 'yra'}` : 'migracijos žymos nėra');
+      if (migrationSignature) detail.push(`sutampa .35/.36 transformacijos parašas: ${migrationSignature.backupWidth}×${migrationSignature.backupHeight} → ${migrationSignature.currentWidth}×${migrationSignature.currentHeight}`);
     }
     const currentUpdated = restoreRoomUpdatedAt(before);
     const backupUpdated = restoreRoomUpdatedAt(after);
@@ -2388,7 +2430,7 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
     const roomLabel = restoreRoomLabel(backup.profile, currentProfile, targetRoom, after, before);
     roomItems.push({ roomId: targetRoom, kind, label: roomLabel, detail: detail.join(' · ') || 'Room duomenys bus pakeisti.', boardChanged, progressChanged, isScaleExperimentMigration, migrationBuild });
     if (isScaleExperimentMigration) {
-      scaleMigrationRooms.push({ roomId: targetRoom, label: roomLabel, migrationBuild });
+      scaleMigrationRooms.push({ roomId: targetRoom, label: roomLabel, migrationBuild, detection: migrationSignature ? 'geometry-signature' : 'marker' });
     }
   }
   const extraRooms = (currentRoomIds || []).filter(id => !backup.rooms[id]);
@@ -2503,16 +2545,19 @@ window.addEventListener('p2:restore-scale-migration-request', async () => {
     const targetRoomIds = [];
     for (const targetRoom of backupRoomIds) {
       const currentWorkspace = loaded.rooms?.[targetRoom]?.workspace;
+      const backupWorkspace = backup.rooms?.[targetRoom]?.workspace;
+      if (!backupWorkspace) continue;
       const migrationMeta = currentWorkspace?.meta?.boardCoordinateMigration && typeof currentWorkspace.meta.boardCoordinateMigration === 'object'
         ? currentWorkspace.meta.boardCoordinateMigration
         : null;
       const migrationBuild = String(migrationMeta?.build || '');
-      const isTarget = Number(migrationMeta?.version || 0) === RECOVERY_SCALE_MIGRATION_VERSION
-        && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36')
-        && backup.rooms?.[targetRoom]?.workspace;
-      if (isTarget) targetRoomIds.push(targetRoom);
+      const markerMatches = restoreWorkspacePersistentContentCount(backupWorkspace) > 0
+        && Number(migrationMeta?.version || 0) === RECOVERY_SCALE_MIGRATION_VERSION
+        && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36');
+      const signatureMatches = Boolean(restoreScaleExperimentSignature(currentWorkspace, backupWorkspace));
+      if (markerMatches || signatureMatches) targetRoomIds.push(targetRoom);
     }
-    if (!targetRoomIds.length) throw new Error('Nebėra lentų su P1.7.9.35 / P1.7.9.36 mastelio migracijos žyma. Nieko atkurti nereikia.');
+    if (!targetRoomIds.length) throw new Error('Nebėra turiningų lentų, kurios atitiktų P1.7.9.35 / P1.7.9.36 klaidingos transformacijos parašą. Nieko atkurti nereikia.');
 
     const connectedOthers = await otherConnectedClientsInRooms(targetRoomIds);
     if (connectedOthers > 0) throw new Error(`Atkūrimas sustabdytas: ${connectedOthers} kiti įrenginiai vis dar prisijungę prie atkuriamų Room. Uždaryk kitus tų lentų langus ir bandyk dar kartą.`);
@@ -2534,10 +2579,10 @@ window.addEventListener('p2:restore-scale-migration-request', async () => {
     bridge.showToast?.(`Atkurta ${targetRoomIds.length} lentų būsena`);
     window.dispatchEvent(new CustomEvent('p2:restore-complete', { detail: {
       roomCount: targetRoomIds.length,
-      message: `Atkurta tik ${targetRoomIds.length} P1.7.9.35 / P1.7.9.36 mastelio eksperimento paliestų lentų būsena. Mokinių bazė, tvarkaraštis ir pratybų progresas nepakeisti.`
+      message: `Atkurta tik ${targetRoomIds.length} P1.7.9.35 / P1.7.9.36 klaidingos geometrijos transformacijos paliestų lentų būsena. Mokinių bazė, tvarkaraštis ir pratybų progresas nepakeisti.`
     }}));
   } catch (error) {
-    console.error('P1.7.9.39 tikslinio lentų atkūrimo klaida', error);
+    console.error('P1.7.9.41 tikslinio lentų atkūrimo klaida', error);
     bridge.showToast?.('Lentų atkūrimas sustabdytas');
     window.dispatchEvent(new CustomEvent('p2:restore-error', { detail: { message: String(error?.message || error || 'Lentų atkūrimas nepavyko.') } }));
   }
@@ -2969,7 +3014,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.40 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.41 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
