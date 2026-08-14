@@ -7507,7 +7507,7 @@ body.teacher-auth-open { overflow: hidden; }
 .teacher-auth-link-google { margin-top: 1px; }
 
 
-/* P1.7.9.34 — atkurta lentos teksto tipografija pagal 18 px smulkų tinklelio langelį.
+/* P1.7.9.37 — atkurta lentos teksto tipografija pagal 18 px smulkų tinklelio langelį.
    P1.7.9.19 42 px / 54 px override buvo per didelis dabartiniam tinkleliui.
    Pieštuko storis nekeičiamas; mišri formulė paveldi tą patį bazinį mastelį kaip tekstas. */
 body.p2-shell .board-note.board-mixed-editor {

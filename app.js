@@ -447,7 +447,7 @@
     boardPractices: [],
     activeBoardPracticeId: null,
     activeBoardObject: null,
-    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 720, worldHeight: 10000, coordinateSystemVersion: 3, layoutMode: 'vertical-strip' },
+    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 720, worldHeight: 10000, layoutMode: 'vertical-strip' },
     practiceOnly: { active: false, practiceId: null },
     mathToolbarCategory: 'Pagrindiniai',
     library: createInitialLibrary(),
@@ -567,7 +567,6 @@
       worldHeight: Math.max(BOARD_WORLD_MIN_HEIGHT, Math.min(BOARD_WORLD_MAX_HEIGHT, Number(camera?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT)),
       worldOriginX: Math.max(0, Number(camera?.worldOriginX) || 0),
       worldOriginY: Math.max(0, Number(camera?.worldOriginY) || 0),
-      coordinateSystemVersion: Math.max(2, Number(camera?.coordinateSystemVersion) || ((Number(camera?.worldWidth) || BOARD_STRIP_DEFAULT_WIDTH) <= BOARD_STRIP_DEFAULT_WIDTH + 1 ? 3 : 2)),
       layoutMode: 'vertical-strip'
     };
   }
@@ -608,10 +607,6 @@
   const BOARD_LEGACY_FIT_PADDING_X = 28;
 
   function boardUser100Zoom(viewportWidthOverride = null) {
-    // P1.7.9.35: po vienkartinės senų Room koordinačių migracijos visos 720 px
-    // lentos naudoja tą pačią dabartinę 100 % sistemą. Legacy šaka lieka tik
-    // saugiam vaizdui, jei seną Room pirmiau atidarė mokinys ir mokytojas jo dar
-    // nespėjo normalizuoti.
     if (!boardUsesLegacyReadableScale()) return boardFitZoom(viewportWidthOverride);
     const bounds = boardContentBounds();
     const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
@@ -635,8 +630,7 @@
   function boardGeometrySnapshot() {
     const camera = normalizeCamera(state?.camera || {});
     return {
-      schemaVersion: Number(state?.camera?.coordinateSystemVersion) >= 3 ? 3 : 2,
-      coordinateSystemVersion: Number(state?.camera?.coordinateSystemVersion) || (camera.worldWidth <= BOARD_STRIP_DEFAULT_WIDTH + 1 ? 3 : 2),
+      schemaVersion: 2,
       layoutMode: 'vertical-strip',
       worldWidth: camera.worldWidth,
       worldHeight: camera.worldHeight,
@@ -651,12 +645,10 @@
       worldWidth: geometry?.worldWidth,
       worldHeight: geometry?.worldHeight,
       worldOriginX: geometry?.worldOriginX,
-      worldOriginY: geometry?.worldOriginY,
-      coordinateSystemVersion: geometry?.coordinateSystemVersion
+      worldOriginY: geometry?.worldOriginY
     });
     return {
-      schemaVersion: Number(geometry?.schemaVersion) >= 3 ? 3 : 2,
-      coordinateSystemVersion: Number(geometry?.coordinateSystemVersion) || (camera.worldWidth <= BOARD_STRIP_DEFAULT_WIDTH + 1 ? 3 : 2),
+      schemaVersion: 2,
       layoutMode: 'vertical-strip',
       worldWidth: camera.worldWidth,
       worldHeight: camera.worldHeight,
@@ -791,7 +783,6 @@
     state.camera.worldHeight = next.worldHeight;
     state.camera.worldOriginX = next.worldOriginX;
     state.camera.worldOriginY = next.worldOriginY;
-    state.camera.coordinateSystemVersion = Number(next.coordinateSystemVersion) || (next.worldWidth <= BOARD_STRIP_DEFAULT_WIDTH + 1 ? 3 : 2);
     state.camera.scrollLeft = Math.max(0, oldScrollLeft + deltaOriginX * currentBoardZoom());
     state.camera.scrollTop = Math.max(0, oldScrollTop + deltaOriginY * currentBoardZoom());
     applyBoardCamera({ restoreScroll: true });
