@@ -538,21 +538,10 @@
   const BOARD_CANVAS_REPOSITION_GUARD_SCREEN = 110;
   const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
 
-  // Jei Room buvo tik atvertas su ankstesne 2400 / 1400 px juosta, bet joje dar nėra
-  // jokio realaus lentos turinio, saugiai pritaikome naują 720 px plotį.
-  // Lentos su esamais piešiniais / objektais neliečiamos, kad niekas nebūtų suspausta.
-  const boardHasPersistentContent = Boolean(
-    (state.drawing || []).length ||
-    (state.notes || []).length ||
-    (state.boardImages || []).length ||
-    (state.boardTasks || []).length ||
-    (state.boardPractices || []).length
-  );
-  if (!boardHasPersistentContent && state.camera?.layoutMode === 'vertical-strip' && Number(state.camera?.worldWidth) !== BOARD_STRIP_DEFAULT_WIDTH) {
-    // Tuščias senas Room gali būti saugiai pritaikytas prie naujo lapo pločio.
-    state.camera.worldWidth = BOARD_STRIP_DEFAULT_WIDTH;
-    state.camera.scrollLeft = 0;
-  }
+  // P1.7.9.42: lentos geometrijos daugiau automatiškai nemigruojame net tada,
+  // kai istorinis Room yra tuščias. Nauji Room ir taip kuriami 720 px pločio, o
+  // senų Room worldWidth / worldHeight paliekami tokie, kokie buvo išsaugoti.
+  // Mastelio suderinimas nuo šiol yra tik kameros / peržiūros atsakomybė.
 
   function clampCameraZoom(value) {
     return Math.max(0.005, Math.min(1.8, Number(value) || 1));
@@ -597,17 +586,18 @@
     return world.width > BOARD_STRIP_DEFAULT_WIDTH + 1;
   }
 
-  // Istorinėms plačioms 2D lentoms visas senasis 20–30 tūkst. px pasaulis nėra
-  // prasmingas „lentos plotis“. Jų 100 % skaičiuojamas pagal REALIAI panaudoto
-  // turinio horizontalias ribas. Taip 100 % ir naujoje, ir istorinėje lentoje reiškia
-  // tą patį vartotojui: aktualus lentos turinys telpa per plotį. Jei turinys dar tik
-  // kraunamas iš Firebase, laikinai naudojamas senoms lentoms saugus 0.20 mastelis;
-  // po snapshot'o 100 % perskaičiuojamas dar kartą.
+  // P1.7.9.42: 100 % turi vieną universalią geometrinę reikšmę visoms lentoms:
+  // camera.zoom === 1.0, t. y. 1 lentos pasaulio px = 1 CSS px. Istorinės lentos
+  // vis dar gali būti automatiškai SUTALPINAMOS pirmą kartą atidarant, tačiau tada
+  // UI rodo tikrą mastelį (pvz. 8 %, 27 %, 63 %), o ne klaidinantį „100 %“.
   const BOARD_LEGACY_FALLBACK_ZOOM = 0.20;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
 
-  function boardUser100Zoom(viewportWidthOverride = null) {
-    if (!boardUsesLegacyReadableScale()) return boardFitZoom(viewportWidthOverride);
+  function boardUser100Zoom() {
+    return 1;
+  }
+
+  function boardLegacyContentFitZoom(viewportWidthOverride = null) {
     const bounds = boardContentBounds();
     const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
     if (!bounds) return clampCameraZoom(BOARD_LEGACY_FALLBACK_ZOOM);
@@ -616,15 +606,19 @@
     return clampCameraZoom(Math.min(1, availableWidth / contentWidth));
   }
 
+  function boardInitialFitZoom(viewportWidthOverride = null) {
+    return boardUsesLegacyReadableScale()
+      ? boardLegacyContentFitZoom(viewportWidthOverride)
+      : boardFitZoom(viewportWidthOverride);
+  }
+
   function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
-    const baseZoom = Math.max(0.001, boardUser100Zoom());
-    return Math.max(1, Math.round((actualZoom / baseZoom) * 100));
+    return Math.max(1, Math.round(clampCameraZoom(actualZoom) * 100));
   }
 
   function setBoardUserZoomPercent(percent, options = {}) {
-    const baseZoom = Math.max(0.001, boardUser100Zoom());
-    const normalized = Math.max(20, Math.min(250, Number(percent) || 100));
-    setBoardZoom(baseZoom * normalized / 100, options);
+    const normalized = Math.max(1, Math.min(180, Number(percent) || 100));
+    setBoardZoom(normalized / 100, options);
   }
 
   function boardGeometrySnapshot() {
@@ -8718,12 +8712,12 @@ KOKYBĖS REIKALAVIMAI:
     if (!id || !refs.board) return;
     const saved = roomBoardViews.get(id) || null;
     if (!saved) {
-      showBoardAt100FromTop({ save: false });
+      showBoardFittedFromTop({ save: false });
       return;
     }
     const camera = normalizeCamera(state.camera);
     if (Number.isFinite(saved?.userZoomPercent)) {
-      state.camera.zoom = clampCameraZoom(boardUser100Zoom() * saved.userZoomPercent / 100);
+      state.camera.zoom = clampCameraZoom(saved.userZoomPercent / 100);
     } else if (saved?.zoom) {
       state.camera.zoom = clampCameraZoom(saved.zoom);
     }
@@ -8752,7 +8746,7 @@ KOKYBĖS REIKALAVIMAI:
     if (event.detail?.switched) return;
     const id = String(event.detail?.roomId || '').trim().toUpperCase();
     if (id && roomBoardViews.has(id)) restoreBoardViewForRoom(id);
-    else showBoardAt100FromTop({ save: false });
+    else showBoardFittedFromTop({ save: false });
   });
 
 
@@ -8889,16 +8883,17 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
-  function showBoardAt100FromTop(options = {}) {
+  function showBoardFittedFromTop(options = {}) {
     const legacyReadable = boardUsesLegacyReadableScale();
     let settled = false;
     let attempt = 0;
     const retryDelays = [0, 40, 120, 260, 500, 900, 1500];
 
-    const apply100AndAlign = () => {
+    const applyFitAndAlign = () => {
       attempt += 1;
-      const targetZoom = boardUser100Zoom();
-      state.camera.zoom = targetZoom;
+      // Tai tik pradinis PERŽIŪROS pritaikymas. Pats worldWidth/worldHeight ir visas
+      // Room turinys neliečiami. UI procentas rodo realų camera.zoom.
+      state.camera.zoom = boardInitialFitZoom();
       state.camera.scrollLeft = 0;
       state.camera.scrollTop = 0;
       applyBoardCamera();
@@ -8917,15 +8912,15 @@ KOKYBĖS REIKALAVIMAI:
         // workspace-ready gali įvykti anksčiau už Firebase drawing snapshot'ą.
         // Kol realaus turinio ribų dar nėra, kelis kartus tyliai pakartojame.
         if (legacyReadable && !aligned && attempt < retryDelays.length) {
-          setTimeout(apply100AndAlign, retryDelays[attempt]);
+          setTimeout(applyFitAndAlign, retryDelays[attempt]);
           return;
         }
 
-        // Net jei ribos jau buvo gautos, po Firebase snapshot'o jos gali pasipildyti.
-        // Vienas vėlyvas perskaičiavimas užtikrina, kad 100 % remiasi pilnu turiniu.
+        // Po Firebase snapshot'o turinio ribos gali pasipildyti, todėl vieną kartą
+        // vėliau perskaičiuojame tik pradinį fit mastelį. Tai nėra 100 % keitimas.
         if (legacyReadable && aligned && !settled && attempt < 4) {
           settled = true;
-          setTimeout(apply100AndAlign, 220);
+          setTimeout(applyFitAndAlign, 220);
           return;
         }
 
@@ -8933,7 +8928,7 @@ KOKYBĖS REIKALAVIMAI:
       });
     };
 
-    apply100AndAlign();
+    applyFitAndAlign();
   }
 
   function focusBoardElement(element, options = {}) {
@@ -9029,8 +9024,8 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
     refs.boardZoomActualButton.addEventListener('click', () => {
-      if (boardUsesLegacyReadableScale()) showBoardAt100FromTop();
-      else setBoardUserZoomPercent(100, { preserveCenter: true });
+      // 100 % nuo P1.7.9.42 visur yra tikras camera.zoom = 1.0.
+      setBoardUserZoomPercent(100, { preserveCenter: true });
     });
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
     refs.practiceOnlyButton.addEventListener('click', () => enterPracticeOnly());
@@ -9294,7 +9289,7 @@ KOKYBĖS REIKALAVIMAI:
         worldHeight: Math.round(world.height || 0),
         zoom: Math.round(zoom * 10000) / 10000,
         userZoomPercent: boardUserZoomPercent(zoom),
-        fitZoom: Math.round(boardUser100Zoom() * 10000) / 10000,
+        fitZoom: Math.round(boardInitialFitZoom() * 10000) / 10000,
         centerOffsetX: Math.round(boardHorizontalCenterOffsetScreen(zoom, world) * 10) / 10
       },
       canvas: {
@@ -12364,10 +12359,9 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointerup', stopDrawing);
   refs.canvas.addEventListener('pointercancel', stopDrawing);
 
-  // P1.7.9.22: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
-  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome VARTOTOJO mastelį,
-  // o ne seną fizinį CSS zoom. Taigi 100 % po pasukimo lieka 100 %, 150 %
-  // lieka 150 %, tik perskaičiuojami pagal naują turimą plotį.
+  // P1.7.9.42: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
+  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome tą patį FIZINĮ zoom.
+  // Procentas nebėra santykinis nuo viewport'o: 100 % visada yra zoom=1.
   let boardLastViewportWidth = 0;
   let boardViewportResizeFrame = 0;
   const boardViewportObserver = new ResizeObserver(() => {
@@ -12380,12 +12374,8 @@ KOKYBĖS REIKALAVIMAI:
       if (nextWidth < 80 || nextHeight < 80) return;
 
       const oldZoom = currentBoardZoom();
-      if (boardLastViewportWidth >= 80 && Math.abs(nextWidth - boardLastViewportWidth) > 0.5) {
-        const oldBase = Math.max(0.001, boardUser100Zoom(boardLastViewportWidth));
-        const userScale = oldZoom / oldBase;
-        const nextBase = Math.max(0.001, boardUser100Zoom(nextWidth));
-        state.camera.zoom = clampCameraZoom(nextBase * userScale);
-      }
+      // P1.7.9.42: keičiantis viewport'ui fizinio lentos mastelio nebekeičiame.
+      // 100 % lieka camera.zoom=1 net pasukus planšetę ar pakeitus lango plotį.
       boardLastViewportWidth = nextWidth;
       applyBoardCamera({ preserveCenter: true, oldZoom });
       resizeCanvas({ force: true });

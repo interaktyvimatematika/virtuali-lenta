@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.41';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.42';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4178,10 +4178,6 @@
     const backup = detail.backupCounts || {};
     const current = detail.currentCounts || {};
     const warnings = Array.isArray(detail.warnings) ? detail.warnings.filter(Boolean) : [];
-    const scaleMigrationCount = Math.max(0, Number(detail.changes?.rooms?.scaleMigrationCount || 0));
-    const scaleMigrationRooms = Array.isArray(detail.changes?.rooms?.scaleMigrationRooms) ? detail.changes.rooms.scaleMigrationRooms : [];
-    const targetedRecovery = true;
-    const hasTargetedRecovery = scaleMigrationCount > 0;
     body.innerHTML = `
       <section class="p2-backup-restore-file">
         <div><span>Pasirinktas failas</span><strong>${escapeHtml(detail.fileName || 'Atsarginė kopija')}</strong><small>${escapeHtml(backupRestoreDate(detail.exportedAtIso || detail.exportedAt))} · ${escapeHtml(detail.appBuild || 'versija nenurodyta')}</small></div>
@@ -4194,15 +4190,13 @@
       </div>
       ${backupRestoreDiffHtml(detail.changes || {})}
       ${warnings.length ? `<div class="p2-backup-restore-warnings"><strong>Prieš atkuriant</strong>${warnings.map(text => `<p>• ${escapeHtml(text)}</p>`).join('')}</div>` : ''}
-      ${hasTargetedRecovery ? `<div class="p2-backup-restore-warnings"><strong>Aptikta P1.7.9.35 / P1.7.9.36 klaidinga lentos transformacija</strong><p>• ${backupRestoreCount(scaleMigrationCount)} turiningose lentose rasta mūsų klaidingos transformacijos žyma arba tikslus jos geometrijos parašas.</p><p>• Bus galima atkurti tik šių Room lentos <b>workspace</b> iš kopijos.</p><p>• Mokinių bazė, tvarkaraštis, pratybų progresas ir nauji Room nebus keičiami.</p>${scaleMigrationRooms.map(item => `<p>• ${escapeHtml(String(item.label || item.roomId || 'Room'))}</p>`).join('')}</div>` : ''}
       <div class="p2-backup-restore-policy">
-        <strong>${targetedRecovery ? 'Saugus atkūrimo režimas' : 'Kas bus daroma?'}</strong>
-        ${hasTargetedRecovery
-          ? `<p>Šiame atkūrimo build'e pilnas profilio grąžinimas sąmoningai išjungtas. Bus galima atkurti tik tas turiningas lentas, kurios tiksliai atitinka P1.7.9.35 / P1.7.9.36 klaidingos transformacijos parašą.</p><p><b>Saugiklis:</b> prieš atkuriant tik lentas programa automatiškai atsisiųs dar vieną dabartinės būsenos kopiją.</p>`
-          : `<p><b>Nerasta nė vienos turiningos lentos, atitinkančios P1.7.9.35 / P1.7.9.36 klaidingos transformacijos parašą.</b> Ši versija sąmoningai neleidžia atlikti pilno profilio atkūrimo, todėl niekas nebus keičiama.</p>`}
+        <strong>Kas bus daroma?</strong>
+        <p>Mokinių bazė, tvarkaraštis ir pamokų istorija bus grąžinti į pasirinktos kopijos būseną. Kopijoje esantys Room atkurs savo lentą ir pratybų progresą.</p>
+        <p><b>Saugiklis:</b> prieš įrašymą programa automatiškai atsisiųs dar vieną dabartinės būsenos kopiją „prieš atkūrimą“. Room, kurių pasirinktoje kopijoje nėra, fiziškai nebus ištrinami.</p>
       </div>
-      ${hasTargetedRecovery ? `<label class="p2-backup-restore-confirm"><input type="checkbox" id="p2BackupRestoreConfirm"> <span>Suprantu, kad bus atkurtos tik ${backupRestoreCount(scaleMigrationCount)} klaidingos transformacijos paliestų lentų būsenos.</span></label>` : ''}
-      <div class="p2-backup-restore-actions"><button type="button" class="p2-secondary" data-backup-restore-close-action>Atšaukti</button>${hasTargetedRecovery ? `<button type="button" class="p2-primary p2-backup-restore-apply" data-backup-restore-apply disabled>Atkurti tik ${backupRestoreCount(scaleMigrationCount)} pažeistas lentas</button>` : ''}</div>`;
+      <label class="p2-backup-restore-confirm"><input type="checkbox" id="p2BackupRestoreConfirm"> <span>Suprantu, kad dabartinė mokinių bazės būsena bus pakeista pasirinktos atsarginės kopijos būsena.</span></label>
+      <div class="p2-backup-restore-actions"><button type="button" class="p2-secondary" data-backup-restore-close-action>Atšaukti</button><button type="button" class="p2-primary p2-backup-restore-apply" data-backup-restore-apply disabled>Atkurti šią kopiją</button></div>`;
     const checkbox = body.querySelector('#p2BackupRestoreConfirm');
     const apply = body.querySelector('[data-backup-restore-apply]');
     checkbox?.addEventListener('change', () => { if (apply) apply.disabled = !checkbox.checked; });
@@ -4212,7 +4206,7 @@
       apply.disabled = true;
       apply.textContent = 'Atkuriama…';
       body.querySelector('[data-backup-restore-close-action]')?.setAttribute('disabled', '');
-      window.dispatchEvent(new CustomEvent('p2:restore-scale-migration-request'));
+      window.dispatchEvent(new CustomEvent('p2:restore-apply-request'));
     });
     modal.hidden = false;
   }
