@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.3';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -955,11 +955,12 @@
 
   const prefs = readPrefs();
   let view = ['board', 'split', 'practice'].includes(prefs.view) ? prefs.view : 'split';
-  let ratio = Number.isFinite(Number(prefs.ratio)) ? Number(prefs.ratio) : 55;
-  ratio = Math.max(34, Math.min(72, ratio));
+  // P1.7.9.3: padalintas režimas yra fiksuotas 50/50. Santykis nebesaugomas kaip
+  // vartotojo pasirinkimas, kad lenta kiekvieną kartą turėtų tą patį vizualų plotį.
+  const ratio = 50;
 
   function savePrefs() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ view, ratio })); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ view, ratio: 50 })); } catch (_) {}
   }
 
   function role() {
@@ -981,50 +982,20 @@
     document.querySelectorAll('[data-p2-view]').forEach(btn => btn.classList.toggle('is-active', btn.dataset.p2View === view));
     splitter.setAttribute('aria-hidden', view !== 'split' ? 'true' : 'false');
     if (persist) savePrefs();
-    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+      window.dispatchEvent(new CustomEvent('p2:view-changed', { detail: { view } }));
+    });
   }
 
   document.querySelectorAll('[data-p2-view]').forEach(button => {
     button.addEventListener('click', () => applyView(button.dataset.p2View));
   });
 
-  let drag = null;
-  splitter.addEventListener('pointerdown', event => {
-    if (view !== 'split') return;
-    event.preventDefault();
-    splitter.setPointerCapture?.(event.pointerId);
-    drag = { pointerId: event.pointerId };
-    body.classList.add('p2-resizing');
-  });
-  splitter.addEventListener('pointermove', event => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const rect = workspace.getBoundingClientRect();
-    const stacked = matchMedia('(max-width: 900px)').matches;
-    const raw = stacked ? ((event.clientY - rect.top) / rect.height * 100) : ((event.clientX - rect.left) / rect.width * 100);
-    ratio = Math.max(34, Math.min(72, raw));
-    applyRatio();
-  });
-  const endDrag = event => {
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    drag = null;
-    body.classList.remove('p2-resizing');
-    savePrefs();
-    window.dispatchEvent(new Event('resize'));
-  };
-  splitter.addEventListener('pointerup', endDrag);
-  splitter.addEventListener('pointercancel', endDrag);
-  splitter.addEventListener('keydown', event => {
-    if (view !== 'split') return;
-    const stacked = matchMedia('(max-width: 900px)').matches;
-    const dec = stacked ? 'ArrowUp' : 'ArrowLeft';
-    const inc = stacked ? 'ArrowDown' : 'ArrowRight';
-    if (![dec, inc].includes(event.key)) return;
-    event.preventDefault();
-    ratio = Math.max(34, Math.min(72, ratio + (event.key === inc ? 3 : -3)));
-    applyRatio();
-    savePrefs();
-    window.dispatchEvent(new Event('resize'));
-  });
+  // Fiksuotas 50/50 skyriklis yra tik vizualus: jo nebegalima tempti ar keisti
+  // klaviatūra. Tai išlaiko vienodą lentos mastelį kiekvienoje pamokoje.
+  splitter.setAttribute('aria-disabled', 'true');
+  splitter.tabIndex = -1;
 
   function emptyProgress() {
     return {

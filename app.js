@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 1000;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.2: vertikali juosta susiaurinta iki 1000 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.3: vertikali juosta susiaurinta iki 1000 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -8701,6 +8701,18 @@ KOKYBĖS REIKALAVIMAI:
     const id = String(event.detail?.roomId || '').trim().toUpperCase();
     if (id && roomBoardViews.has(id)) restoreBoardViewForRoom(id);
     else showBoardFromTop({ fitWidth: true, save: false });
+  });
+
+
+  // P1.7.9.3: tiek Padalintame, tiek pilnos Lentos režime darbinė juosta turi
+  // tą patį vizualų plotį. Po režimo perskaičiavimo pritaikome juostą pagal jos
+  // konteinerio plotį, bet išlaikome tą pačią vertikalią skaitymo vietą.
+  window.addEventListener('p2:view-changed', event => {
+    const nextView = String(event.detail?.view || '');
+    if (!['board', 'split'].includes(nextView) || state.practiceOnly?.active) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fitBoardWidth({ top: false, save: false });
+    }));
   });
 
   function applyBoardCamera(options = {}) {
