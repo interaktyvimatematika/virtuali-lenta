@@ -7505,3 +7505,24 @@ body.teacher-auth-open { overflow: hidden; }
 .teacher-auth-google-button:disabled { opacity: .58; cursor: default; }
 .teacher-auth-google-mark { width: 22px; height: 22px; display: inline-grid; place-items: center; border: 1px solid #dde3ec; border-radius: 50%; background: #fff; color: #3f5fbd; font-size: 13px; font-weight: 900; }
 .teacher-auth-link-google { margin-top: 1px; }
+
+
+/* P1.7.9.34 — atkurta lentos teksto tipografija pagal 18 px smulkų tinklelio langelį.
+   P1.7.9.19 42 px / 54 px override buvo per didelis dabartiniam tinkleliui.
+   Pieštuko storis nekeičiamas; mišri formulė paveldi tą patį bazinį mastelį kaip tekstas. */
+body.p2-shell .board-note.board-mixed-editor {
+  font-size: 16px;
+  line-height: 18px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
+  min-height: 18px;
+}
+@media (pointer: coarse) {
+  body.p2-shell .board-note.board-mixed-editor {
+    font-size: 16px;
+    line-height: 18px;
+  }
+  body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
+    min-height: 18px;
+  }
+}
