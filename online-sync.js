@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.37';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.38';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2349,6 +2349,7 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
   const sessionDiff = restoreCollectionDiff(currentProfile?.classSessions, backup.profile?.classSessions);
   const runDiff = restoreCollectionDiff(currentProfile?.scheduleRuns, backup.profile?.scheduleRuns);
   const roomItems = [];
+  const scaleMigrationRooms = [];
   let roomChanged = 0, progressBack = 0, progressForward = 0, roomNew = 0;
   for (const targetRoom of Object.keys(backup.rooms)) {
     const before = currentRooms[targetRoom] || null;
@@ -2365,6 +2366,13 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
     const boardChanged = !restoreSameValue(before.workspace, after.workspace);
     const progressChanged = !restoreSameValue(before.p2?.student?.progress, after.p2?.student?.progress)
       || !restoreSameValue(before.p2?.student?.assignment, after.p2?.student?.assignment);
+    const migrationMeta = before?.workspace?.meta?.boardCoordinateMigration && typeof before.workspace.meta.boardCoordinateMigration === 'object'
+      ? before.workspace.meta.boardCoordinateMigration
+      : null;
+    const migrationBuild = String(migrationMeta?.build || '');
+    const isScaleExperimentMigration = boardChanged
+      && Number(migrationMeta?.version || 0) === BOARD_COORDINATE_SYSTEM_VERSION
+      && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36');
     let kind = 'changed';
     let detail = [];
     if (progressChanged && (currentProgress.taskCount || backupProgress.taskCount)) {
@@ -2379,7 +2387,11 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
     const backupUpdated = restoreRoomUpdatedAt(after);
     if (currentUpdated && backupUpdated && backupUpdated < currentUpdated) detail.push('kopijos Room būsena senesnė');
     else if (currentUpdated && backupUpdated && backupUpdated > currentUpdated) detail.push('kopijos Room būsena naujesnė');
-    roomItems.push({ roomId: targetRoom, kind, label: restoreRoomLabel(backup.profile, currentProfile, targetRoom, after, before), detail: detail.join(' · ') || 'Room duomenys bus pakeisti.' });
+    const roomLabel = restoreRoomLabel(backup.profile, currentProfile, targetRoom, after, before);
+    roomItems.push({ roomId: targetRoom, kind, label: roomLabel, detail: detail.join(' · ') || 'Room duomenys bus pakeisti.', boardChanged, progressChanged, isScaleExperimentMigration, migrationBuild });
+    if (isScaleExperimentMigration) {
+      scaleMigrationRooms.push({ roomId: targetRoom, label: roomLabel, migrationBuild });
+    }
   }
   const extraRooms = (currentRoomIds || []).filter(id => !backup.rooms[id]);
   const studentItems = [];
@@ -2396,7 +2408,7 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
       runs: runDiff,
       totalChanges: scheduleDiff.totalChanges + sessionDiff.totalChanges + runDiff.totalChanges
     },
-    rooms: { changed: roomChanged, restored: roomNew, progressBack, progressForward, extra: extraRooms.length, items: roomItems, extraRoomIds: extraRooms }
+    rooms: { changed: roomChanged, restored: roomNew, progressBack, progressForward, extra: extraRooms.length, items: roomItems, extraRoomIds: extraRooms, scaleMigrationRooms, scaleMigrationCount: scaleMigrationRooms.length }
   };
 }
 
@@ -2480,6 +2492,56 @@ window.addEventListener('p2:restore-preview-request', async event => {
     pendingRestoreFileName = '';
     console.error('P2 atsarginės kopijos patikros klaida', error);
     window.dispatchEvent(new CustomEvent('p2:restore-preview-error', { detail: { message: String(error?.message || error || 'Nepavyko patikrinti atsarginės kopijos.') } }));
+  }
+});
+
+
+window.addEventListener('p2:restore-scale-migration-request', async () => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId || !pendingRestoreBackup) return;
+  try {
+    const backup = validateRestoreBackup(pendingRestoreBackup);
+    const backupRoomIds = Object.keys(backup.rooms);
+    const loaded = await restoreLoadCurrentRooms(backupRoomIds);
+    const targetRoomIds = [];
+    for (const targetRoom of backupRoomIds) {
+      const currentWorkspace = loaded.rooms?.[targetRoom]?.workspace;
+      const migrationMeta = currentWorkspace?.meta?.boardCoordinateMigration && typeof currentWorkspace.meta.boardCoordinateMigration === 'object'
+        ? currentWorkspace.meta.boardCoordinateMigration
+        : null;
+      const migrationBuild = String(migrationMeta?.build || '');
+      const isTarget = Number(migrationMeta?.version || 0) === BOARD_COORDINATE_SYSTEM_VERSION
+        && (migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.35' || migrationBuild === 'P2-SPLIT-P2.5-P4-P1.7.9.36')
+        && backup.rooms?.[targetRoom]?.workspace;
+      if (isTarget) targetRoomIds.push(targetRoom);
+    }
+    if (!targetRoomIds.length) throw new Error('Nebėra lentų su P1.7.9.35 / P1.7.9.36 mastelio migracijos žyma. Nieko atkurti nereikia.');
+
+    const connectedOthers = await otherConnectedClientsInRooms(targetRoomIds);
+    if (connectedOthers > 0) throw new Error(`Atkūrimas sustabdytas: ${connectedOthers} kiti įrenginiai vis dar prisijungę prie atkuriamų Room. Uždaryk kitus tų lentų langus ir bandyk dar kartą.`);
+
+    bridge.showToast?.('Kuriama saugos kopija prieš lentų atkūrimą…');
+    const safety = await buildTeacherBackupSnapshot();
+    triggerJsonDownload(`virtuali-lenta-pries-lentu-atkurima-${backupStamp(safety.now)}.json`, safety.backup);
+
+    const updates = {};
+    for (const targetRoom of targetRoomIds) {
+      // P1.7.9.38 RECOVERY: atkuriamas TIK workspace iš patikimos kopijos.
+      // Mokinių bazė, tvarkaraštis, pratybų p2 progresas ir control neliečiami.
+      updates[`p772Rooms/${targetRoom}/workspace`] = backup.rooms[targetRoom].workspace ?? null;
+    }
+    await update(ref(db), updates);
+
+    pendingRestoreBackup = null;
+    pendingRestoreFileName = '';
+    bridge.showToast?.(`Atkurta ${targetRoomIds.length} lentų būsena`);
+    window.dispatchEvent(new CustomEvent('p2:restore-complete', { detail: {
+      roomCount: targetRoomIds.length,
+      message: `Atkurta tik ${targetRoomIds.length} P1.7.9.35 / P1.7.9.36 mastelio eksperimento paliestų lentų būsena. Mokinių bazė, tvarkaraštis ir pratybų progresas nepakeisti.`
+    }}));
+  } catch (error) {
+    console.error('P1.7.9.38 tikslinio lentų atkūrimo klaida', error);
+    bridge.showToast?.('Lentų atkūrimas sustabdytas');
+    window.dispatchEvent(new CustomEvent('p2:restore-error', { detail: { message: String(error?.message || error || 'Lentų atkūrimas nepavyko.') } }));
   }
 });
 
@@ -2909,7 +2971,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.37 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.38 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
