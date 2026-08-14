@@ -34,7 +34,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.30';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.31';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -280,7 +280,7 @@ const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
 let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
 
-// P1.7.9.30: mokytojo Firebase Authentication paskyra (Email/Password + Google).
+// P1.7.9.31: mokytojo Firebase Authentication paskyra (Email/Password + Google).
 // Esamas T-... profilis nekeičiamas ir nemigruojamas į naują kelią: paskyros UID
 // gauna tik nuorodą į jau naudojamą mokytojo profilį. Tai leidžia kitame
 // įrenginyje prisijungus atkurti T-... identifikatorių ir perkrauti tą pačią bazę.
@@ -415,7 +415,7 @@ async function reconcileSignedInTeacher(user, options = {}) {
       renderTeacherAuthUi();
     }
   } catch (error) {
-    console.error('P1.7.9.30 paskyros susiejimo patikros klaida', error);
+    console.error('P1.7.9.31 paskyros susiejimo patikros klaida', error);
     setTeacherAuthStatus(firebaseAuthErrorMessage(error), 'error');
     renderTeacherAuthUi();
   }
@@ -468,8 +468,13 @@ function renderTeacherAuthUi() {
   }
   if (teacherAuthLinkProfileButton) teacherAuthLinkProfileButton.hidden = Boolean(mapped);
   if (teacherAuthSignedInNote) {
+    const signInMethodText = hasGoogle && hasPassword
+      ? 'per Google arba el. paštu ir slaptažodžiu'
+      : hasGoogle
+        ? 'per Google'
+        : 'el. paštu ir slaptažodžiu';
     teacherAuthSignedInNote.textContent = mapped === teacherProfileId
-      ? 'Susiejimas paruoštas. Kitame įrenginyje prisijungus tuo pačiu el. paštu sistema automatiškai atkurs šį mokytojo profilį.'
+      ? `Profilis susietas. Kitame įrenginyje prisijunk ${signInMethodText} – sistema automatiškai atkurs šį mokytojo profilį.`
       : 'Jei tai tavo pagrindinis įrenginys ir čia matai teisingus mokinius bei tvarkaraštį, susiek dabartinį profilį su paskyra.';
   }
 }
@@ -2784,7 +2789,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.30 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.31 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
