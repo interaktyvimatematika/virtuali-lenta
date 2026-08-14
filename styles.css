@@ -58,7 +58,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .board-world {
   position: absolute; left: 0; top: 0; width: 720px; height: 1700px; transform-origin: top left;
   overflow: hidden; background-color: #fbfcfe;
-  /* P1.7.9.21: po naujų Room geometrijos suvienodinimo iki 720 px
+  /* P1.7.9.22: po naujų Room geometrijos suvienodinimo iki 720 px
      tinklelis perkalibruotas taip, kad 100 % režime išliktų ankstesnis
      vizualus languoto lapo tankis. Mažas langelis 18 px, pagrindinė linija
      kas 5 langelius (90 px). */
@@ -7302,3 +7302,94 @@ body.p2-shell .p2-task-diagram path,
 body.p2-shell .p2-task-diagram circle { fill:none; stroke:#526078; stroke-width:2.2; vector-effect:non-scaling-stroke; }
 body.p2-shell .p2-task-diagram .guide { stroke:#8793a8; stroke-width:1.5; }
 body.p2-shell .p2-task-diagram text { fill:#37445a; font:600 12px/1 Inter,ui-sans-serif,system-ui,sans-serif; }
+
+/* =========================================================
+   P2-SPLIT-P2.5-P4-P1.7.9.22 — responsive lentos panelė
+   =========================================================
+   Sprendimai remiasi ne įrenginio pavadinimu, o realiu panelės pločiu.
+   Taip tas pats Padalintas režimas gali tvarkingai veikti ir dideliame
+   kompiuteryje, ir gulsčioje / stačioje planšetėje. */
+body.p2-shell .p2-board-pane {
+  container-type: inline-size;
+  container-name: p2-board-pane;
+}
+
+/* Būsenos indikatorius yra kritinis elementas: jo niekada nesuspaudžiame. */
+body.p2-shell .p2-board-live {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+body.p2-shell .p2-board-header-actions {
+  min-width: 0;
+  overflow: hidden;
+}
+body.p2-shell .p2-board-tools {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Kai pati lentos pusė tampa planšetinio pločio, taupome vietą įrankių
+   tekstuose, o ne nukerpame „Prisijungta“. */
+@container p2-board-pane (max-width: 820px) {
+  body.p2-shell .p2-board-pane-header {
+    padding-inline: 8px;
+    gap: 7px;
+  }
+  body.p2-shell .p2-board-subtitle { display: none; }
+  body.p2-shell .p2-board-header-actions { gap: 5px; }
+  body.p2-shell .p2-board-tools {
+    max-width: none;
+    padding: 2px;
+    gap: 1px;
+  }
+  body.p2-shell .p2-board-tools .tool {
+    flex: 0 0 32px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  body.p2-shell .p2-board-tools .tool > span:last-child { display: none; }
+  body.p2-shell .p2-board-live {
+    padding: 5px 7px;
+    gap: 6px;
+  }
+}
+
+/* Dar siauresnėje panelėje susitraukia dekoratyvinė antraštės dalis,
+   bet prisijungimo būsena ir visi įrankiai lieka pasiekiami. */
+@container p2-board-pane (max-width: 600px) {
+  body.p2-shell .p2-board-pane-header {
+    min-height: 46px;
+    padding-inline: 6px;
+    gap: 5px;
+  }
+  body.p2-shell .p2-board-heading { gap: 5px; flex: 0 1 auto; }
+  body.p2-shell .p2-board-heading .p2-pane-icon { display: none; }
+  body.p2-shell .p2-board-heading strong {
+    display: block;
+    max-width: 82px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+  body.p2-shell .p2-board-header-actions { gap: 4px; }
+  body.p2-shell .p2-board-tools .tool {
+    flex-basis: 30px;
+    width: 30px;
+    min-width: 30px;
+  }
+  body.p2-shell .p2-board-live {
+    padding-inline: 6px;
+    font-size: 9.5px;
+  }
+}
+
+/* Mobilios naršyklės dinaminės juostos neturi sumažinti ar padidinti
+   darbo srities už realaus matomo viewport'o ribų. */
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+  body.p2-shell .app { height: 100dvh; }
+}

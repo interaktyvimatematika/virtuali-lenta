@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.21';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.22';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1866,7 +1866,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.21 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.22 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -2710,7 +2710,7 @@ window.addEventListener('p2:practice-progress-live-request', persistP2PracticePr
 let transitionInProgress = false;
 
 function subscribeTransition() {
-  // P1.7.9.21: senų Room `control/transition` įrašų nebesekame automatiškai.
+  // P1.7.9.22: senų Room `control/transition` įrašų nebesekame automatiškai.
   // „Nauja sesija“ yra lokali mokytojo lango navigacija ir NEGALI perrašyti
   // istorinio Room elgesio ar vėliau atidarytos mokinio nuorodos nukreipti kitur.
   // Pačius senus transition įrašus paliekame Firebase kaip istorinius duomenis.
@@ -2967,13 +2967,13 @@ if (newButton) {
         meta: { schemaVersion: 1, seededBy: me, createdFromRoom: previousRoom, updatedAt: serverTimestamp() }
       });
 
-      // P1.7.9.21: jokio `control/transition` į seno Room Firebase nerašome.
+      // P1.7.9.22: jokio `control/transition` į seno Room Firebase nerašome.
       // Perjungiame tik šį mokytojo naršyklės langą. Visi jau prisijungę mokiniai
       // ir visos senos nuorodos lieka ankstesniame Room.
       await switchActiveTeacherRoom(nextRoom, { preserveStay: false });
       bridge.showToast?.(`Sukurta nauja sesija ${nextRoom}. Ankstesnė ${previousRoom} nepakeista.`);
     } catch (error) {
-      console.error('P2-SPLIT-P1.7.9.21 naujos sesijos klaida', error);
+      console.error('P2-SPLIT-P1.7.9.22 naujos sesijos klaida', error);
       newButton.disabled = false;
       bridge.showToast?.('Nepavyko pradėti naujos sesijos');
     }

@@ -580,13 +580,16 @@
     return clampCameraZoom(state?.camera?.zoom);
   }
 
-  // P1.7.9.9: naujajai 720 px vertikaliai lentai 100 % reiškia, kad visas
-  // baltos lentos plotis tiksliai telpa darbo lange. P1.7.9.18 suvienodina UI:
-  // atskiro „Rodyti plotį“ veiksmo nebėra – tą funkciją visada atlieka 100 %.
-  function boardFitZoom() {
+  // P1.7.9.22: 100 % remiasi tikruoju lentos viewport'u, o ne viso įrenginio
+  // pločiu. Abiejuose lapo šonuose paliekame nedidelę matomą paraštę, kad
+  // kompiuteryje, planšetėje ir telefone būtų aiškiai matomi abu lapo kraštai.
+  const BOARD_FIT_SIDE_MARGIN_SCREEN = 14;
+
+  function boardFitZoom(viewportWidthOverride = null) {
     const world = getBoardWorldRect();
-    const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
-    return clampCameraZoom(Math.min(1, viewportWidth / Math.max(1, world.width)));
+    const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
+    const availableWidth = Math.max(1, viewportWidth - BOARD_FIT_SIDE_MARGIN_SCREEN * 2);
+    return clampCameraZoom(Math.min(1, availableWidth / Math.max(1, world.width)));
   }
 
   function boardUsesLegacyReadableScale() {
@@ -603,10 +606,10 @@
   const BOARD_LEGACY_FALLBACK_ZOOM = 0.20;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
 
-  function boardUser100Zoom() {
-    if (!boardUsesLegacyReadableScale()) return boardFitZoom();
+  function boardUser100Zoom(viewportWidthOverride = null) {
+    if (!boardUsesLegacyReadableScale()) return boardFitZoom(viewportWidthOverride);
     const bounds = boardContentBounds();
-    const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
+    const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
     if (!bounds) return clampCameraZoom(BOARD_LEGACY_FALLBACK_ZOOM);
     const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
     const availableWidth = Math.max(1, viewportWidth - BOARD_LEGACY_FIT_PADDING_X * 2);
@@ -8704,6 +8707,7 @@ KOKYBĖS REIKALAVIMAI:
     const camera = normalizeCamera(state.camera);
     roomBoardViews.set(id, {
       zoom,
+      userZoomPercent: boardUserZoomPercent(zoom),
       logicalLeft: refs.board.scrollLeft / zoom - camera.worldOriginX,
       logicalTop: refs.board.scrollTop / zoom - camera.worldOriginY
     });
@@ -8718,7 +8722,11 @@ KOKYBĖS REIKALAVIMAI:
       return;
     }
     const camera = normalizeCamera(state.camera);
-    if (saved?.zoom) state.camera.zoom = clampCameraZoom(saved.zoom);
+    if (Number.isFinite(saved?.userZoomPercent)) {
+      state.camera.zoom = clampCameraZoom(boardUser100Zoom() * saved.userZoomPercent / 100);
+    } else if (saved?.zoom) {
+      state.camera.zoom = clampCameraZoom(saved.zoom);
+    }
     const zoom = currentBoardZoom();
     applyBoardCamera();
     requestAnimationFrame(() => {
@@ -12262,7 +12270,35 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointerup', stopDrawing);
   refs.canvas.addEventListener('pointercancel', stopDrawing);
 
-  new ResizeObserver(() => { applyBoardCamera({ preserveCenter: true }); resizeCanvas({ force: true }); layoutBoardObjects(); }).observe(refs.board);
+  // P1.7.9.22: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
+  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome VARTOTOJO mastelį,
+  // o ne seną fizinį CSS zoom. Taigi 100 % po pasukimo lieka 100 %, 150 %
+  // lieka 150 %, tik perskaičiuojami pagal naują turimą plotį.
+  let boardLastViewportWidth = 0;
+  let boardViewportResizeFrame = 0;
+  const boardViewportObserver = new ResizeObserver(() => {
+    cancelAnimationFrame(boardViewportResizeFrame);
+    boardViewportResizeFrame = requestAnimationFrame(() => {
+      const nextWidth = Math.max(0, refs.board?.clientWidth || 0);
+      const nextHeight = Math.max(0, refs.board?.clientHeight || 0);
+      // Paslėptos panelės plotis gali trumpam būti 0 — tokio tarpinio dydžio
+      // nelaikome tikru viewport'u ir pagal jį mastelio nekeičiame.
+      if (nextWidth < 80 || nextHeight < 80) return;
+
+      const oldZoom = currentBoardZoom();
+      if (boardLastViewportWidth >= 80 && Math.abs(nextWidth - boardLastViewportWidth) > 0.5) {
+        const oldBase = Math.max(0.001, boardUser100Zoom(boardLastViewportWidth));
+        const userScale = oldZoom / oldBase;
+        const nextBase = Math.max(0.001, boardUser100Zoom(nextWidth));
+        state.camera.zoom = clampCameraZoom(nextBase * userScale);
+      }
+      boardLastViewportWidth = nextWidth;
+      applyBoardCamera({ preserveCenter: true, oldZoom });
+      resizeCanvas({ force: true });
+      layoutBoardObjects();
+    });
+  });
+  boardViewportObserver.observe(refs.board);
   window.addEventListener('beforeunload', () => {
     try {
       state.packageData = practicePackage;
