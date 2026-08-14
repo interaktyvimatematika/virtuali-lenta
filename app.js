@@ -525,7 +525,7 @@
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9.8: vertikali juosta susiaurinta iki 720 px, kad
+  // P2-SPLIT-P2.5-P4-P1.7.9.9: vertikali juosta susiaurinta iki 720 px, kad
   // sprendimas dar natūraliau tęstųsi žemyn, o šonuose liktų kuo mažiau tuščios erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
@@ -556,7 +556,7 @@
   }
 
   function clampCameraZoom(value) {
-    return Math.max(0.2, Math.min(1.8, Number(value) || 1));
+    return Math.max(0.005, Math.min(1.8, Number(value) || 1));
   }
 
   function normalizeCamera(camera) {
@@ -579,6 +579,26 @@
 
   function currentBoardZoom() {
     return clampCameraZoom(state?.camera?.zoom);
+  }
+
+  // P1.7.9.9: vartotojui rodomas 100 % mastelis reiškia „visas lapo plotis
+  // telpa matomame lentos lange“, o ne tiesioginį 1:1 pasaulio pikselių mastelį.
+  // Taip ir senesni, platesni Room ties 100 % neturi horizontalios slankjuostės.
+  function boardFitZoom() {
+    const world = getBoardWorldRect();
+    const viewportWidth = Math.max(1, refs.board?.clientWidth || 1);
+    return clampCameraZoom(Math.min(1, viewportWidth / Math.max(1, world.width)));
+  }
+
+  function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
+    const fitZoom = Math.max(0.001, boardFitZoom());
+    return Math.max(1, Math.round((actualZoom / fitZoom) * 100));
+  }
+
+  function setBoardUserZoomPercent(percent, options = {}) {
+    const fitZoom = Math.max(0.001, boardFitZoom());
+    const normalized = Math.max(20, Math.min(250, Number(percent) || 100));
+    setBoardZoom(fitZoom * normalized / 100, options);
   }
 
   function boardGeometrySnapshot() {
@@ -8770,7 +8790,7 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardWorld.style.left = `${useLayoutZoom ? centerOffsetX / Math.max(0.001, zoom) : centerOffsetX}px`;
     refs.boardStage.style.width = `${Math.max(viewportWidth, renderedWorldWidth)}px`;
     refs.boardStage.style.height = `${Math.max(viewportHeight, Math.round(world.height * zoom))}px`;
-    refs.boardZoomLabel.textContent = `${Math.round(zoom * 100)} %`;
+    refs.boardZoomLabel.textContent = `${boardUserZoomPercent(zoom)} %`;
 
     cameraApplying = true;
     requestAnimationFrame(() => {
@@ -8833,8 +8853,7 @@ KOKYBĖS REIKALAVIMAI:
     // P1.7.9.6: vertikalus baltas lapas turi siekti iki pat slankjuostės.
     // clientWidth jau neįtraukia vertikalios slankjuostės, todėl papildomos
     // horizontalios paraštės čia nereikia.
-    const availableWidth = Math.max(1, refs.board.clientWidth);
-    const targetZoom = clampCameraZoom(Math.min(1, availableWidth / Math.max(1, world.width)));
+    const targetZoom = boardFitZoom();
     state.camera.zoom = targetZoom;
     applyBoardCamera();
     requestAnimationFrame(() => {
@@ -8847,7 +8866,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function showBoardAt100FromTop(options = {}) {
-    state.camera.zoom = 1;
+    state.camera.zoom = boardFitZoom();
     state.camera.scrollLeft = 0;
     state.camera.scrollTop = 0;
     applyBoardCamera();
@@ -8966,9 +8985,9 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function installBoardCamera() {
-    refs.boardZoomOutButton.addEventListener('click', () => setBoardZoom(currentBoardZoom() - 0.1, { preserveCenter: true }));
-    refs.boardZoomInButton.addEventListener('click', () => setBoardZoom(currentBoardZoom() + 0.1, { preserveCenter: true }));
-    refs.boardZoomActualButton.addEventListener('click', () => setBoardZoom(1, { preserveCenter: true }));
+    refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
+    refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
+    refs.boardZoomActualButton.addEventListener('click', () => setBoardUserZoomPercent(100, { preserveCenter: true }));
     refs.boardZoomFitButton.addEventListener('click', () => fitBoardWidth({ top: false }));
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
     refs.practiceOnlyButton.addEventListener('click', () => enterPracticeOnly());
