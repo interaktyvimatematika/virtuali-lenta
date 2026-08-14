@@ -448,7 +448,7 @@
     boardPractices: [],
     activeBoardPracticeId: null,
     activeBoardObject: null,
-    camera: { zoom: 0.72, scrollLeft: 0, scrollTop: 0, worldWidth: 2400, worldHeight: 10000, layoutMode: 'vertical-strip' },
+    camera: { zoom: 0.72, scrollLeft: 0, scrollTop: 0, worldWidth: 1400, worldHeight: 10000, layoutMode: 'vertical-strip' },
     practiceOnly: { active: false, practiceId: null },
     mathToolbarCategory: 'Pagrindiniai',
     library: createInitialLibrary(),
@@ -521,11 +521,12 @@
     return JSON.parse(JSON.stringify(value));
   }
 
-  const BOARD_WORLD_MIN_WIDTH = 2400;
+  const BOARD_WORLD_MIN_WIDTH = 1400;
   const BOARD_WORLD_MIN_HEIGHT = 1700;
-  const BOARD_STRIP_DEFAULT_WIDTH = 2400;
+  const BOARD_STRIP_DEFAULT_WIDTH = 1400;
   const BOARD_STRIP_INITIAL_HEIGHT = 10000;
-  // P2-SPLIT-P2.5-P4-P1.7.9: lenta tampa fiksuoto pločio vertikalia juosta.
+  // P2-SPLIT-P2.5-P4-P1.7.9.1: vertikali juosta susiaurinta iki 1400 px, kad
+  // sprendimas natūraliau tęstųsi žemyn, o šonuose neliktų perteklinės erdvės.
   // Horizontalūs ir viršutiniai kraštai nebesiplečia; nauja erdvė pridedama tik
   // apačioje. Didelė techninė riba vartotojui praktiškai veikia kaip begalinis lapas.
   // Senų Room plotis sąmoningai nemažinamas, kad nebūtų iškraipyti ankstesni piešiniai.
@@ -537,6 +538,21 @@
   const BOARD_CANVAS_OVERSCAN_SCREEN = 320;
   const BOARD_CANVAS_REPOSITION_GUARD_SCREEN = 110;
   const BOARD_CANVAS_MAX_DEVICE_DPR = 1.5;
+
+  // Jei Room buvo tik atvertas su P1.7.9 2400 px juosta, bet joje dar nėra
+  // jokio realaus lentos turinio, saugiai pritaikome naują siauresnį plotį.
+  // Lentos su esamais piešiniais / objektais neliečiamos, kad niekas nebūtų suspausta.
+  const boardHasPersistentContent = Boolean(
+    (state.drawing || []).length ||
+    (state.notes || []).length ||
+    (state.boardImages || []).length ||
+    (state.boardTasks || []).length ||
+    (state.boardPractices || []).length
+  );
+  if (!boardHasPersistentContent && state.camera?.layoutMode === 'vertical-strip' && Number(state.camera?.worldWidth) === 2400) {
+    state.camera.worldWidth = BOARD_STRIP_DEFAULT_WIDTH;
+    state.camera.scrollLeft = 0;
+  }
 
   function clampCameraZoom(value) {
     return Math.max(0.2, Math.min(1.8, Number(value) || 0.72));
