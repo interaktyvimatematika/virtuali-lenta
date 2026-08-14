@@ -21,7 +21,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.19';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.20';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1866,7 +1866,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.19 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.20 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -2710,20 +2710,10 @@ window.addEventListener('p2:practice-progress-live-request', persistP2PracticePr
 let transitionInProgress = false;
 
 function subscribeTransition() {
-  roomOnValue(transitionRef, snapshot => {
-    const data = snapshot.val();
-    const nextRoom = safeRoom(data?.toRoom);
-    if (!nextRoom || nextRoom === roomId || transitionInProgress) return;
-    // &stay=1 leidžia sąmoningai likti būtent šiame istoriniame Room.
-    if (stayOnRoom) {
-      console.info(`Istorinis Room ${roomId}: automatinis perėjimas į ${nextRoom} praleistas dėl stay=1.`);
-      return;
-    }
-    transitionInProgress = true;
-    const target = urlForRoom(nextRoom, onlineRole);
-    bridge.showToast?.('Mokytojas pradėjo naują sesiją');
-    setTimeout(() => window.location.replace(target.toString()), 80);
-  });
+  // P1.7.9.20: senų Room `control/transition` įrašų nebesekame automatiškai.
+  // „Nauja sesija“ yra lokali mokytojo lango navigacija ir NEGALI perrašyti
+  // istorinio Room elgesio ar vėliau atidarytos mokinio nuorodos nukreipti kitur.
+  // Pačius senus transition įrašus paliekame Firebase kaip istorinius duomenis.
 }
 
 function subscribePresenceList() {
@@ -2961,23 +2951,29 @@ if (copyButton) {
 if (newButton) {
   newButton.addEventListener('click', async () => {
     if (onlineRole !== 'teacher' || stayOnRoom || transitionInProgress) return;
-    if (!window.confirm('Pradėti naują tuščią sesiją ir perkelti į ją visus prie šios lentos prisijungusius dalyvius?')) return;
+    if (!window.confirm(
+      'Sukurti naują tuščią sesiją tik šiame mokytojo lange?\n\n' +
+      'Dabartinis Room, mokinio nuoroda, lenta ir pratybų progresas liks nepakeisti.'
+    )) return;
 
     newButton.disabled = true;
+    const previousRoom = roomId;
     const nextRoom = newRoomId();
     try {
       const nextWorkspaceRef = ref(db, `p772Rooms/${nextRoom}/workspace`);
       const blank = emptyWorkspace();
       await set(nextWorkspaceRef, {
         ...blank,
-        meta: { schemaVersion: 1, seededBy: me, updatedAt: serverTimestamp() }
+        meta: { schemaVersion: 1, seededBy: me, createdFromRoom: previousRoom, updatedAt: serverTimestamp() }
       });
-      // Pirmiausia paruošiame naują tuščią kambarį, tik tada paskelbiame perėjimą.
-      // Senajame kambaryje ši nuoroda lieka ir vėliau prisijungusį mokinį taip pat
-      // nukreips į naujausią sesiją.
-      await set(transitionRef, { toRoom: nextRoom, issuedBy: me, issuedAt: serverTimestamp() });
+
+      // P1.7.9.20: jokio `control/transition` į seno Room Firebase nerašome.
+      // Perjungiame tik šį mokytojo naršyklės langą. Visi jau prisijungę mokiniai
+      // ir visos senos nuorodos lieka ankstesniame Room.
+      await switchActiveTeacherRoom(nextRoom, { preserveStay: false });
+      bridge.showToast?.(`Sukurta nauja sesija ${nextRoom}. Ankstesnė ${previousRoom} nepakeista.`);
     } catch (error) {
-      console.error('P2-SPLIT-P1.7 naujos sesijos klaida', error);
+      console.error('P2-SPLIT-P1.7.9.20 naujos sesijos klaida', error);
       newButton.disabled = false;
       bridge.showToast?.('Nepavyko pradėti naujos sesijos');
     }
