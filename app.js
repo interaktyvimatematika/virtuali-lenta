@@ -569,10 +569,11 @@
     return clampCameraZoom(state?.camera?.zoom);
   }
 
-  // P1.7.9.22: 100 % remiasi tikruoju lentos viewport'u, o ne viso įrenginio
-  // pločiu. Abiejuose lapo šonuose paliekame nedidelę matomą paraštę, kad
-  // kompiuteryje, planšetėje ir telefone būtų aiškiai matomi abu lapo kraštai.
-  const BOARD_FIT_SIDE_MARGIN_SCREEN = 14;
+  // P1.7.9.46: naujos 720 px lentos pradinis fit remiasi pačiu realiu viewport'u.
+  // Nebereikalaujame papildomų dirbtinių 14 px paraščių abiejuose šonuose:
+  // jei 720 px lenta fiziškai telpa, ji turi atsidaryti tikru 100 % masteliu.
+  // Istorinių lentų turinio sutalpinimas turi atskirą LEGACY padding logiką.
+  const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
 
   function boardFitZoom(viewportWidthOverride = null) {
     const world = getBoardWorldRect();
@@ -8908,7 +8909,7 @@ KOKYBĖS REIKALAVIMAI:
     let attempt = 0;
     const retryDelays = [0, 40, 120, 260, 500, 900, 1500];
 
-    // P1.7.9.45: naujo 720 px Room workspace-ready kartais ateina dar prieš
+    // P1.7.9.46: naujo 720 px Room workspace-ready kartais ateina dar prieš
     // galutinį flex/grid išdėstymą. Pirmą akimirką board.clientWidth gali būti
     // keliais procentais per mažas, todėl ankstesnė versija užfiksuodavo, pvz.,
     // 98 %, nors po kelių kadrų 100 % jau visiškai telpa. Kelis kartus tyliai
