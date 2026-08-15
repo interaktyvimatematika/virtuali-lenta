@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.3';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.3.1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -3765,6 +3765,14 @@ async function persistP2PracticeProgress(event) {
       taskStateCount: Object.keys(merged.taskStates || {}).length
     });
     p2ProgressCache = { ...merged, updatedAt: now, updatedBy: me };
+    window.dispatchEvent(new CustomEvent('p2:practice-progress-persisted', {
+      detail: {
+        roomId,
+        assignmentKey: merged.assignmentKey,
+        sourceUpdatedAt: Number(value.updatedAt || 0),
+        persistedAt: now
+      }
+    }));
   } catch (error) {
     diagnosticSyncState.progressWriteErrorAt = Date.now();
     diagnosticLog('progress-write-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });

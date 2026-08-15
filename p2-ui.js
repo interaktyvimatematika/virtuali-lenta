@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.3';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.3.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -84,6 +84,17 @@
     console.error('P2 tvarkaraščio UI modulis nerastas');
     return;
   }
+
+  // M2.3.1: lokali nebaigtos pratybų būsenos apsauga nuo staigaus reload.
+  // Firebase lieka pagrindinis šaltinis; vietinis draft naudojamas tik tam pačiam
+  // Room + assignmentKey ir tik jei jis naujesnis už Firebase snapshot'ą.
+  const practiceDraftStore = window.P772PracticeDraftStore;
+  if (!practiceDraftStore || typeof practiceDraftStore.save !== 'function' || typeof practiceDraftStore.restoreIfNewer !== 'function') {
+    console.error('P2 pratybų draft saugos modulis nerastas');
+    return;
+  }
+  let practiceSyncReady = false;
+  let pendingDraftFlush = null;
 
   let assignment = null;
   let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
@@ -447,9 +458,28 @@
     return Boolean(studentPanel.querySelector('math-field.p2-solution-math-field:focus-within, math-field.p2-solution-math-field.math-field-is-active, math-field.p2-expression-math-field:focus-within, math-field.p2-expression-math-field.math-field-is-active, input[data-simple-input]:focus'));
   }
 
+  function currentAssignmentKey() {
+    return practiceDraftStore.assignmentKeyFor(assignment);
+  }
+
+  function savePracticeDraft(next) {
+    if (role() !== 'student' || !assignment || !next) return null;
+    return practiceDraftStore.save({ roomId: currentRoomId(), assignment, progress: next });
+  }
+
+  function queueDraftFlush(next) {
+    if (role() !== 'student' || !assignment || !next) return;
+    pendingDraftFlush = {
+      assignmentKey: currentAssignmentKey(),
+      progress: deepCopy(next)
+    };
+  }
+
   function publishLiveProgress(next, taskId) {
     progress = normalizedProgress(next);
     progress.updatedAt = Date.now();
+    savePracticeDraft(progress);
+    if (!practiceSyncReady) queueDraftFlush(progress);
     const old = liveSolutionTimers.get(taskId);
     if (old) clearTimeout(old);
     liveSolutionTimers.set(taskId, setTimeout(() => {
@@ -666,6 +696,8 @@
   function publishProgress(next, options = {}) {
     progress = normalizedProgress(next);
     progress.updatedAt = Date.now();
+    savePracticeDraft(progress);
+    if (!practiceSyncReady) queueDraftFlush(progress);
     window.dispatchEvent(new CustomEvent('p2:practice-progress-request', { detail: progress }));
     if (options.render !== false) renderPanels();
   }
@@ -4181,7 +4213,20 @@
   });
 
   window.addEventListener('p2:progress-state', event => {
-    const incoming = event.detail && typeof event.detail === 'object' ? normalizedProgress(event.detail) : null;
+    let rawIncoming = event.detail && typeof event.detail === 'object' ? event.detail : null;
+    if (role() === 'student' && assignment) {
+      const restored = practiceDraftStore.restoreIfNewer({
+        roomId: currentRoomId(),
+        assignment,
+        firebaseProgress: rawIncoming
+      });
+      if (restored?.restored && restored.progress) {
+        rawIncoming = restored.progress;
+        pendingDraftFlush = { assignmentKey: restored.assignmentKey, progress: deepCopy(restored.progress) };
+        console.info('M2.3.1: po reload atkurta naujesnė lokali pratybų būsena.');
+      }
+    }
+    const incoming = rawIncoming && typeof rawIncoming === 'object' ? normalizedProgress(rawIncoming) : null;
     const ownLiveEcho = role() === 'student'
       && incoming
       && progress
@@ -4194,6 +4239,28 @@
     renderTeacherPreview();
     queueCurrentStudentLessonSnapshot();
     renderStudentsModal();
+  });
+
+  window.addEventListener('p2:practice-sync-ready', () => {
+    practiceSyncReady = true;
+    const pending = pendingDraftFlush;
+    if (!pending || role() !== 'student' || !assignment) return;
+    if (pending.assignmentKey && pending.assignmentKey !== currentAssignmentKey()) {
+      pendingDraftFlush = null;
+      return;
+    }
+    pendingDraftFlush = null;
+    window.dispatchEvent(new CustomEvent('p2:practice-progress-request', { detail: deepCopy(pending.progress) }));
+  });
+
+  window.addEventListener('p2:practice-progress-persisted', event => {
+    if (role() !== 'student') return;
+    const detail = event.detail && typeof event.detail === 'object' ? event.detail : {};
+    practiceDraftStore.clearIfPersisted({
+      roomId: detail.roomId || currentRoomId(),
+      assignmentKey: detail.assignmentKey || currentAssignmentKey(),
+      sourceUpdatedAt: detail.sourceUpdatedAt
+    });
   });
 
   const roleObserver = new MutationObserver(() => applyRole());
