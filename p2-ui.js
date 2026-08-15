@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M1.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M1.3';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -60,6 +60,14 @@
     assignmentContentDetail,
     lessonFromAssignmentSnapshot
   } = catalogService;
+
+  // M1.3: Library modal/content markup lives in p2-library-ui.js.
+  // Assignment actions and application state remain in this file.
+  const libraryUi = window.P772LibraryUI;
+  if (!libraryUi || typeof libraryUi.createLibraryModal !== 'function' || typeof libraryUi.renderLibraryContentMarkup !== 'function') {
+    console.error('P2 bibliotekos UI modulis nerastas');
+    return;
+  }
 
   let assignment = null;
   let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
@@ -3938,14 +3946,7 @@
 
   function ensureLibraryModal() {
     if (libraryModal) return libraryModal;
-    libraryModal = document.createElement('div');
-    libraryModal.className = 'p2-library-modal';
-    libraryModal.innerHTML = `
-      <div class="p2-library-backdrop" data-close></div>
-      <section class="p2-library-panel p2-library-panel-wide" role="dialog" aria-modal="true" aria-label="Mokytojo biblioteka">
-        <header><div><span class="p2-side-kicker">P2 PROTOTIPAS</span><h2>Biblioteka</h2></div><button type="button" data-close aria-label="Uždaryti">×</button></header>
-        <div class="p2-library-body" id="p2LibraryBody"></div>
-      </section>`;
+    libraryModal = libraryUi.createLibraryModal(document);
     document.body.appendChild(libraryModal);
     libraryModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => libraryModal.hidden = true));
     return libraryModal;
@@ -3962,45 +3963,16 @@
     const host = libraryModal.querySelector('#p2LibraryBody');
     if (!host) return;
 
-    const cards = LESSON_CATALOG.map(lesson => {
-      const assigned = assignment?.lessonId === lesson.id;
-      const policy = assigned
-        ? normalizedAttemptPolicy(assignment)
-        : normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy });
-      const replacing = Boolean(assignment && !assigned);
-      const icon = lesson.id === GRADE5_REVIEW_LESSON.id ? '5'
-        : lesson.id === GRADE7_REVIEW_LESSON.id ? '7'
-          : 'ƒ';
-      const label = lesson.id === GRADE5_REVIEW_LESSON.id ? '5 KLASĖS KARTOJIMAS'
-        : lesson.id === GRADE7_REVIEW_LESSON.id ? '7 KLASĖS KARTOJIMAS'
-          : 'LYGČIŲ DIAGNOSTIKA';
-      return `
-        <article class="p2-library-lesson-card ${assigned ? 'is-assigned' : ''}" data-library-lesson="${escapeHtml(lesson.id)}">
-          <div class="p2-library-lesson-icon" aria-hidden="true">${icon}</div>
-          <div class="p2-library-lesson-copy">
-            <span class="p2-label">${label}</span>
-            <h3>${escapeHtml(lesson.shortTitle)}</h3>
-            <p>${escapeHtml(lesson.description)}</p>
-            <div class="p2-assignment-meta"><span>${lesson.taskCount} užduotys</span><span>${lesson.classCount} pamokoje</span><span>${lesson.selfCount} savarankiškai</span></div>
-          </div>
-          <div class="p2-library-lesson-actions">
-            <div class="p2-library-attempt-summary">
-              <span>Bandymų nustatymas</span>
-              <b>${escapeHtml(policySummary({ attemptPolicy: policy }))}</b>
-              <small>${assigned ? 'Keisk išplėstinėje mokytojo pratybų peržiūroje.' : 'Numatyta: 3 bandymai. Po priskyrimo galėsi nustatyti ir kiekvienai užduočiai atskirai.'}</small>
-            </div>
-            ${assigned
-              ? `<span class="p2-status-badge is-assigned">✓ Priskirta</span><button class="p2-secondary" type="button" data-library-action="unassign" data-lesson-id="${escapeHtml(lesson.id)}">Atšaukti priskyrimą</button>`
-              : `<button class="p2-primary" type="button" data-library-action="assign" data-lesson-id="${escapeHtml(lesson.id)}">${replacing ? 'Priskirti vietoje dabartinės' : 'Priskirti mokiniui'}</button>`}
-          </div>
-        </article>`;
-    }).join('');
-
-    host.innerHTML = `
-      <div class="p2-library-intro"><div><span class="p2-label">Mokytojo biblioteka</span><h3>Pasirink pamoką mokiniui</h3><p>Priskirta pamoka iškart atsiras mokinio „Mano pratybos“ srityje. Vienu metu aktyvi viena pamoka; kitą gali priskirti vėliau.</p></div></div>
-      <div class="p2-library-lesson-list">${cards}</div>
-      <div class="p2-library-flow"><span>Biblioteka</span><b>→</b><span>Priskirti</span><b>→</b><span>Mokinio „Mano pratybos“</span><b>→</b><span>Mokinio eiga</span></div>
-    `;
+    host.innerHTML = libraryUi.renderLibraryContentMarkup({
+      lessons: LESSON_CATALOG,
+      assignment,
+      pendingAttemptPolicy,
+      normalizedAttemptPolicy,
+      policySummary,
+      escapeHtml,
+      grade5LessonId: GRADE5_REVIEW_LESSON.id,
+      grade7LessonId: GRADE7_REVIEW_LESSON.id
+    });
 
     host.querySelectorAll('[data-library-action="assign"]').forEach(button => {
       button.addEventListener('click', () => {
