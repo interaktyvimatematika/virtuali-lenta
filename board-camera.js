@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.1: lentos kameros / mastelio branduolys.
+  // P1.7.9.49-M2.2: lentos kameros / mastelio branduolys.
   // Šis failas sąmoningai neturi Firebase, piešimo ar objektų duomenų logikos.
   // Jis gauna būseną, DOM nuorodas ir perpiešimo callback'us iš app.js.
 
@@ -152,7 +152,7 @@
 
     refs.boardWorld.style.width = `${world.width}px`;
     refs.boardWorld.style.height = `${world.height}px`;
-    refs.boardWorld.dataset.coordinateScale = usesLegacyReadableScale(state.camera, config) ? 'legacy-2400' : 'current-720';
+    callbacks.applyGrid?.(refs.boardWorld, state.camera, world);
     const useLayoutZoom = Boolean(window.CSS?.supports?.('zoom', '1'));
     refs.boardWorld.dataset.cameraScaleMode = useLayoutZoom ? 'layout-zoom' : 'transform';
     refs.boardWorld.style.zoom = useLayoutZoom ? String(zoom) : '';

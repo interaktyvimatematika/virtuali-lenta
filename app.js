@@ -545,8 +545,10 @@
 
   const BoardCamera = window.P772BoardCamera;
   if (!BoardCamera) throw new Error('P772BoardCamera modulis neįkeltas');
+  const BoardGrid = window.P772BoardGrid;
+  if (!BoardGrid) throw new Error('P772BoardGrid modulis neįkeltas');
 
-  // P1.7.9.49-M2.1: kameros matematika ir DOM mastelio pritaikymas iškelti į
+  // P1.7.9.49-M2.2: kameros matematika ir DOM mastelio pritaikymas iškelti į
   // board-camera.js. app.js palieka tik projekto konfigūraciją ir plonus adapterius,
   // todėl likusi lentos logika šiame etape elgiasi 1:1 kaip M1.5 bazėje.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
@@ -8773,6 +8775,7 @@ KOKYBĖS REIKALAVIMAI:
       config: BOARD_CAMERA_CONFIG,
       callbacks: {
         setApplying: value => { cameraApplying = Boolean(value); },
+        applyGrid: (boardWorld, camera) => BoardGrid.applyGrid(boardWorld, camera, BOARD_CAMERA_CONFIG),
         resizeCanvas,
         layoutBoardObjects,
         refreshMathFieldRendering

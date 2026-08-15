@@ -78,18 +78,9 @@ button { -webkit-tap-highlight-color: transparent; }
     var(--board-grid-minor) var(--board-grid-minor);
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
 }
-/* P1.7.9.43: 2400 px istorinių Room tinklelis saugomas jų senojoje pasaulio
-   skalėje (54/270 px). Esant suderinamumo 100 % zoom=1/3, ekrane jis tampa
-   lygiai 18/90 px — toks pats kaip dabartinės 720 px lentos ties 100 %.
-   P1.7.9.44: kompensuojamas ir linijų storis. Kadangi visa legacy lenta
-   ties vizualiu 100 % sumažinama 3 kartus, pasaulio linijos čia pastorintos
-   3 kartus; ekrane vėl gauname .9/1.2 px kaip dabartinėje 720 px lentoje. */
-.board-world[data-coordinate-scale="legacy-2400"] {
-  --board-grid-major: 270px;
-  --board-grid-minor: 54px;
-  --board-grid-major-line: 3.6px;
-  --board-grid-minor-line: 2.7px;
-}
+/* P1.7.9.49-M2.2: konkretų 720 / legacy tinklelio žingsnį ir linijų storį
+   dabar parenka board-grid.js. Čia paliekamas dabartinės 720 px lentos fallback,
+   kad pats CSS gradientas liktų vienoje vietoje iki vėlesnio CSS modularizavimo. */
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 #drawingCanvas { position: absolute; left: 0; top: 0; z-index: 1; touch-action: none; }
 .objects-layer { z-index: 2; pointer-events: none; }
