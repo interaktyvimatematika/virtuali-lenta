@@ -1013,7 +1013,7 @@
           <math-field class="p2-static-math p2-task-equation" read-only tabindex="-1">${escapeHtml(task.prompt)}</math-field>
           ${expressionTask && task.response?.options?.domain ? `<p class="p2-expression-domain">Apibrėžimo sąlyga: ${escapeHtml(task.response.options.domain)}</p>` : ''}
         </div>`
-      : `<p class="p2-task-prompt">${renderRichMathText(taskDisplayPrompt(task))}</p>${taskDiagramMarkup(task)}`;
+      : `<p class="p2-task-prompt p2-unified-task-prompt">${renderRichMathText(taskDisplayPrompt(task))}</p>${taskDiagramMarkup(task)}`;
 
     const dots = activeLesson().tasks.map((candidate, index) => {
       const cstate = taskState(candidate.id);
@@ -4131,14 +4131,14 @@
       answerKeyMarkup = `<div class="p2-teacher-answer-key p2-teacher-math-answer"><span>Teisingas atsakymas</span><math-field class="p2-static-math p2-answer-equation" read-only tabindex="-1">${escapeHtml(previewTask.answer)}</math-field></div>`;
       responseMarkup = teacherExpressionMarkup(previewTask, item);
     } else if (simpleInputTask) {
-      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction">${renderRichMathText(taskDisplayPrompt(previewTask))}</p>${taskDiagramMarkup(previewTask)}`;
+      conditionMarkup = `<h3>${escapeHtml(previewTask.title || 'Užduotis')}</h3><p class="p2-preview-instruction p2-unified-task-prompt">${renderRichMathText(taskDisplayPrompt(previewTask))}</p>${taskDiagramMarkup(previewTask)}`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${escapeHtml(previewTask.answer)}${previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong></div>`;
       responseMarkup = `<div class="p2-teacher-simple-answer"><span>Mokinio įrašas</span><strong>${liveAnswer ? escapeHtml(liveAnswer) : '—'}${liveAnswer && previewTask.inputSuffix ? ` ${escapeHtml(previewTask.inputSuffix)}` : ''}</strong><small>● gyvai</small></div>`;
     } else {
       const choices = Array.isArray(previewTask.choices) ? previewTask.choices : [];
       const correctIndex = Math.max(0, choices.findIndex(choice => choice === previewTask.answer));
       const correctLetter = String.fromCharCode(65 + correctIndex);
-      conditionMarkup = `<h3>${renderRichMathText(taskDisplayPrompt(previewTask))}</h3>${taskDiagramMarkup(previewTask)}`;
+      conditionMarkup = `<h3 class="p2-unified-task-prompt">${renderRichMathText(taskDisplayPrompt(previewTask))}</h3>${taskDiagramMarkup(previewTask)}`;
       answerKeyMarkup = `<div class="p2-teacher-answer-key"><span>Teisingas atsakymas</span><strong>${correctLetter} · ${renderRichMathText(taskDisplayChoice(previewTask, correctIndex, previewTask.answer))}</strong></div>`;
       const choiceMarkup = choices.map((choice, index) => {
         const isSelected = liveAnswer === choice;

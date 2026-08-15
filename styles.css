@@ -8107,3 +8107,54 @@ body.p2-shell .p2-library-danger:disabled { opacity:.45; cursor:not-allowed; }
 .p2-rich-prompt-math-field::part(virtual-keyboard-toggle),
 .p2-rich-prompt-math-field::part(menu-toggle) { display:none; }
 .p2-rich-prompt-math-field::part(content) { color:inherit; font-size:1em; line-height:1; }
+
+
+/* P3.2.3.1 · vienoda užduoties turinio tipografija rengyklėje, mokiniui ir mokytojui */
+body.p2-shell,
+.p2-library-editor-modal {
+  --p2-task-copy-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --p2-task-prompt-font-size: 18px;
+  --p2-task-prompt-font-weight: 650;
+  --p2-task-prompt-line-height: 1.5;
+  --p2-task-choice-font-size: 13px;
+  --p2-task-choice-font-weight: 650;
+}
+
+/* Sąlygos tekstas turi atrodyti taip pat kuriant ir abiejose peržiūrose. */
+.p2-rich-prompt-content,
+body.p2-shell .p2-unified-task-prompt,
+body.p2-shell .p2-task-prompt.p2-unified-task-prompt,
+body.p2-shell .p2-preview-detail-head h3.p2-unified-task-prompt,
+body.p2-shell .p2-preview-instruction.p2-unified-task-prompt {
+  font-family: var(--p2-task-copy-font-family) !important;
+  font-size: var(--p2-task-prompt-font-size) !important;
+  font-weight: var(--p2-task-prompt-font-weight) !important;
+  line-height: var(--p2-task-prompt-line-height) !important;
+  letter-spacing: 0 !important;
+  color: #28334a;
+}
+body.p2-shell .p2-preview-detail-head h3.p2-unified-task-prompt,
+body.p2-shell .p2-preview-instruction.p2-unified-task-prompt { margin: 6px 0 0; }
+body.p2-shell .p2-task-prompt.p2-unified-task-prompt { margin: 20px 0 17px; }
+
+/* Inline formulės paveldi tos pačios sąlygos dydį. */
+body.p2-shell .p2-unified-task-prompt math-span.p2-inline-math,
+.p2-rich-prompt-content .p2-rich-prompt-math-field,
+.p2-rich-prompt-content .p2-rich-inline-formula > .direct-math-field {
+  font-size: 1em;
+}
+
+/* Pasirinkimo variantų tekstas taip pat vienodas mokinio ir mokytojo vaizduose. */
+body.p2-shell .p2-choice b,
+body.p2-shell .p2-preview-choice b {
+  font-family: var(--p2-task-copy-font-family);
+  font-size: var(--p2-task-choice-font-size) !important;
+  font-weight: var(--p2-task-choice-font-weight);
+  line-height: 1.4;
+}
+.p2-library-editor-choice-row input[type="text"] {
+  font-family: var(--p2-task-copy-font-family);
+  font-size: var(--p2-task-choice-font-size);
+  font-weight: var(--p2-task-choice-font-weight);
+  line-height: 1.4;
+}
