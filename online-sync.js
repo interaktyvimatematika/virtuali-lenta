@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.1.2';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -315,7 +315,7 @@ function resolveTeacherProfileId() {
 }
 const teacherProfileId = resolveTeacherProfileId();
 const teacherProfileRef = teacherProfileId ? ref(db, `p772TeacherProfiles/${teacherProfileId}`) : null;
-let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+let teacherProfileCache = { meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {}, customLessons: {} };
 
 // P1.7.9.33: mokytojo Firebase Authentication paskyra (Email/Password + Google).
 // Esamas T-... profilis nekeičiamas ir nemigruojamas į naują kelią: paskyros UID
@@ -1965,7 +1965,8 @@ function emitTeacherProfile() {
       roomLinks: teacherProfileCache.roomLinks || {},
       classSessions: teacherProfileCache.classSessions || {},
       scheduleEntries: teacherProfileCache.scheduleEntries || {},
-      scheduleRuns: teacherProfileCache.scheduleRuns || {}
+      scheduleRuns: teacherProfileCache.scheduleRuns || {},
+      customLessons: teacherProfileCache.customLessons || {}
     }
   }));
 }
@@ -2198,7 +2199,8 @@ if (teacherProfileRef) {
       roomLinks: value.roomLinks && typeof value.roomLinks === 'object' ? value.roomLinks : {},
       classSessions: value.classSessions && typeof value.classSessions === 'object' ? value.classSessions : {},
       scheduleEntries: value.scheduleEntries && typeof value.scheduleEntries === 'object' ? value.scheduleEntries : {},
-      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {}
+      scheduleRuns: value.scheduleRuns && typeof value.scheduleRuns === 'object' ? value.scheduleRuns : {},
+      customLessons: value.customLessons && typeof value.customLessons === 'object' ? value.customLessons : {}
     };
     const profileMeta = teacherProfileCache.meta || {};
     if (Number(profileMeta.schemaVersion || 0) < P2_DATA_SCHEMA_VERSION || profileMeta.lastCompatibleBuild !== BUILD) {
@@ -2551,13 +2553,112 @@ function buildRestoreDiff(backup, currentProfile, currentRooms, currentRoomIds) 
 }
 
 
+function sanitizeCustomLesson(raw) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const id = String(source.id || source.lessonId || '').trim();
+  if (!/^custom-practice-[A-Za-z0-9_-]{6,72}$/.test(id)) throw new Error('Netinkamas pratybų rinkinio identifikatorius.');
+  const title = String(source.title || '').trim().slice(0, 100);
+  if (!title) throw new Error('Trūksta pratybų rinkinio pavadinimo.');
+  const rawTasks = Array.isArray(source.tasks) ? source.tasks.slice(0, 100) : [];
+  if (!rawTasks.length) throw new Error('Rinkinyje turi būti bent viena užduotis.');
+  const tasks = rawTasks.map((rawTask, index) => {
+    const task = rawTask && typeof rawTask === 'object' && !Array.isArray(rawTask) ? rawTask : {};
+    const taskId = String(task.id || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,100}$/.test(taskId)) throw new Error(`${index + 1} užduoties identifikatorius netinkamas.`);
+    const type = task.type === 'choice' ? 'choice' : 'input';
+    const prompt = String(task.promptDisplay || task.prompt || '').trim().slice(0, 4000);
+    if (!prompt) throw new Error(`${index + 1} užduočiai trūksta sąlygos.`);
+    const base = {
+      id: taskId,
+      type,
+      section: task.section === 'self' ? 'self' : 'class',
+      label: String(task.label || (type === 'choice' ? 'Pasirinkimas' : 'Trumpas atsakymas')).trim().slice(0, 60),
+      title: String(task.title || `Užduotis ${index + 1}`).trim().slice(0, 120),
+      prompt,
+      promptDisplay: prompt,
+      hint: String(task.hint || '').trim().slice(0, 1500)
+    };
+    if (type === 'choice') {
+      const choices = (Array.isArray(task.choices) ? task.choices : []).map(value => String(value || '').trim().slice(0, 1000)).filter(Boolean).slice(0, 8);
+      const answer = String(task.answer || '').trim().slice(0, 1000);
+      if (choices.length < 2 || !answer || !choices.includes(answer)) throw new Error(`${index + 1} pasirinkimo užduotis neužbaigta.`);
+      return { ...base, choices, choicesDisplay: choices.slice(), answer };
+    }
+    const answer = String(task.answer || '').trim().slice(0, 1000);
+    if (!answer) throw new Error(`${index + 1} užduočiai trūksta teisingo atsakymo.`);
+    const answerType = task.answerType === 'number' ? 'number' : 'text';
+    return {
+      ...base,
+      answer,
+      answerType,
+      inputLabel: 'Atsakymas',
+      placeholder: answerType === 'number' ? 'Įrašyk skaičių' : 'Įrašyk atsakymą'
+    };
+  });
+  const classCount = tasks.filter(task => task.section === 'class').length;
+  const selfCount = tasks.length - classCount;
+  const now = Date.now();
+  const attemptValue = Number(source.defaultMaxAttempts);
+  return {
+    id,
+    lessonId: id,
+    source: 'custom',
+    isCustom: true,
+    contentVersion: Math.max(1, Math.round(Number(source.contentVersion) || 1)),
+    title,
+    shortTitle: String(source.shortTitle || title).trim().slice(0, 60) || title,
+    description: String(source.description || '').trim().slice(0, 600),
+    defaultMaxAttempts: [0, 1, 2, 3].includes(attemptValue) ? attemptValue : 3,
+    taskCount: tasks.length,
+    classCount,
+    selfCount,
+    createdAt: Math.max(0, Number(source.createdAt) || now),
+    updatedAt: now,
+    tasks
+  };
+}
+
+window.addEventListener('p2:custom-lesson-request', async event => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) {
+    window.dispatchEvent(new CustomEvent('p2:custom-lesson-error', { detail: { message: 'Mokytojo profilis nepasiekiamas.' } }));
+    return;
+  }
+  const detail = event.detail && typeof event.detail === 'object' ? event.detail : {};
+  try {
+    if (detail.action === 'save') {
+      const lesson = sanitizeCustomLesson(detail.lesson);
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/customLessons/${lesson.id}`), lesson);
+      teacherProfileCache.customLessons = { ...(teacherProfileCache.customLessons || {}), [lesson.id]: lesson };
+      emitTeacherProfile();
+      window.dispatchEvent(new CustomEvent('p2:custom-lesson-saved', { detail: { lessonId: lesson.id } }));
+      return;
+    }
+    if (detail.action === 'delete') {
+      const lessonId = String(detail.lessonId || '').trim();
+      if (!/^custom-practice-[A-Za-z0-9_-]{6,72}$/.test(lessonId)) throw new Error('Netinkamas rinkinio identifikatorius.');
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/customLessons/${lessonId}`), null);
+      const nextLessons = { ...(teacherProfileCache.customLessons || {}) };
+      delete nextLessons[lessonId];
+      teacherProfileCache.customLessons = nextLessons;
+      emitTeacherProfile();
+      window.dispatchEvent(new CustomEvent('p2:custom-lesson-deleted', { detail: { lessonId } }));
+      return;
+    }
+    throw new Error('Neatpažintas bibliotekos veiksmas.');
+  } catch (error) {
+    console.error('P3.2 pratybų rengyklės saugojimo klaida', error);
+    window.dispatchEvent(new CustomEvent('p2:custom-lesson-error', { detail: { message: String(error?.message || error || 'Nepavyko išsaugoti rinkinio.') } }));
+  }
+});
+
 function teacherProfileHasLinkedData(profile) {
   const value = profile && typeof profile === 'object' ? profile : {};
   return objectCount(value.students) > 0
     || objectCount(value.roomLinks) > 0
     || objectCount(value.classSessions) > 0
     || objectCount(value.scheduleEntries) > 0
-    || objectCount(value.scheduleRuns) > 0;
+    || objectCount(value.scheduleRuns) > 0
+    || objectCount(value.customLessons) > 0;
 }
 
 function safeTeacherProfileId(value) {

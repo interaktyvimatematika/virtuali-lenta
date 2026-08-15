@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.1.2';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.1';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -58,14 +58,26 @@
     lessonForId,
     lessonContentSnapshot,
     assignmentContentDetail,
-    lessonFromAssignmentSnapshot
+    lessonFromAssignmentSnapshot,
+    setCustomLessons,
+    allLessons
   } = catalogService;
+
+  function catalogLessons() {
+    return typeof allLessons === 'function' ? allLessons() : LESSON_CATALOG;
+  }
 
   // M1.3: Library modal/content markup lives in p2-library-ui.js.
   // Assignment actions and application state remain in this file.
   const libraryUi = window.P772LibraryUI;
   if (!libraryUi || typeof libraryUi.createLibraryModal !== 'function' || typeof libraryUi.renderLibraryContentMarkup !== 'function') {
     console.error('P2 bibliotekos UI modulis nerastas');
+    return;
+  }
+
+  const libraryEditorModule = window.P772LibraryEditor;
+  if (!libraryEditorModule || typeof libraryEditorModule.createLibraryEditor !== 'function') {
+    console.error('P3.2 pratybų rengyklės modulis nerastas');
     return;
   }
 
@@ -129,7 +141,7 @@
   const studentRoomHistoryRequestTimers = new Map();
   const STUDENT_HISTORY_TIMEOUT_MS = 6500;
   let studentDbSnapshotTimer = null;
-  let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {} };
+  let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {}, customLessons: {} };
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
   let roomSwitching = false;
@@ -250,6 +262,8 @@
   }
 
   let libraryModal = null;
+  let libraryEditor = null;
+  let pendingCustomLessonSave = null;
   let teacherPreviewWindow = null;
   // Mokytojo pratybų peržiūra yra lokali: ji NIEKADA nekeičia mokinio aktyvios užduoties.
   let teacherPreviewTaskId = null;
@@ -568,6 +582,12 @@
     if (!Number.isFinite(numeric)) return fallback;
     if (numeric === 0) return 0; // 0 = neribotai
     return Math.max(1, Math.min(9, Math.round(numeric)));
+  }
+
+  function lessonAttemptPolicySeed(lesson) {
+    if (!lesson?.isCustom) return pendingAttemptPolicy;
+    const value = Number(lesson.defaultMaxAttempts);
+    return { defaultMaxAttempts: [0,1,2,3].includes(value) ? value : 3, taskMaxAttempts: {} };
   }
 
   function normalizedAttemptPolicy(source = assignment) {
@@ -1668,7 +1688,8 @@
       roomLinks: source.roomLinks && typeof source.roomLinks === 'object' ? source.roomLinks : {},
       classSessions: source.classSessions && typeof source.classSessions === 'object' ? source.classSessions : {},
       scheduleEntries: source.scheduleEntries && typeof source.scheduleEntries === 'object' ? source.scheduleEntries : {},
-      scheduleRuns: source.scheduleRuns && typeof source.scheduleRuns === 'object' ? source.scheduleRuns : {}
+      scheduleRuns: source.scheduleRuns && typeof source.scheduleRuns === 'object' ? source.scheduleRuns : {},
+      customLessons: source.customLessons && typeof source.customLessons === 'object' ? source.customLessons : {}
     };
   }
 
@@ -2595,7 +2616,7 @@
       selectedStudentId,
       expandedStudentHistoryRoomId,
       teacherStudentDb,
-      LESSON_CATALOG,
+      LESSON_CATALOG: catalogLessons(),
       studentGradeValue,
       lessonHistoryForStudent,
       studentSameNameGradeGroup,
@@ -2773,7 +2794,7 @@
         lessonId: lesson?.id || '',
         title: lesson?.shortTitle || '',
         taskCount: lesson?.taskCount || 0,
-        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null,
+        attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: lessonAttemptPolicySeed(lesson) }) : null,
         ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION })
       });
     });
@@ -3244,7 +3265,7 @@
         day,
         defaultStart: defaultScheduleTime(),
         SCHEDULE_DAYS,
-        LESSON_CATALOG,
+        LESSON_CATALOG: catalogLessons(),
         escapeHtml
       });
     } else if (editing) {
@@ -3276,7 +3297,7 @@
         editing,
         students,
         SCHEDULE_DAYS,
-        LESSON_CATALOG,
+        LESSON_CATALOG: catalogLessons(),
         scheduleMode,
         scheduleModeLabel,
         scheduleAssignmentSummary,
@@ -3355,7 +3376,7 @@
       if (scheduleTimeToMinutes(start) === null) { toast('Pasirink pradžios laiką'); return; }
       const conflict = scheduleFindTimeVersionConflict({ effectiveFrom, day, start, durationMinutes });
       if (conflict) { toast(scheduleConflictText(conflict)); return; }
-      requestSchedule({ action: 'slot-add', effectiveFrom, day, start, durationMinutes, label, lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0, attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null, ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION }) });
+      requestSchedule({ action: 'slot-add', effectiveFrom, day, start, durationMinutes, label, lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0, attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: lessonAttemptPolicySeed(lesson) }) : null, ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION }) });
     });
 
 
@@ -3364,7 +3385,7 @@
       const label = String(editorHost.querySelector('#p2ScheduleLabel')?.value || '').trim();
       const lessonId = String(editorHost.querySelector('#p2ScheduleLesson')?.value || '').trim();
       const lesson = lessonForId(lessonId);
-      requestSchedule({ action: 'slot-meta', scheduleId: editingScheduleId, label, lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0, attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy }) : null, ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION }) });
+      requestSchedule({ action: 'slot-meta', scheduleId: editingScheduleId, label, lessonId: lesson?.id || '', practiceTitle: lesson?.shortTitle || '', taskCount: lesson?.taskCount || 0, attemptPolicy: lesson ? normalizedAttemptPolicy({ attemptPolicy: lessonAttemptPolicySeed(lesson) }) : null, ...(lesson ? assignmentContentDetail(lesson) : { schemaVersion: P2_DATA_SCHEMA_VERSION }) });
     });
 
     const timeManageSelect = editorHost.querySelector('#p2ScheduleTimeManageAction');
@@ -3607,6 +3628,7 @@
 
   window.addEventListener('p2:students-state', event => {
     teacherStudentDb = normalizeTeacherStudentDb(event.detail);
+    if (typeof setCustomLessons === 'function') setCustomLessons(teacherStudentDb.customLessons);
     queueLegacyAssignmentBackfills();
     if (selectedStudentId && !teacherStudentDb.students?.[selectedStudentId]) { selectedStudentId = null; studentEditOpen = false; }
     updateStudentIdentityLabels();
@@ -3718,6 +3740,24 @@
     return libraryModal;
   }
 
+  function ensureLibraryEditor() {
+    if (libraryEditor) return libraryEditor;
+    libraryEditor = libraryEditorModule.createLibraryEditor(document);
+    document.body.appendChild(libraryEditor.element);
+    libraryEditor.onSave(lesson => new Promise((resolve, reject) => {
+      if (pendingCustomLessonSave) pendingCustomLessonSave.reject?.(new Error('Ankstesnis išsaugojimas dar nebaigtas.'));
+      pendingCustomLessonSave = { lessonId: lesson.id, resolve, reject };
+      window.dispatchEvent(new CustomEvent('p2:custom-lesson-request', { detail: { action: 'save', lesson } }));
+      toast('Rinkinys saugomas…');
+    }));
+    return libraryEditor;
+  }
+
+  function openLibraryEditor(lesson = null, options = {}) {
+    if (role() !== 'teacher') return;
+    ensureLibraryEditor().open(lesson, options);
+  }
+
   function openPrototypeLibrary() {
     ensureLibraryModal();
     renderLibraryContent();
@@ -3730,7 +3770,7 @@
     if (!host) return;
 
     host.innerHTML = libraryUi.renderLibraryContentMarkup({
-      lessons: LESSON_CATALOG,
+      lessons: catalogLessons(),
       assignment,
       pendingAttemptPolicy,
       normalizedAttemptPolicy,
@@ -3738,6 +3778,32 @@
       escapeHtml,
       grade5LessonId: GRADE5_REVIEW_LESSON.id,
       grade7LessonId: GRADE7_REVIEW_LESSON.id
+    });
+
+    host.querySelector('[data-library-create]')?.addEventListener('click', () => openLibraryEditor());
+
+    host.querySelectorAll('[data-library-action="edit"]').forEach(button => {
+      button.addEventListener('click', () => {
+        const lesson = lessonForId(button.dataset.lessonId);
+        if (lesson?.isCustom) openLibraryEditor(lesson);
+      });
+    });
+
+    host.querySelectorAll('[data-library-action="duplicate"]').forEach(button => {
+      button.addEventListener('click', () => {
+        const lesson = lessonForId(button.dataset.lessonId);
+        if (lesson?.isCustom) openLibraryEditor(lesson, { duplicate: true });
+      });
+    });
+
+    host.querySelectorAll('[data-library-action="delete"]').forEach(button => {
+      button.addEventListener('click', () => {
+        const lesson = lessonForId(button.dataset.lessonId);
+        if (!lesson?.isCustom || button.disabled) return;
+        if (!window.confirm(`Ištrinti tavo rinkinį „${lesson.shortTitle || lesson.title}“? Jau anksčiau mokiniams priskirtų pamokų istorijos kopijos išliks.`)) return;
+        window.dispatchEvent(new CustomEvent('p2:custom-lesson-request', { detail: { action: 'delete', lessonId: lesson.id } }));
+        toast('Rinkinys trinamas…');
+      });
     });
 
     host.querySelectorAll('[data-library-action="assign"]').forEach(button => {
@@ -3749,7 +3815,7 @@
           const ok = window.confirm(`Dabar priskirta „${current?.shortTitle || assignment.title || 'kita pamoka'}“. Pakeisti ją į „${lesson.shortTitle}“?`);
           if (!ok) return;
         }
-        const attemptPolicy = normalizedAttemptPolicy({ attemptPolicy: pendingAttemptPolicy });
+        const attemptPolicy = normalizedAttemptPolicy({ attemptPolicy: lessonAttemptPolicySeed(lesson) });
         window.dispatchEvent(new CustomEvent('p2:assignment-request', {
           detail: { action: 'assign', lessonId: lesson.id, title: lesson.title, taskCount: lesson.taskCount, attemptPolicy, ...assignmentContentDetail(lesson) }
         }));
@@ -3766,6 +3832,35 @@
       });
     });
   }
+
+  window.addEventListener('p2:custom-lesson-saved', event => {
+    const lessonId = String(event.detail?.lessonId || '');
+    if (pendingCustomLessonSave && (!lessonId || pendingCustomLessonSave.lessonId === lessonId)) {
+      pendingCustomLessonSave.resolve?.();
+      pendingCustomLessonSave = null;
+      libraryEditor?.markSaved('Išsaugota');
+    }
+    toast('Užduočių rinkinys išsaugotas');
+    renderLibraryContent();
+    renderScheduleModal();
+    renderStudentsModal();
+  });
+
+  window.addEventListener('p2:custom-lesson-deleted', () => {
+    toast('Užduočių rinkinys ištrintas');
+    renderLibraryContent();
+    renderScheduleModal();
+    renderStudentsModal();
+  });
+
+  window.addEventListener('p2:custom-lesson-error', event => {
+    const message = String(event.detail?.message || 'Nepavyko išsaugoti užduočių rinkinio.');
+    if (pendingCustomLessonSave) {
+      pendingCustomLessonSave.reject?.(new Error(message));
+      pendingCustomLessonSave = null;
+    }
+    toast(message);
+  });
 
   function ensureTeacherPreviewWindow() {
     if (teacherPreviewWindow) return teacherPreviewWindow;
