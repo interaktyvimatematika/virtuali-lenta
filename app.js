@@ -27,157 +27,16 @@
   let practicePackage = normalizePackage(savedSnapshot?.packageData || defaultPracticePackage);
   let tasks = practicePackage.tasks;
 
-  const refs = {
-    board: document.getElementById('board'),
-    boardStage: document.getElementById('boardCameraStage'),
-    boardWorld: document.getElementById('boardWorld'),
-    canvas: document.getElementById('drawingCanvas'),
-    objectsLayer: document.getElementById('objectsLayer'),
-    practiceWindow: document.getElementById('practiceWindow'),
-    dragHandle: document.getElementById('practiceDragHandle'),
-    resizeHandle: document.getElementById('practiceResizeHandle'),
-    collapseButton: document.getElementById('collapseButton'),
-    packageEyebrow: document.getElementById('packageEyebrow'),
-    packageTitle: document.getElementById('packageTitle'),
-    taskCounter: document.getElementById('taskCounter'),
-    scoreLabel: document.getElementById('scoreLabel'),
-    progressFill: document.getElementById('progressFill'),
-    taskNumber: document.getElementById('taskNumber'),
-    taskTitle: document.getElementById('taskTitle'),
-    responseBadge: document.getElementById('responseBadge'),
-    difficultyLabel: document.getElementById('difficultyLabel'),
-    instructionText: document.getElementById('instructionText'),
-    formulaDisplay: document.getElementById('formulaDisplay'),
-    domainNote: document.getElementById('domainNote'),
-    taskCard: document.querySelector('.task-card'),
-    responseHost: document.getElementById('responseHost'),
-    feedback: document.getElementById('feedback'),
-    feedbackIcon: document.getElementById('feedbackIcon'),
-    feedbackTitle: document.getElementById('feedbackTitle'),
-    feedbackText: document.getElementById('feedbackText'),
-    hintBox: document.getElementById('hintBox'),
-    hintText: document.getElementById('hintText'),
-    previousButton: document.getElementById('previousButton'),
-    nextButton: document.getElementById('nextButton'),
-    taskDots: document.getElementById('taskDots'),
-    saveState: document.getElementById('saveState'),
-    addNoteButton: document.getElementById('addNoteButton'),
-    addImageButton: document.getElementById('addImageButton'),
-    boardImageInput: document.getElementById('boardImageInput'),
-    universalMathToolbar: document.getElementById('universalMathToolbar'),
-    universalMathCategories: document.getElementById('universalMathCategories'),
-    universalMathKeyboard: document.getElementById('universalMathKeyboard'),
-    universalMathStatus: document.getElementById('universalMathStatus'),
-    centerPracticeButton: document.getElementById('centerPracticeButton'),
-    practiceOnlyButton: document.getElementById('practiceOnlyButton'),
-    practiceOnlyOverlay: document.getElementById('practiceOnlyOverlay'),
-    practiceOnlyHost: document.getElementById('practiceOnlyHost'),
-    practiceOnlyTitle: document.getElementById('practiceOnlyTitle'),
-    exitPracticeOnlyButton: document.getElementById('exitPracticeOnlyButton'),
-    boardZoomOutButton: document.getElementById('boardZoomOutButton'),
-    boardZoomInButton: document.getElementById('boardZoomInButton'),
-    boardZoomActualButton: document.getElementById('boardZoomActualButton'),
-    boardFocusObjectButton: document.getElementById('boardFocusObjectButton'),
-    boardZoomLabel: document.getElementById('boardZoomLabel'),
-    resetButton: document.getElementById('resetButton'),
-    libraryButton: document.getElementById('libraryButton'),
-    libraryModal: document.getElementById('libraryModal'),
-    closeLibraryButton: document.getElementById('closeLibraryButton'),
-    libraryTasksTab: document.getElementById('libraryTasksTab'),
-    libraryPracticesTab: document.getElementById('libraryPracticesTab'),
-    libraryTasksView: document.getElementById('libraryTasksView'),
-    libraryPracticesView: document.getElementById('libraryPracticesView'),
-    libraryTaskCount: document.getElementById('libraryTaskCount'),
-    libraryPracticeCount: document.getElementById('libraryPracticeCount'),
-    librarySearch: document.getElementById('librarySearch'),
-    libraryClassFilter: document.getElementById('libraryClassFilter'),
-    libraryTopicFilter: document.getElementById('libraryTopicFilter'),
-    libraryTypeFilter: document.getElementById('libraryTypeFilter'),
-    libraryDifficultyFilter: document.getElementById('libraryDifficultyFilter'),
-    libraryStatusFilter: document.getElementById('libraryStatusFilter'),
-    libraryClearFiltersButton: document.getElementById('libraryClearFiltersButton'),
-    libraryResultsLabel: document.getElementById('libraryResultsLabel'),
-    libraryTaskGrid: document.getElementById('libraryTaskGrid'),
-    libraryEmpty: document.getElementById('libraryEmpty'),
-    librarySelectionLabel: document.getElementById('librarySelectionLabel'),
-    libraryInsertSelectedButton: document.getElementById('libraryInsertSelectedButton'),
-    libraryBuildPracticeButton: document.getElementById('libraryBuildPracticeButton'),
-    libraryPracticeList: document.getElementById('libraryPracticeList'),
-    libraryPracticesEmpty: document.getElementById('libraryPracticesEmpty'),
-    toast: document.getElementById('toast'),
-    studentModeButton: document.getElementById('studentModeButton'),
-    teacherModeButton: document.getElementById('teacherModeButton'),
-    authoringBody: document.getElementById('authoringBody'),
-    authoringTaskList: document.getElementById('authoringTaskList'),
-    addTaskButton: document.getElementById('addTaskButton'),
-    duplicateTaskButton: document.getElementById('duplicateTaskButton'),
-    deleteTaskButton: document.getElementById('deleteTaskButton'),
-    testAsStudentButton: document.getElementById('testAsStudentButton'),
-    checkTaskButton: document.getElementById('checkTaskButton'),
-    aiWorkflowButton: document.getElementById('aiWorkflowButton'),
-    aiWorkflowModal: document.getElementById('aiWorkflowModal'),
-    closeAiWorkflowButton: document.getElementById('closeAiWorkflowButton'),
-    aiTeacherRequest: document.getElementById('aiTeacherRequest'),
-    generateAiPromptButton: document.getElementById('generateAiPromptButton'),
-    aiPromptOutput: document.getElementById('aiPromptOutput'),
-    copyAiPromptButton: document.getElementById('copyAiPromptButton'),
-    aiJsonInput: document.getElementById('aiJsonInput'),
-    aiImportMode: document.getElementById('aiImportMode'),
-    aiJsonFileInput: document.getElementById('aiJsonFileInput'),
-    previewAiImportButton: document.getElementById('previewAiImportButton'),
-    applyAiImportButton: document.getElementById('applyAiImportButton'),
-    aiImportStatus: document.getElementById('aiImportStatus'),
-    aiImportPreview: document.getElementById('aiImportPreview'),
-    aiImportSummary: document.getElementById('aiImportSummary'),
-    aiGenerationNotes: document.getElementById('aiGenerationNotes'),
-    aiImportTaskList: document.getElementById('aiImportTaskList'),
-    exportPackageButton: document.getElementById('exportPackageButton'),
-    taskEditorForm: document.getElementById('taskEditorForm'),
-    authoringEditorTitle: document.getElementById('authoringEditorTitle'),
-    packageTitleInput: document.getElementById('packageTitleInput'),
-    packageEyebrowInput: document.getElementById('packageEyebrowInput'),
-    editorTaskTitle: document.getElementById('editorTaskTitle'),
-    editorDifficulty: document.getElementById('editorDifficulty'),
-    editorInstruction: document.getElementById('editorInstruction'),
-    editorPromptKind: document.getElementById('editorPromptKind'),
-    editorPromptValue: document.getElementById('editorPromptValue'),
-    authoringMathPreview: document.getElementById('authoringMathPreview'),
-    editorNote: document.getElementById('editorNote'),
-    editorHint: document.getElementById('editorHint'),
-    editorRenderer: document.getElementById('editorRenderer'),
-    editorValidator: document.getElementById('editorValidator'),
-    editorResponseLabel: document.getElementById('editorResponseLabel'),
-    editorPlaceholder: document.getElementById('editorPlaceholder'),
-    expressionValidatorPanel: document.getElementById('expressionValidatorPanel'),
-    equationValidatorPanel: document.getElementById('equationValidatorPanel'),
-    editorExpectedExpression: document.getElementById('editorExpectedExpression'),
-    editorExpectedExpressionDisplay: document.getElementById('editorExpectedExpressionDisplay'),
-    editorDomain: document.getElementById('editorDomain'),
-    editorSamples: document.getElementById('editorSamples'),
-    editorRequireSimplified: document.getElementById('editorRequireSimplified'),
-    editorInitialEquation: document.getElementById('editorInitialEquation'),
-    editorExpectedVariable: document.getElementById('editorExpectedVariable'),
-    editorExpectedValue: document.getElementById('editorExpectedValue'),
-    editorExpectedValueDisplay: document.getElementById('editorExpectedValueDisplay'),
-    editorMinimumSteps: document.getElementById('editorMinimumSteps'),
-    minimumStepsField: document.getElementById('minimumStepsField'),
-    automaticAnalysisPanel: document.getElementById('automaticAnalysisPanel'),
-    automaticAnalysisTitle: document.getElementById('automaticAnalysisTitle'),
-    automaticAnalysisStatus: document.getElementById('automaticAnalysisStatus'),
-    automaticAnalysisText: document.getElementById('automaticAnalysisText'),
-    automaticAnalysisMath: document.getElementById('automaticAnalysisMath'),
-    qualityGatePanel: document.getElementById('qualityGatePanel'),
-    qualityGateTitle: document.getElementById('qualityGateTitle'),
-    qualityGateStatus: document.getElementById('qualityGateStatus'),
-    qualityGateSummary: document.getElementById('qualityGateSummary'),
-    qualityGateChecklist: document.getElementById('qualityGateChecklist'),
-    equationTechnicalFields: document.getElementById('equationTechnicalFields'),
-    taskJsonPreview: document.getElementById('taskJsonPreview'),
-    copyJsonButton: document.getElementById('copyJsonButton'),
-    authoringValidation: document.getElementById('authoringValidation'),
-    discardEditorChangesButton: document.getElementById('discardEditorChangesButton'),
-    saveTaskToLibraryButton: document.getElementById('saveTaskToLibraryButton')
-  };
+  const AppBootstrap = window.P772AppBootstrap;
+  if (!AppBootstrap) throw new Error('P772AppBootstrap modulis neįkeltas');
+  const refs = AppBootstrap.collectRefs(document);
+  const eventComposedPath = AppBootstrap.eventComposedPath;
+  const friendlyParseError = AppBootstrap.friendlyParseError;
+  const escapeHtml = AppBootstrap.escapeHtml;
+  const clampNumber = AppBootstrap.clampNumber;
+  const safeString = AppBootstrap.safeString;
+  const readFileAsDataUrl = AppBootstrap.readFileAsDataUrl;
+  const loadImageFromDataUrl = AppBootstrap.loadImageFromDataUrl;
 
   const rendererLabels = {
     'single-math-input': 'Vienas atsakymas',
@@ -547,7 +406,7 @@
   const BoardMathToolbar = window.P772BoardMathToolbar;
   if (!BoardMathToolbar) throw new Error('P772BoardMathToolbar modulis neįkeltas');
 
-  // P1.7.9.49-M2.9: bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.10: DOM bootstrap / bendri helperiai app-bootstrap.js; bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
   // seansas board-input.js, bendra objektų geometrija board-objects.js,
   // teksto / formulės DOM redagavimas board-text-editor.js, MathLive laukų
@@ -1124,14 +983,6 @@
     return String(field?.dataset?.mathFieldKey || '');
   }
 
-  function eventComposedPath(event) {
-    try {
-      const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
-      if (Array.isArray(path) && path.length) return path;
-    } catch (_) {}
-    return event?.target ? [event.target] : [];
-  }
-
   function mathFieldFromEvent(event) {
     for (const node of eventComposedPath(event)) {
       if (node instanceof Element && node.matches?.('math-field.direct-math-field')) return node;
@@ -1442,7 +1293,7 @@
     updateMathToolbarUi();
   }
 
-  // P1.7.9.49-M2.9: MathLive lauko branduolys lieka board-math-field.js,
+  // P1.7.9.49-M2.10: MathLive lauko branduolys lieka board-math-field.js,
   // o matematikos juostos kategorijos / įterpimo semantika iškelta į
   // board-math-toolbar.js.
   const boardMathFieldEngine = BoardMathField.createEngine({
@@ -1525,7 +1376,7 @@
   function scheduleUniversalMathKeyboardPageLayout() { return boardMathToolbarEngine.scheduleUniversalMathKeyboardPageLayout(); }
   function initializeUniversalMathKeyboard() { return boardMathToolbarEngine.initializeUniversalMathKeyboard(); }
 
-  // P1.7.9.49-M2.9: matematikos juostos kategorijos, klavišai, įterpimo
+  // P1.7.9.49-M2.10: matematikos juostos kategorijos, klavišai, įterpimo
   // komandos ir puslapiavimas iškelti į board-math-toolbar.js.
 
   function installMathEditingBoundary() {
@@ -3888,14 +3739,6 @@
     }
   }
 
-  function friendlyParseError(error) {
-    return String(error?.message || error || 'Nežinoma klaida').replace(/^Parse error:\s*/i, '');
-  }
-
-  function escapeHtml(value) {
-    return String(value).replace(/[&<>"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[character]));
-  }
-
   // -------------------- P3.2 išmanus mokytojo režimas --------------------
 
   function setMode(mode, options = {}) {
@@ -4719,11 +4562,6 @@
       height: Number.isFinite(instance.height) ? instance.height : 0.38,
       collapsed: Boolean(instance.collapsed)
     };
-  }
-
-  function clampNumber(value, min, max, fallback) {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
   }
 
   function defaultPracticeAnswerHeight(task) {
@@ -5767,10 +5605,6 @@ KOKYBĖS REIKALAVIMAI:
     const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     if (fenced) text = fenced[1].trim();
     return text;
-  }
-
-  function safeString(value, fallback = '') {
-    return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : fallback;
   }
 
   function allocateImportedId(candidate, usedIds, index) {
@@ -9707,24 +9541,6 @@ KOKYBĖS REIKALAVIMAI:
       naturalHeight,
       createdAt: String(candidate.createdAt || new Date().toISOString())
     };
-  }
-
-  function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(reader.error || new Error('Nepavyko perskaityti failo'));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  function loadImageFromDataUrl(src) {
-    return new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Nepavyko atverti paveikslėlio'));
-      image.src = src;
-    });
   }
 
   async function prepareBoardImageFile(file) {

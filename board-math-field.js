@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.9: MathLive / matematinio laukelio branduolys.
+  // P1.7.9.49-M2.10: MathLive / matematinio laukelio branduolys.
   // Universalios matematikos juostos kategorijos ir įterpimo semantika dabar yra board-math-toolbar.js.
   function createEngine(options = {}) {
     const deps = options.deps || {};
@@ -501,7 +501,7 @@
       return /\\mathord\{\\overrightarrow\{[\s\S]*\}\}\s*$/.test(prefix);
     }
     
-    // P1.7.9.49-M2.9 – '^' taip pat yra išorinis operatorius: a⃗^2 turi tapti (a⃗)^2, ne vektorius iš a².
+    // P1.7.9.49-M2.10 – '^' taip pat yra išorinis operatorius: a⃗^2 turi tapti (a⃗)^2, ne vektorius iš a².
     const VBE_VECTOR_KEYBOARD_EXIT_OPERATORS = new Set(['+', '-', '=', '<', '>', ':', '*', '/', '^']);
     const VBE_VECTOR_TOOLBAR_EXIT_INSERTS = new Set([
       '+', '-', '\\cdot ', ':', '=', '\\ne ', '<', '>', '\\le ', '\\ge ',
@@ -885,7 +885,7 @@
   }
 
   window.P772BoardMathField = Object.freeze({
-    version: 'P1.7.9.49-M2.9',
+    version: 'P1.7.9.49-M2.10',
     createEngine
   });
 })();
