@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.5: bendras lentos objektų geometrijos / pozicionavimo sluoksnis.
+  // P1.7.9.49-M2.5.1: bendras lentos objektų geometrijos / pozicionavimo sluoksnis.
   // Modulis sąmoningai nežino apie MathLive turinį, paveikslėlių įkėlimą ar Firebase.
   // app.js perduoda esamą state, DOM nuorodas ir siaurus callback'us.
 
@@ -48,6 +48,38 @@
       x: (board.scrollLeft + board.clientWidth / 2) / safeZoom,
       y: (board.scrollTop + board.clientHeight / 2) / safeZoom
     };
+  }
+
+  function imageAspectRatio(model) {
+    const stored = Number(model?.aspectRatio);
+    const naturalWidth = Number(model?.naturalWidth);
+    const naturalHeight = Number(model?.naturalHeight);
+    const natural = naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : NaN;
+    const ratio = Number.isFinite(stored) && stored > 0 ? stored : natural;
+    return Math.max(0.05, Math.min(20, Number.isFinite(ratio) && ratio > 0 ? ratio : 1));
+  }
+
+  // P1.7.9.49-M2.5.1: paveikslėlio proporcija yra autoritetinga. Ankstesnis modelis
+  // plotį ir aukštį laikė atskiromis board.width / board.height proporcijomis, todėl
+  // augant lentos aukščiui paveikslėlio DOM dėžutė išsitampydavo, o object-fit:contain
+  // parodydavo dirbtines paraštes. Dabar plotis lieka modelio dydžio atrama, o aukštis
+  // visada išvedamas iš tikro aspectRatio.
+  function imagePixelSize(model, boardRect, options = {}) {
+    const boardWidth = Math.max(1, Number(boardRect?.width) || 1);
+    const boardHeight = Math.max(1, Number(boardRect?.height) || 1);
+    const ratio = imageAspectRatio(model);
+    const minWidth = Math.max(1, Number(options.minWidth) || 110);
+    const minHeight = Math.max(1, Number(options.minHeight) || 80);
+    const minimumWidthForRatio = Math.max(minWidth, minHeight * ratio);
+    const maximumWidthForBoard = Math.max(1, Math.min(boardWidth, boardHeight * ratio));
+    const storedWidth = Number(model?.width) * boardWidth;
+    const storedHeight = Number(model?.height) * boardHeight;
+    const preferredWidth = Number.isFinite(storedWidth) && storedWidth > 0
+      ? storedWidth
+      : (Number.isFinite(storedHeight) && storedHeight > 0 ? storedHeight * ratio : minimumWidthForRatio);
+    const effectiveMinimum = Math.min(minimumWidthForRatio, maximumWidthForBoard);
+    const width = Math.max(effectiveMinimum, Math.min(maximumWidthForBoard, preferredWidth));
+    return { width, height: width / ratio, aspectRatio: ratio };
   }
 
   function makeDraggable(element, model, handle, options = {}) {
@@ -155,14 +187,17 @@
     for (const imageModel of state.boardImages) {
       const element = objectsLayer.querySelector(`[data-board-image-id="${CSS.escape(String(imageModel.id))}"]`);
       if (!element) continue;
-      const width = Math.min(boardRect.width, Math.max(110, imageModel.width * boardRect.width));
-      const height = Math.min(boardRect.height, Math.max(80, imageModel.height * boardRect.height));
+      const size = imagePixelSize(imageModel, boardRect);
+      const width = size.width;
+      const height = size.height;
       const left = Math.max(0, Math.min(boardRect.width - width, imageModel.x * boardRect.width));
       const top = Math.max(0, Math.min(boardRect.height - height, imageModel.y * boardRect.height));
       element.style.left = `${left}px`;
       element.style.top = `${top}px`;
       element.style.width = `${width}px`;
       element.style.height = `${height}px`;
+      element.style.aspectRatio = `${size.aspectRatio}`;
+      imageModel.aspectRatio = size.aspectRatio;
       imageModel.x = boardRect.width ? left / boardRect.width : imageModel.x;
       imageModel.y = boardRect.height ? top / boardRect.height : imageModel.y;
       imageModel.width = boardRect.width ? width / boardRect.width : imageModel.width;
@@ -207,6 +242,8 @@
     getElement,
     updateSelectionUi,
     visibleWorldCenter,
+    imageAspectRatio,
+    imagePixelSize,
     makeDraggable,
     makeImageResizable,
     layoutObjects

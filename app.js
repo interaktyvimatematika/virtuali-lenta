@@ -553,7 +553,7 @@
   const BoardObjects = window.P772BoardObjects;
   if (!BoardObjects) throw new Error('P772BoardObjects modulis neįkeltas');
 
-  // P1.7.9.49-M2.5: kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.5.1: kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
   // seansas board-input.js, o bendra objektų geometrija / pozicionavimas
   // iškelti į board-objects.js.
@@ -11244,7 +11244,10 @@ KOKYBĖS REIKALAVIMAI:
     if (!candidate || typeof candidate !== 'object') return null;
     const src = String(candidate.src || '');
     if (!src.startsWith('data:image/')) return null;
-    const ratio = Math.max(0.05, Math.min(20, Number(candidate.aspectRatio) || 1));
+    const naturalWidth = Math.max(1, Number(candidate.naturalWidth) || 1);
+    const naturalHeight = Math.max(1, Number(candidate.naturalHeight) || 1);
+    const naturalRatio = naturalWidth / naturalHeight;
+    const ratio = Math.max(0.05, Math.min(20, Number(candidate.aspectRatio) || naturalRatio || 1));
     return {
       id: String(candidate.id || `board-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
       src,
@@ -11254,8 +11257,8 @@ KOKYBĖS REIKALAVIMAI:
       width: Math.max(0.03, Math.min(1, Number(candidate.width) || 0.22)),
       height: Math.max(0.03, Math.min(1, Number(candidate.height) || 0.18)),
       aspectRatio: ratio,
-      naturalWidth: Math.max(1, Number(candidate.naturalWidth) || 1),
-      naturalHeight: Math.max(1, Number(candidate.naturalHeight) || 1),
+      naturalWidth,
+      naturalHeight,
       createdAt: String(candidate.createdAt || new Date().toISOString())
     };
   }
@@ -11332,8 +11335,12 @@ KOKYBĖS REIKALAVIMAI:
       height = maxHeight;
       width = height * prepared.aspectRatio;
     }
-    width = Math.max(120, Math.min(boardRect.width, width));
-    height = Math.max(90, Math.min(boardRect.height, height));
+    // P1.7.9.49-M2.5.1: net ir minimalaus / maksimalaus dydžio ribos nekeičia
+    // paveikslėlio proporcijos. Anksčiau width ir height buvo clamp'inami atskirai.
+    const minimumWidth = Math.max(120, 90 * prepared.aspectRatio);
+    const maximumWidth = Math.max(1, Math.min(boardRect.width, boardRect.height * prepared.aspectRatio));
+    width = Math.max(Math.min(minimumWidth, maximumWidth), Math.min(maximumWidth, width));
+    height = width / prepared.aspectRatio;
     const center = visibleBoardWorldCenter();
     const left = Math.max(0, Math.min(boardRect.width - width, center.x - width / 2));
     const top = Math.max(0, Math.min(boardRect.height - height, center.y - height / 2));
@@ -11493,10 +11500,15 @@ KOKYBĖS REIKALAVIMAI:
       element.dataset.boardImageId = imageModel.id;
       element.dataset.boardObjectType = 'image';
       element.dataset.boardObjectId = imageModel.id;
+      const imageSize = BoardObjects.imagePixelSize(imageModel, boardRect);
       element.style.left = `${imageModel.x * boardRect.width}px`;
       element.style.top = `${imageModel.y * boardRect.height}px`;
-      element.style.width = `${Math.max(110, Math.min(boardRect.width, imageModel.width * boardRect.width))}px`;
-      element.style.height = `${Math.max(80, Math.min(boardRect.height, imageModel.height * boardRect.height))}px`;
+      element.style.width = `${imageSize.width}px`;
+      element.style.height = `${imageSize.height}px`;
+      element.style.aspectRatio = `${imageSize.aspectRatio}`;
+      imageModel.aspectRatio = imageSize.aspectRatio;
+      imageModel.width = boardRect.width ? imageSize.width / boardRect.width : imageModel.width;
+      imageModel.height = boardRect.height ? imageSize.height / boardRect.height : imageModel.height;
 
       const image = document.createElement('img');
       image.src = imageModel.src;

@@ -82,8 +82,13 @@ button { -webkit-tap-highlight-color: transparent; }
    dabar parenka board-grid.js. Čia paliekamas dabartinės 720 px lentos fallback,
    kad pats CSS gradientas liktų vienoje vietoje iki vėlesnio CSS modularizavimo. */
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
-#drawingCanvas { position: absolute; left: 0; top: 0; z-index: 1; touch-action: none; }
-.objects-layer { z-index: 2; pointer-events: none; }
+#drawingCanvas {
+  position: absolute; left: 0; top: 0; z-index: 8; touch-action: none;
+  /* P1.7.9.49-M2.5.1: rašalas yra vizualinis anotacijų sluoksnis virš lentos objektų.
+     Ne piešimo režimu jis nedalyvauja hit-test'e, todėl objektai lieka paspaudžiami. */
+  pointer-events: none;
+}
+.objects-layer { z-index: 6; pointer-events: none; }
 .practice-window {
   position: absolute; z-index: 5; left: 50%; top: 50%; width: min(760px,calc(100% - 44px)); height: min(720px,calc(100% - 44px));
   min-width: 360px; min-height: 450px; transform: translate(-50%,-50%); display: grid; grid-template-rows: auto 1fr;
@@ -193,9 +198,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .board-note:hover, .board-note:focus { background: rgba(255,255,255,.86); border-color: #bdc7d5; }
 .toast { position: fixed; left: 50%; bottom: 24px; z-index: 100; transform: translate(-50%,18px); opacity: 0; pointer-events: none; padding: 10px 14px; border-radius: 11px; background: #1f293b; color: white; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.2); transition: .2s ease; }
 .toast.is-visible { opacity: 1; transform: translate(-50%,0); }
-body[data-tool="pen"] #drawingCanvas, body[data-tool="eraser"] #drawingCanvas { cursor: crosshair; z-index: 8; }
+body[data-tool="pen"] #drawingCanvas, body[data-tool="eraser"] #drawingCanvas { cursor: crosshair; pointer-events: auto; }
 body[data-tool="pen"] .practice-window, body[data-tool="eraser"] .practice-window { pointer-events: none; }
-body[data-tool="pan"] #drawingCanvas { cursor: grab; z-index: 8; }
+body[data-tool="pan"] #drawingCanvas { cursor: grab; pointer-events: auto; }
 body[data-tool="pan"].is-board-panning #drawingCanvas { cursor: grabbing; }
 body[data-tool="pan"] .practice-window, body[data-tool="pan"] .objects-layer > * { pointer-events: none !important; }
 @media (max-width: 1050px) {
@@ -6556,29 +6561,30 @@ body.p2-shell .p2-teacher-answer-key math-span.p2-inline-math {
 .board-image-object {
   position: absolute;
   margin: 0;
-  min-width: 110px;
-  min-height: 80px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: rgba(255,255,255,.3);
-  box-shadow: 0 8px 24px rgba(31,43,68,.08);
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   overflow: visible;
   pointer-events: auto;
   touch-action: none;
 }
 .board-image-object:hover,
 .board-image-object.is-active-object {
-  border-color: #8298df;
-  box-shadow: 0 0 0 3px rgba(74,103,214,.10), 0 12px 32px rgba(31,43,68,.16);
+  outline: 1px solid #8298df;
+  outline-offset: 0;
+  box-shadow: 0 0 0 3px rgba(74,103,214,.10);
   z-index: 14;
 }
 .board-image-object > img {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 9px;
+  border-radius: 0;
   object-fit: contain;
-  background: rgba(255,255,255,.75);
+  background: transparent;
   user-select: none;
   -webkit-user-drag: none;
   pointer-events: none;
