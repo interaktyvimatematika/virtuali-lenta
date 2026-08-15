@@ -3,6 +3,9 @@
 
   const STORAGE_KEY = 'virtuali-lenta-interaktyvios-pratybos-p7.7.2-online-p1-v1';
   const LEGACY_STORAGE_KEYS = [];
+  const AppState = window.P772AppState;
+  if (!AppState) throw new Error('P772AppState modulis neįkeltas');
+  const deepClone = AppState.deepClone;
   const EPSILON = 1e-8;
   const PRACTICE_PAGE_FORMATS = Object.freeze({
     A4: { width: 794, height: 1123, label: 'A4' },
@@ -15,7 +18,12 @@
     throw new Error('PRACTICE_PACKAGE nerastas');
   }
 
-  const savedSnapshot = readSavedSnapshot();
+  const savedSnapshot = AppState.readSavedSnapshot({
+    storage: window.localStorage,
+    storageKey: STORAGE_KEY,
+    legacyStorageKeys: LEGACY_STORAGE_KEYS,
+    onError: error => console.warn('Nepavyko perskaityti P7.7.2 būsenos:', error)
+  });
   let practicePackage = normalizePackage(savedSnapshot?.packageData || defaultPracticePackage);
   let tasks = practicePackage.tasks;
 
@@ -431,27 +439,11 @@
     return BUILTIN_PRACTICE_SETS.map(item => deepClone(item));
   }
 
-  const defaultState = () => ({
-    currentTask: 0,
-    mode: 'student',
-    packageData: practicePackage,
-    responses: Object.fromEntries(tasks.map(task => [task.id, defaultResponse(task)])),
-    results: Object.fromEntries(tasks.map(task => [task.id, null])),
-    window: { x: null, y: null, width: null, height: null, collapsed: false, shelved: false },
-    drawing: [],
-    notes: [],
-    formulas: [], // legacy: P7.7.2 formulės gyvena notes[].nodes modelyje
-    boardImages: [],
-    boardTasks: [],
-    activeBoardTaskId: null,
-    boardPractices: [],
-    activeBoardPracticeId: null,
-    activeBoardObject: null,
-    camera: { zoom: 1, scrollLeft: 0, scrollTop: 0, worldWidth: 720, worldHeight: 10000, layoutMode: 'vertical-strip' },
-    practiceOnly: { active: false, practiceId: null },
-    mathToolbarCategory: 'Pagrindiniai',
-    library: createInitialLibrary(),
-    activeTool: 'select'
+  const defaultState = () => AppState.createDefaultState({
+    practicePackage,
+    tasks,
+    defaultResponse,
+    library: createInitialLibrary()
   });
 
   let state = loadState(savedSnapshot);
@@ -515,10 +507,6 @@
     }
   });
 
-  function deepClone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
   const BOARD_WORLD_MIN_WIDTH = 720;
   const BOARD_WORLD_MIN_HEIGHT = 1700;
   const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -559,7 +547,7 @@
   const BoardMathToolbar = window.P772BoardMathToolbar;
   if (!BoardMathToolbar) throw new Error('P772BoardMathToolbar modulis neįkeltas');
 
-  // P1.7.9.49-M2.8.1: kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.9: bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
   // seansas board-input.js, bendra objektų geometrija board-objects.js,
   // teksto / formulės DOM redagavimas board-text-editor.js, MathLive laukų
@@ -886,21 +874,6 @@
     return upgradeTaskAssessment(task);
   }
 
-  function readSavedSnapshot() {
-    try {
-      const direct = localStorage.getItem(STORAGE_KEY);
-      if (direct) return JSON.parse(direct);
-      for (const legacyKey of LEGACY_STORAGE_KEYS) {
-        const legacy = localStorage.getItem(legacyKey);
-        if (legacy) return JSON.parse(legacy);
-      }
-      return null;
-    } catch (error) {
-      console.warn('Nepavyko perskaityti P7.7.2 būsenos:', error);
-      return null;
-    }
-  }
-
   function normalizePackage(candidate) {
     const fallback = deepClone(defaultPracticePackage);
     if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.tasks) || !candidate.tasks.length) return fallback;
@@ -928,60 +901,22 @@
   }
 
   function loadState(parsed) {
-    const base = defaultState();
-    if (!parsed || typeof parsed !== 'object') return base;
-    try {
-      const restored = {
-        ...base,
-        ...parsed,
-        mode: parsed.mode === 'teacher' ? 'teacher' : 'student',
-        packageData: practicePackage,
-        responses: {},
-        results: {},
-        window: { ...base.window, ...(parsed.window || {}) },
-        drawing: Array.isArray(parsed.drawing) ? parsed.drawing : [],
-        notes: migrateMixedNotes(parsed.notes, parsed.formulas),
-        formulas: [],
-        boardImages: Array.isArray(parsed.boardImages) ? parsed.boardImages.map(normalizeBoardImageInstance).filter(Boolean) : [],
-        boardTasks: Array.isArray(parsed.boardTasks) ? parsed.boardTasks.map(normalizeBoardTaskInstance).filter(Boolean) : [],
-        activeBoardTaskId: typeof parsed.activeBoardTaskId === 'string' ? parsed.activeBoardTaskId : null,
-        boardPractices: Array.isArray(parsed.boardPractices) ? parsed.boardPractices.map(normalizeBoardPracticeInstance).filter(Boolean) : [],
-        activeBoardPracticeId: typeof parsed.activeBoardPracticeId === 'string' ? parsed.activeBoardPracticeId : null,
-        activeBoardObject: parsed.activeBoardObject && typeof parsed.activeBoardObject === 'object'
-          ? { type: String(parsed.activeBoardObject.type || ''), id: String(parsed.activeBoardObject.id || '') }
-          : (typeof parsed.activeBoardTaskId === 'string'
-            ? { type: 'task', id: parsed.activeBoardTaskId }
-            : (typeof parsed.activeBoardPracticeId === 'string' ? { type: 'practice', id: parsed.activeBoardPracticeId } : null)),
-        camera: normalizeCamera(parsed.camera || base.camera),
-        practiceOnly: { active: false, practiceId: typeof parsed.practiceOnly?.practiceId === 'string' ? parsed.practiceOnly.practiceId : null },
-        mathToolbarCategory: typeof parsed.mathToolbarCategory === 'string' ? parsed.mathToolbarCategory : base.mathToolbarCategory,
-        library: normalizeLibrary(parsed.library || base.library)
-      };
-      if (restored.activeBoardObject?.type === 'formula' && restored.notes.some(item => item.id === restored.activeBoardObject.id)) {
-        restored.activeBoardObject = { type: 'note', id: restored.activeBoardObject.id };
-      }
-      for (const task of tasks) {
-        const fallback = defaultResponse(task);
-        const candidate = parsed.responses?.[task.id];
-        if (task.response.renderer === 'math-step-list') {
-          restored.responses[task.id] = {
-            steps: normalizeStructuredSteps(candidate?.steps || fallback.steps)
-          };
-        } else {
-          restored.responses[task.id] = {
-            answer: String(candidate?.answer || ''),
-            answerLatex: String(candidate?.answerLatex || candidate?.latex || '')
-          };
-        }
-        const result = parsed.results?.[task.id] || null;
-        restored.results[task.id] = resultMatchesCurrentResponse(result, restored.responses[task.id], task) ? result : null;
-      }
-      restored.currentTask = Math.max(0, Math.min(tasks.length - 1, Number(restored.currentTask) || 0));
-      return restored;
-    } catch (error) {
-      console.warn('Nepavyko atkurti būsenos:', error);
-      return base;
-    }
+    return AppState.restoreState({
+      parsed,
+      base: defaultState(),
+      practicePackage,
+      tasks,
+      defaultResponse,
+      migrateMixedNotes,
+      normalizeBoardImageInstance,
+      normalizeBoardTaskInstance,
+      normalizeBoardPracticeInstance,
+      normalizeCamera,
+      normalizeLibrary,
+      normalizeStructuredSteps,
+      resultMatchesCurrentResponse,
+      onError: error => console.warn('Nepavyko atkurti būsenos:', error)
+    });
   }
 
   function responseSnapshot(response) {
@@ -1507,7 +1442,7 @@
     updateMathToolbarUi();
   }
 
-  // P1.7.9.49-M2.8.1: MathLive lauko branduolys lieka board-math-field.js,
+  // P1.7.9.49-M2.9: MathLive lauko branduolys lieka board-math-field.js,
   // o matematikos juostos kategorijos / įterpimo semantika iškelta į
   // board-math-toolbar.js.
   const boardMathFieldEngine = BoardMathField.createEngine({
@@ -1590,7 +1525,7 @@
   function scheduleUniversalMathKeyboardPageLayout() { return boardMathToolbarEngine.scheduleUniversalMathKeyboardPageLayout(); }
   function initializeUniversalMathKeyboard() { return boardMathToolbarEngine.initializeUniversalMathKeyboard(); }
 
-  // P1.7.9.49-M2.8.1: matematikos juostos kategorijos, klavišai, įterpimo
+  // P1.7.9.49-M2.9: matematikos juostos kategorijos, klavišai, įterpimo
   // komandos ir puslapiavimas iškelti į board-math-toolbar.js.
 
   function installMathEditingBoundary() {
