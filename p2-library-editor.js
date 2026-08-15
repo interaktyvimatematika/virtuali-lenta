@@ -128,8 +128,10 @@
             <label><span>Skiltis</span><select data-task-field="section"><option value="class" ${task.section === 'class' ? 'selected' : ''}>Pamoka</option><option value="self" ${task.section === 'self' ? 'selected' : ''}>Savarankiškai</option></select></label>
             <label><span>Temos žyma</span><input type="text" data-task-field="label" maxlength="50" value="${escapeHtml(task.label)}" placeholder="Pvz., Trupmenos"></label>
             <label class="is-wide"><span>Užduoties pavadinimas</span><input type="text" data-task-field="title" maxlength="100" value="${escapeHtml(task.title)}" placeholder="Pvz., Trupmenų sudėtis"></label>
-            <label class="is-wide"><span>Sąlyga</span><textarea data-task-field="prompt" rows="3" placeholder="Tekstas; formulėms naudok \\( ... \\), pvz. Apskaičiuok: \\(\\frac{2}{3}+\\frac{1}{6}\\)">${escapeHtml(task.prompt)}</textarea><small>Formulės fragmentą rašyk tarp <code>\\(</code> ir <code>\\)</code>.</small></label>
-            <div class="p2-library-editor-preview is-wide" data-task-preview>${richPreviewMarkup(task.prompt)}</div>
+            <div class="p2-library-editor-rich-field is-wide">
+              <div class="p2-library-editor-field-title"><span>Sąlyga</span><small>Rašyk tekstą tiesiogiai, o formules įterpk Matematikos juosta.</small></div>
+              <div data-task-rich-prompt></div>
+            </div>
             ${task.type === 'choice' ? `
               <div class="p2-library-editor-choices is-wide"><div class="p2-library-editor-field-title"><span>Atsakymo variantai</span><small>Pažymėk teisingą variantą.</small></div>${choiceRows}<button type="button" class="p2-library-editor-add-choice" data-add-choice>+ Pridėti variantą</button></div>
             ` : `
@@ -151,6 +153,7 @@
     function syncTaskFromCard(card) {
       const task = draft.tasks.find(item => item.id === card.dataset.taskId);
       if (!task) return;
+      if (card.__p2RichPromptEditor) task.prompt = card.__p2RichPromptEditor.getValue();
       card.querySelectorAll('[data-task-field]').forEach(field => {
         task[field.dataset.taskField] = field.value;
       });
@@ -174,11 +177,27 @@
     function bindTaskCard(card) {
       const taskId = card.dataset.taskId;
       const task = () => draft.tasks.find(item => item.id === taskId);
+      const richHost = card.querySelector('[data-task-rich-prompt]');
+      if (richHost && window.P772RichPromptEditor?.createPromptEditor) {
+        const currentTask = task();
+        const richEditor = window.P772RichPromptEditor.createPromptEditor({
+          value: currentTask?.prompt || '',
+          placeholder: 'Įrašyk užduoties sąlygą…',
+          onChange(value) {
+            const current = task();
+            if (!current) return;
+            current.prompt = value;
+            setStatus('Yra neišsaugotų pakeitimų', 'pending');
+          }
+        });
+        card.__p2RichPromptEditor = richEditor;
+        richHost.appendChild(richEditor.element);
+      } else if (richHost) {
+        richHost.innerHTML = `<textarea data-task-field="prompt" rows="3" placeholder="Įrašyk užduoties sąlygą">${escapeHtml(task()?.prompt || '')}</textarea>`;
+      }
       card.querySelectorAll('input, textarea, select').forEach(field => field.addEventListener('input', () => {
         syncTaskFromCard(card);
         const current = task();
-        const preview = card.querySelector('[data-task-preview]');
-        if (preview && current) preview.innerHTML = richPreviewMarkup(current.prompt);
         const small = card.querySelector('header small');
         if (small && current) small.textContent = current.section === 'self' ? 'Savarankiškai' : 'Pamokoje';
         updateTaskCount();
@@ -217,6 +236,7 @@
     }
 
     function renderTasks() {
+      tasksHost.querySelectorAll('[data-task-id]').forEach(card => card.__p2RichPromptEditor?.destroy?.());
       tasksHost.innerHTML = draft.tasks.length
         ? draft.tasks.map(taskMarkup).join('')
         : '<div class="p2-library-editor-empty"><strong>Dar nėra užduočių.</strong><span>Pridėk trumpo atsakymo arba pasirinkimo užduotį.</span></div>';
@@ -225,6 +245,7 @@
     }
 
     function close() {
+      tasksHost.querySelectorAll('[data-task-id]').forEach(card => card.__p2RichPromptEditor?.destroy?.());
       modal.hidden = true;
       setStatus('');
     }
