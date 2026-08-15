@@ -37,6 +37,8 @@
   const safeString = AppBootstrap.safeString;
   const readFileAsDataUrl = AppBootstrap.readFileAsDataUrl;
   const loadImageFromDataUrl = AppBootstrap.loadImageFromDataUrl;
+  const BoardObjectFactory = window.P772BoardObjectFactory;
+  if (!BoardObjectFactory) throw new Error('P772BoardObjectFactory modulis neįkeltas');
 
   const rendererLabels = {
     'single-math-input': 'Vienas atsakymas',
@@ -406,11 +408,12 @@
   const BoardMathToolbar = window.P772BoardMathToolbar;
   if (!BoardMathToolbar) throw new Error('P772BoardMathToolbar modulis neįkeltas');
 
-  // P1.7.9.49-M2.10: DOM bootstrap / bendri helperiai app-bootstrap.js; bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.11: DOM bootstrap / bendri helperiai app-bootstrap.js; bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
-  // seansas board-input.js, bendra objektų geometrija board-objects.js,
-  // teksto / formulės DOM redagavimas board-text-editor.js, MathLive laukų
-  // branduolys board-math-field.js, o matematikos juosta board-math-toolbar.js.
+  // seansas board-input.js, bendra objektų geometrija board-objects.js, objektų
+  // modelių kūrimas / paveikslėlių paruošimas board-object-factory.js, teksto /
+  // formulės DOM redagavimas board-text-editor.js, MathLive laukų branduolys
+  // board-math-field.js, o matematikos juosta board-math-toolbar.js.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
   const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
@@ -1293,7 +1296,7 @@
     updateMathToolbarUi();
   }
 
-  // P1.7.9.49-M2.10: MathLive lauko branduolys lieka board-math-field.js,
+  // P1.7.9.49-M2.11: MathLive lauko branduolys lieka board-math-field.js,
   // o matematikos juostos kategorijos / įterpimo semantika iškelta į
   // board-math-toolbar.js.
   const boardMathFieldEngine = BoardMathField.createEngine({
@@ -1376,7 +1379,7 @@
   function scheduleUniversalMathKeyboardPageLayout() { return boardMathToolbarEngine.scheduleUniversalMathKeyboardPageLayout(); }
   function initializeUniversalMathKeyboard() { return boardMathToolbarEngine.initializeUniversalMathKeyboard(); }
 
-  // P1.7.9.49-M2.10: matematikos juostos kategorijos, klavišai, įterpimo
+  // P1.7.9.49-M2.11: matematikos juostos kategorijos, klavišai, įterpimo
   // komandos ir puslapiavimas iškelti į board-math-toolbar.js.
 
   function installMathEditingBoundary() {
@@ -8408,33 +8411,17 @@ KOKYBĖS REIKALAVIMAI:
 
   function addNote() {
     const id = `note-${Date.now()}`;
-    const offset = state.notes.length % 5;
     const boardRect = getBoardWorldRect();
-    const zoom = Math.max(0.2, currentBoardZoom());
-    const visibleLeft = refs.board.scrollLeft / zoom;
-    const visibleTop = refs.board.scrollTop / zoom;
-    const visibleWidth = refs.board.clientWidth / zoom;
-    const visibleHeight = refs.board.clientHeight / zoom;
-    const objectWidth = 430;
-    const objectHeight = 56;
-    let left = visibleLeft + 54 + offset * 22;
-    let top = visibleTop + 76 + offset * 26;
-    if (!state.window.shelved && refs.practiceWindow?.isConnected) {
-      const practiceRight = refs.practiceWindow.offsetLeft + refs.practiceWindow.offsetWidth + 34;
-      const practiceBottom = refs.practiceWindow.offsetTop + refs.practiceWindow.offsetHeight + 28;
-      if (practiceRight + objectWidth <= visibleLeft + visibleWidth - 24) left = Math.max(left, practiceRight);
-      else if (practiceBottom + objectHeight <= visibleTop + visibleHeight - 24) top = Math.max(top, practiceBottom);
-    }
-    left = Math.max(0, Math.min(boardRect.width - objectWidth, left));
-    top = Math.max(0, Math.min(boardRect.height - objectHeight, top));
-    state.notes.push({
+    const note = BoardObjectFactory.createNoteInstance({
       id,
-      nodes: [{ type: 'text', text: '' }],
-      x: boardRect.width ? left / boardRect.width : 0.055,
-      y: boardRect.height ? top / boardRect.height : 0.08,
-      width: objectWidth,
-      minHeight: 44
+      noteCount: state.notes.length,
+      boardRect,
+      zoom: currentBoardZoom(),
+      board: refs.board,
+      practiceWindow: refs.practiceWindow,
+      windowShelved: state.window.shelved
     });
+    state.notes.push(note);
     renderBoardObjects();
     scheduleSave();
     requestAnimationFrame(() => {
@@ -8452,6 +8439,7 @@ KOKYBĖS REIKALAVIMAI:
     });
     showToast('Įterptas vieningas teksto ir formulių laukas. Matematikos juostoje pasirink kategoriją.');
   }
+
 
 
   function boardTaskFieldId(instance, index, branchIndex = null) {
@@ -9516,70 +9504,16 @@ KOKYBĖS REIKALAVIMAI:
     return object;
   }
 
-  const BOARD_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024;
-  const BOARD_IMAGE_MAX_DIMENSION = 1600;
-  const BOARD_IMAGE_TARGET_DATA_URL_LENGTH = 850000;
-
   function normalizeBoardImageInstance(candidate) {
-    if (!candidate || typeof candidate !== 'object') return null;
-    const src = String(candidate.src || '');
-    if (!src.startsWith('data:image/')) return null;
-    const naturalWidth = Math.max(1, Number(candidate.naturalWidth) || 1);
-    const naturalHeight = Math.max(1, Number(candidate.naturalHeight) || 1);
-    const naturalRatio = naturalWidth / naturalHeight;
-    const ratio = Math.max(0.05, Math.min(20, Number(candidate.aspectRatio) || naturalRatio || 1));
-    return {
-      id: String(candidate.id || `board-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
-      src,
-      name: String(candidate.name || 'Nuotrauka').slice(0, 160),
-      x: Math.max(0, Math.min(1, Number(candidate.x) || 0)),
-      y: Math.max(0, Math.min(1, Number(candidate.y) || 0)),
-      width: Math.max(0.03, Math.min(1, Number(candidate.width) || 0.22)),
-      height: Math.max(0.03, Math.min(1, Number(candidate.height) || 0.18)),
-      aspectRatio: ratio,
-      naturalWidth,
-      naturalHeight,
-      createdAt: String(candidate.createdAt || new Date().toISOString())
-    };
+    return BoardObjectFactory.normalizeImageInstance(candidate);
   }
 
   async function prepareBoardImageFile(file) {
-    if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Pasirink paveikslėlio failą');
-    if (file.size > BOARD_IMAGE_MAX_INPUT_BYTES) throw new Error('Paveikslėlis per didelis. Didžiausias pradinis failas – 20 MB.');
-    const original = await readFileAsDataUrl(file);
-    const source = await loadImageFromDataUrl(original);
-    const naturalWidth = Math.max(1, source.naturalWidth || source.width || 1);
-    const naturalHeight = Math.max(1, source.naturalHeight || source.height || 1);
-    let scale = Math.min(1, BOARD_IMAGE_MAX_DIMENSION / Math.max(naturalWidth, naturalHeight));
-    let quality = 0.88;
-    let dataUrl = original;
-    let outputWidth = naturalWidth;
-    let outputHeight = naturalHeight;
-
-    // Nuotrauką sumažiname prieš siųsdami per bendros lentos Firebase būseną.
-    // Taip viena nuotrauka neužkemša localStorage ir realaus laiko sinchronizacijos.
-    for (let attempt = 0; attempt < 7; attempt += 1) {
-      outputWidth = Math.max(1, Math.round(naturalWidth * scale));
-      outputHeight = Math.max(1, Math.round(naturalHeight * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = outputWidth;
-      canvas.height = outputHeight;
-      const context = canvas.getContext('2d', { alpha: true });
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = 'high';
-      context.drawImage(source, 0, 0, outputWidth, outputHeight);
-      dataUrl = canvas.toDataURL('image/webp', quality);
-      if (dataUrl.length <= BOARD_IMAGE_TARGET_DATA_URL_LENGTH) break;
-      scale *= 0.82;
-      quality = Math.max(0.62, quality - 0.06);
-    }
-    if (dataUrl.length > 1200000) throw new Error('Nepavyko pakankamai sumažinti paveikslėlio. Pabandyk mažesnį failą.');
-    return {
-      src: dataUrl,
-      naturalWidth: outputWidth,
-      naturalHeight: outputHeight,
-      aspectRatio: outputWidth / Math.max(1, outputHeight)
-    };
+    return BoardObjectFactory.prepareImageFile(file, {
+      readFileAsDataUrl,
+      loadImageFromDataUrl,
+      document
+    });
   }
 
   function visibleBoardWorldCenter() {
@@ -9589,35 +9523,14 @@ KOKYBĖS REIKALAVIMAI:
   async function insertBoardImage(file) {
     const prepared = await prepareBoardImageFile(file);
     const boardRect = getBoardWorldRect();
-    const maxWidth = Math.min(620, boardRect.width * 0.42);
-    const maxHeight = Math.min(480, boardRect.height * 0.36);
-    let width = Math.min(maxWidth, Math.max(180, prepared.naturalWidth));
-    let height = width / prepared.aspectRatio;
-    if (height > maxHeight) {
-      height = maxHeight;
-      width = height * prepared.aspectRatio;
-    }
-    // P1.7.9.49-M2.5.1: net ir minimalaus / maksimalaus dydžio ribos nekeičia
-    // paveikslėlio proporcijos. Anksčiau width ir height buvo clamp'inami atskirai.
-    const minimumWidth = Math.max(120, 90 * prepared.aspectRatio);
-    const maximumWidth = Math.max(1, Math.min(boardRect.width, boardRect.height * prepared.aspectRatio));
-    width = Math.max(Math.min(minimumWidth, maximumWidth), Math.min(maximumWidth, width));
-    height = width / prepared.aspectRatio;
     const center = visibleBoardWorldCenter();
-    const left = Math.max(0, Math.min(boardRect.width - width, center.x - width / 2));
-    const top = Math.max(0, Math.min(boardRect.height - height, center.y - height / 2));
-    const instance = normalizeBoardImageInstance({
+    const instance = BoardObjectFactory.createImageInstance({
+      prepared,
+      boardRect,
+      center,
       id: `board-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      src: prepared.src,
       name: file.name || 'Nuotrauka',
-      x: boardRect.width ? left / boardRect.width : 0,
-      y: boardRect.height ? top / boardRect.height : 0,
-      width: boardRect.width ? width / boardRect.width : 0.22,
-      height: boardRect.height ? height / boardRect.height : 0.18,
-      aspectRatio: prepared.aspectRatio,
-      naturalWidth: prepared.naturalWidth,
-      naturalHeight: prepared.naturalHeight,
-      createdAt: new Date().toISOString()
+      now: new Date()
     });
     if (!instance) throw new Error('Nepavyko parengti paveikslėlio');
     state.boardImages.push(instance);
@@ -9626,6 +9539,7 @@ KOKYBĖS REIKALAVIMAI:
     setActiveBoardObject('image', instance.id, { save: false });
     scheduleSave();
   }
+
 
   function makeBoardImageResizable(element, model, handle) {
     return BoardObjects.makeImageResizable(element, model, handle, {
