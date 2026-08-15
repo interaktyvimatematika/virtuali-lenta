@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.11: lentos objektų sukūrimo / importavimo sluoksnis.
+  // P1.7.9.49-M2.12: lentos objektų sukūrimo / importavimo sluoksnis.
   // Čia laikome tik modelio konstravimą ir paveikslėlio paruošimą. DOM renderinimas,
   // MathLive, Firebase ir realtime sinchronizacija lieka savo esamuose moduliuose.
 

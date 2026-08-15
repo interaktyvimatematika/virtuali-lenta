@@ -119,7 +119,7 @@
   }
 
   window.P772AppState = Object.freeze({
-    version: 'P1.7.9.49-M2.11',
+    version: 'P1.7.9.49-M2.12',
     deepClone,
     readSavedSnapshot,
     createDefaultState,

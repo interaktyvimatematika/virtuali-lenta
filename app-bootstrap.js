@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.11: siauras programos bootstrap / bendrų helperių sluoksnis.
+  // P1.7.9.49-M2.12: siauras programos bootstrap / bendrų helperių sluoksnis.
   // Čia nėra lentos, pratybų ar Firebase elgsenos – tik DOM nuorodų surinkimas
   // ir stateless pagalbinės funkcijos, anksčiau gyvenusios app.js.
 
@@ -204,7 +204,7 @@
   }
 
   window.P772AppBootstrap = Object.freeze({
-    version: 'P1.7.9.49-M2.11',
+    version: 'P1.7.9.49-M2.12',
     collectRefs,
     eventComposedPath,
     friendlyParseError,

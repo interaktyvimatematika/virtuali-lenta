@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.11: universalios matematikos juostos duomenys, įterpimo
+  // P1.7.9.49-M2.12: universalios matematikos juostos duomenys, įterpimo
   // semantika ir UI puslapiavimas. MathLive lauko branduolys lieka
   // board-math-field.js, o mišraus teksto redaktoriaus gyvavimo ciklas – app.js.
   function createEngine(options = {}) {
@@ -679,7 +679,7 @@
   }
 
   window.P772BoardMathToolbar = Object.freeze({
-    version: 'P1.7.9.49-M2.11',
+    version: 'P1.7.9.49-M2.12',
     createEngine
   });
 })();

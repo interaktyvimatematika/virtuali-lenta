@@ -407,13 +407,16 @@
   if (!BoardMathField) throw new Error('P772BoardMathField modulis neįkeltas');
   const BoardMathToolbar = window.P772BoardMathToolbar;
   if (!BoardMathToolbar) throw new Error('P772BoardMathToolbar modulis neįkeltas');
+  const BoardPracticeUI = window.P772BoardPracticeUI;
+  if (!BoardPracticeUI) throw new Error('P772BoardPracticeUI modulis neįkeltas');
 
-  // P1.7.9.49-M2.11: DOM bootstrap / bendri helperiai app-bootstrap.js; bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.12: DOM bootstrap / bendri helperiai app-bootstrap.js; bazinė būsenos schema / atkūrimas app-state.js; kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
   // seansas board-input.js, bendra objektų geometrija board-objects.js, objektų
   // modelių kūrimas / paveikslėlių paruošimas board-object-factory.js, teksto /
   // formulės DOM redagavimas board-text-editor.js, MathLive laukų branduolys
-  // board-math-field.js, o matematikos juosta board-math-toolbar.js.
+  // board-math-field.js, matematikos juosta board-math-toolbar.js, o pratybų
+  // objektų / pagrindinio pratybų lango sąveika board-practice-ui.js.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
   const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
@@ -427,6 +430,31 @@
     fitSideMarginScreen: BOARD_FIT_SIDE_MARGIN_SCREEN,
     legacyUser100Zoom: BOARD_LEGACY_USER_100_ZOOM,
     legacyFitPaddingX: BOARD_LEGACY_FIT_PADDING_X
+  });
+
+  const boardPracticeUI = BoardPracticeUI.createController({
+    refs,
+    getState: () => state,
+    getOnlineAccessRole: () => onlineAccessRole,
+    getWorldRect: getBoardWorldRect,
+    getZoom: currentBoardZoom,
+    scheduleSave,
+    setActiveBoardPractice,
+    setActiveBoardObject,
+    clearActiveBoardObject,
+    revealPrimaryPracticeWindow,
+    practicePagePixelSize,
+    practiceLayoutMode,
+    practiceFreeLayoutIssues,
+    refreshMathFieldRendering,
+    autoPaginatePracticeInstance,
+    renderBoardObjects,
+    clampNumber,
+    resetPracticeFreeLayout,
+    setPracticeLayoutMode,
+    practiceColumnCount,
+    window,
+    document
   });
 
   function clampCameraZoom(value) {
@@ -1296,7 +1324,7 @@
     updateMathToolbarUi();
   }
 
-  // P1.7.9.49-M2.11: MathLive lauko branduolys lieka board-math-field.js,
+  // P1.7.9.49-M2.12: MathLive lauko branduolys lieka board-math-field.js,
   // o matematikos juostos kategorijos / įterpimo semantika iškelta į
   // board-math-toolbar.js.
   const boardMathFieldEngine = BoardMathField.createEngine({
@@ -1379,7 +1407,7 @@
   function scheduleUniversalMathKeyboardPageLayout() { return boardMathToolbarEngine.scheduleUniversalMathKeyboardPageLayout(); }
   function initializeUniversalMathKeyboard() { return boardMathToolbarEngine.initializeUniversalMathKeyboard(); }
 
-  // P1.7.9.49-M2.11: matematikos juostos kategorijos, klavišai, įterpimo
+  // P1.7.9.49-M2.12: matematikos juostos kategorijos, klavišai, įterpimo
   // komandos ir puslapiavimas iškelti į board-math-toolbar.js.
 
   function installMathEditingBoundary() {
@@ -8734,317 +8762,43 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function makeBoardTaskResizable(element, model, handle) {
-    let resize = null;
-    handle.addEventListener('pointerdown', event => {
-      if (state.activeTool !== 'select' || model.collapsed || state.practiceOnly?.active) return;
-      event.preventDefault(); event.stopPropagation();
-      const boardRect = getBoardWorldRect();
-      resize = {
-        pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-        width: element.offsetWidth, height: element.offsetHeight,
-        maxWidth: boardRect.width - element.offsetLeft, maxHeight: boardRect.height - element.offsetTop
-      };
-      handle.setPointerCapture(event.pointerId);
-    });
-    handle.addEventListener('pointermove', event => {
-      if (!resize || event.pointerId !== resize.pointerId) return;
-      const zoom = currentBoardZoom();
-      const width = Math.max(330, Math.min(resize.maxWidth, resize.width + (event.clientX - resize.startX) / zoom));
-      const height = Math.max(300, Math.min(resize.maxHeight, resize.height + (event.clientY - resize.startY) / zoom));
-      element.style.width = `${width}px`; element.style.height = `${height}px`;
-      const boardRect = getBoardWorldRect();
-      model.width = boardRect.width ? width / boardRect.width : model.width;
-      model.height = boardRect.height ? height / boardRect.height : model.height;
-    });
-    handle.addEventListener('pointerup', event => {
-      if (!resize) return; resize = null;
-      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      scheduleSave();
-    });
-    handle.addEventListener('pointercancel', () => { resize = null; });
+    return boardPracticeUI.makeBoardTaskResizable(element, model, handle);
   }
 
   function makeBoardPracticeResizable(element, model, handle) {
-    let resize = null;
-    handle.addEventListener('pointerdown', event => {
-      if (model.collapsed || state.practiceOnly?.active) return;
-      event.preventDefault(); event.stopPropagation();
-      setActiveBoardPractice(model.id, { save: false });
-      const boardRect = getBoardWorldRect();
-      resize = {
-        pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-        width: element.offsetWidth, height: element.offsetHeight,
-        maxWidth: boardRect.width - element.offsetLeft, maxHeight: boardRect.height - element.offsetTop
-      };
-      handle.setPointerCapture(event.pointerId);
-    });
-    handle.addEventListener('pointermove', event => {
-      if (!resize || event.pointerId !== resize.pointerId) return;
-      const zoom = currentBoardZoom();
-      const minWidth = model.kind === 'external-module' ? 520 : 470;
-      const width = Math.max(minWidth, Math.min(resize.maxWidth, resize.width + (event.clientX - resize.startX) / zoom));
-      const height = Math.max(560, Math.min(resize.maxHeight, resize.height + (event.clientY - resize.startY) / zoom));
-      element.style.width = `${width}px`;
-      element.style.height = `${height}px`;
-      applyPracticePageScale(element, model);
-      const boardRect = getBoardWorldRect();
-      model.width = boardRect.width ? width / boardRect.width : model.width;
-      model.height = boardRect.height ? height / boardRect.height : model.height;
-    });
-    handle.addEventListener('pointerup', event => {
-      if (!resize) return;
-      resize = null;
-      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      scheduleSave();
-    });
-    handle.addEventListener('pointercancel', () => { resize = null; });
+    return boardPracticeUI.makeBoardPracticeResizable(element, model, handle);
   }
 
   function ensureElementVisibleInScroller(scroller, element) {
-    if (!scroller || !element) return;
-    const scrollerRect = scroller.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
-    if (elementRect.top < scrollerRect.top + 6) scroller.scrollTop -= (scrollerRect.top + 6 - elementRect.top);
-    else if (elementRect.bottom > scrollerRect.bottom - 6) scroller.scrollTop += (elementRect.bottom - scrollerRect.bottom + 6);
+    return boardPracticeUI.ensureElementVisibleInScroller(scroller, element);
   }
 
   function makePracticeAnswerAreaResizable(area, taskInstance, handle, shell, pageInstance) {
-    let drag = null;
-    handle.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      drag = { pointerId: event.pointerId, startY: event.clientY, height: area.getBoundingClientRect().height };
-      handle.setPointerCapture(event.pointerId);
-    });
-    handle.addEventListener('pointermove', event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const height = Math.max(80, Math.min(520, drag.height + event.clientY - drag.startY));
-      taskInstance.layout.answerHeight = Math.round(height);
-      area.style.height = `${taskInstance.layout.answerHeight}px`;
-      shell.dispatchEvent(new CustomEvent('practice-layout-change', { bubbles: true }));
-    });
-    const finish = event => {
-      if (!drag) return;
-      drag = null;
-      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      if (pageInstance?.page?.paginationMode === 'auto') {
-        autoPaginatePracticeInstance(pageInstance, { preserveActive: true });
-        pageInstance.activePageIndex = Number(taskInstance.layout.pageIndex) || 0;
-        renderBoardObjects();
-      }
-      scheduleSave();
-    };
-    handle.addEventListener('pointerup', finish);
-    handle.addEventListener('pointercancel', finish);
+    return boardPracticeUI.makePracticeAnswerAreaResizable(area, taskInstance, handle, shell, pageInstance);
   }
 
   function practicePageScaleForViewport(viewport, instance) {
-    const pageSize = practicePagePixelSize(instance);
-    const availableWidth = Math.max(1, viewport.clientWidth - 28);
-    const availableHeight = Math.max(1, viewport.clientHeight - 28);
-    const mode = instance.page?.viewMode || 'fit-page';
-    if (mode === 'actual') return 1;
-    if (mode === 'fit-width') return Math.max(0.2, Math.min(2, availableWidth / pageSize.width));
-    return Math.max(0.2, Math.min(2, Math.min(availableWidth / pageSize.width, availableHeight / pageSize.height)));
+    return boardPracticeUI.practicePageScaleForViewport(viewport, instance);
   }
 
   function updatePracticePageOverflowState(object, instance) {
-    const content = object.querySelector('.practice-page-content');
-    const badge = object.querySelector('.practice-page-layout-warning');
-    if (!content || !badge) return;
-    const mode = practiceLayoutMode(instance);
-    let visibleWarning = false;
-    let warningText = 'Šio puslapio turinys netelpa';
-    if (mode === 'free') {
-      const issues = practiceFreeLayoutIssues(instance, instance.activePageIndex);
-      visibleWarning = state.mode === 'teacher' && (issues.overflow || issues.overlap);
-      if (issues.overflow && issues.overlap) warningText = 'Objektai persidengia ir išeina už puslapio';
-      else if (issues.overlap) warningText = 'Kai kurie užduočių blokai persidengia';
-      else if (issues.overflow) warningText = 'Kai kurie blokai išeina už puslapio';
-    } else {
-      const overflowing = content.scrollHeight > content.clientHeight + 2;
-      visibleWarning = overflowing && state.mode === 'teacher';
-    }
-    badge.textContent = warningText;
-    object.classList.toggle('has-layout-overflow', visibleWarning);
-    badge.hidden = !visibleWarning;
+    return boardPracticeUI.updatePracticePageOverflowState(object, instance);
   }
 
   function applyPracticePageScale(object, instance) {
-    const viewport = object?.querySelector('.practice-page-viewport');
-    const stage = object?.querySelector('.practice-page-stage');
-    const sheet = object?.querySelector('.practice-page-sheet');
-    if (!viewport || !stage || !sheet) return;
-    const pageSize = practicePagePixelSize(instance);
-    const scale = practicePageScaleForViewport(viewport, instance);
-    sheet.style.width = `${pageSize.width}px`;
-    sheet.style.height = `${pageSize.height}px`;
-    const useLayoutZoom = Boolean(window.CSS?.supports?.('zoom', '1'));
-    sheet.dataset.pageScaleMode = useLayoutZoom ? 'layout-zoom' : 'transform';
-    sheet.style.zoom = useLayoutZoom ? String(scale) : '';
-    sheet.style.transform = useLayoutZoom ? 'none' : `scale(${scale})`;
-    stage.style.width = `${Math.round(pageSize.width * scale)}px`;
-    stage.style.height = `${Math.round(pageSize.height * scale)}px`;
-    stage.dataset.scale = String(scale);
-    stage.classList.toggle('is-centered', stage.offsetWidth < viewport.clientWidth - 8);
-    requestAnimationFrame(() => {
-      refreshMathFieldRendering(object);
-      updatePracticePageOverflowState(object, instance);
-    });
+    return boardPracticeUI.applyPracticePageScale(object, instance);
   }
 
   function makePracticeTaskFreeDraggable(shell, taskInstance, handle, pageInstance) {
-    let drag = null;
-    handle.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      const content = shell.closest('.practice-page-content');
-      if (!content) return;
-      const contentRect = content.getBoundingClientRect();
-      const shellRect = shell.getBoundingClientRect();
-      drag = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        x: clampNumber(taskInstance.layout.freeX, 0, 0.94, 0.02),
-        y: clampNumber(taskInstance.layout.freeY, 0, 0.94, 0),
-        contentRect,
-        shellRect
-      };
-      shell.classList.add('is-layout-dragging');
-      handle.setPointerCapture(event.pointerId);
-    });
-    handle.addEventListener('pointermove', event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const maxX = Math.max(0, 1 - drag.shellRect.width / Math.max(1, drag.contentRect.width));
-      const maxY = Math.max(0, 1 - drag.shellRect.height / Math.max(1, drag.contentRect.height));
-      const x = clampNumber(drag.x + (event.clientX - drag.startX) / Math.max(1, drag.contentRect.width), 0, maxX, drag.x);
-      const y = clampNumber(drag.y + (event.clientY - drag.startY) / Math.max(1, drag.contentRect.height), 0, maxY, drag.y);
-      taskInstance.layout.freeX = Math.round(x * 1000) / 1000;
-      taskInstance.layout.freeY = Math.round(y * 1000) / 1000;
-      shell.style.left = `${taskInstance.layout.freeX * 100}%`;
-      shell.style.top = `${taskInstance.layout.freeY * 100}%`;
-    });
-    const finish = event => {
-      if (!drag) return;
-      drag = null;
-      shell.classList.remove('is-layout-dragging');
-      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      const object = shell.closest('.board-practice-page-object');
-      updatePracticePageOverflowState(object, pageInstance);
-      scheduleSave();
-    };
-    handle.addEventListener('pointerup', finish);
-    handle.addEventListener('pointercancel', finish);
+    return boardPracticeUI.makePracticeTaskFreeDraggable(shell, taskInstance, handle, pageInstance);
   }
 
   function makePracticeTaskFreeResizable(shell, taskInstance, handle, pageInstance) {
-    let resize = null;
-    handle.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      const content = shell.closest('.practice-page-content');
-      if (!content) return;
-      const contentRect = content.getBoundingClientRect();
-      const shellRect = shell.getBoundingClientRect();
-      const scale = Number(shell.closest('.practice-page-stage')?.dataset.scale) || 1;
-      resize = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        width: clampNumber(taskInstance.layout.freeWidth, 0.28, 1, 0.96),
-        answerHeight: taskInstance.layout.answerHeight,
-        x: clampNumber(taskInstance.layout.freeX, 0, 0.94, 0.02),
-        contentRect,
-        shellRect,
-        scale
-      };
-      shell.classList.add('is-layout-resizing');
-      handle.setPointerCapture(event.pointerId);
-    });
-    handle.addEventListener('pointermove', event => {
-      if (!resize || event.pointerId !== resize.pointerId) return;
-      const maxWidth = Math.max(0.28, 1 - resize.x);
-      const width = clampNumber(resize.width + (event.clientX - resize.startX) / Math.max(1, resize.contentRect.width), 0.28, maxWidth, resize.width);
-      const answerHeight = clampNumber(resize.answerHeight + (event.clientY - resize.startY) / Math.max(0.2, resize.scale), 80, 520, resize.answerHeight);
-      taskInstance.layout.freeWidth = Math.round(width * 1000) / 1000;
-      taskInstance.layout.answerHeight = Math.round(answerHeight);
-      shell.style.setProperty('--practice-free-width', `${taskInstance.layout.freeWidth * 100}%`);
-      const area = shell.querySelector('.practice-page-answer-area');
-      if (area) area.style.height = `${taskInstance.layout.answerHeight}px`;
-    });
-    const finish = event => {
-      if (!resize) return;
-      resize = null;
-      shell.classList.remove('is-layout-resizing');
-      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      const object = shell.closest('.board-practice-page-object');
-      updatePracticePageOverflowState(object, pageInstance);
-      scheduleSave();
-    };
-    handle.addEventListener('pointerup', finish);
-    handle.addEventListener('pointercancel', finish);
+    return boardPracticeUI.makePracticeTaskFreeResizable(shell, taskInstance, handle, pageInstance);
   }
 
   function createPracticeLayoutEditorBar(instance) {
-    const bar = document.createElement('div');
-    bar.className = 'practice-layout-editor-bar';
-    bar.addEventListener('pointerdown', event => event.stopPropagation());
-    const label = document.createElement('span');
-    label.className = 'practice-layout-editor-label';
-    label.textContent = 'Puslapio maketas';
-    const modes = document.createElement('div');
-    modes.className = 'practice-layout-mode-switch';
-    const currentMode = practiceLayoutMode(instance);
-    [
-      ['flow', 'Srautas'],
-      ['columns', 'Stulpeliai'],
-      ['free', 'Laisvas']
-    ].forEach(([value, caption]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = caption;
-      button.classList.toggle('is-active', currentMode === value);
-      button.addEventListener('click', () => setPracticeLayoutMode(instance, value));
-      modes.appendChild(button);
-    });
-    bar.append(label, modes);
-
-    if (currentMode === 'columns') {
-      const columns = document.createElement('select');
-      columns.className = 'practice-layout-columns-select';
-      columns.setAttribute('aria-label', 'Stulpelių skaičius');
-      columns.innerHTML = '<option value="2">2 stulpeliai</option><option value="3">3 stulpeliai</option>';
-      columns.value = String(practiceColumnCount(instance));
-      columns.addEventListener('change', () => {
-        instance.page.columns = Number(columns.value);
-        instance.page.paginationMode = 'auto';
-        autoPaginatePracticeInstance(instance, { preserveActive: true });
-        renderBoardObjects();
-        scheduleSave();
-      });
-      bar.appendChild(columns);
-    }
-
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'practice-layout-reset';
-    reset.textContent = currentMode === 'free' ? 'Išdėstyti iš naujo' : 'Perskaičiuoti';
-    reset.addEventListener('click', () => {
-      if (currentMode === 'free') resetPracticeFreeLayout(instance);
-      else autoPaginatePracticeInstance(instance, { preserveActive: true });
-      renderBoardObjects();
-      scheduleSave();
-    });
-    const help = document.createElement('span');
-    help.className = 'practice-layout-editor-help';
-    help.textContent = currentMode === 'free'
-      ? 'Tempk už ⠿, dydį keisk apatiniame kampe.'
-      : currentMode === 'columns'
-        ? 'Užduotys paskirstomos į pasirinkto skaičiaus stulpelius.'
-        : 'Užduotys dedamos viena po kitos.';
-    bar.append(reset, help);
-    return bar;
+    return boardPracticeUI.createPracticeLayoutEditorBar(instance);
   }
 
   function createPracticePageTaskShell(pageInstance, taskInstance, index) {
@@ -9798,151 +9552,37 @@ KOKYBĖS REIKALAVIMAI:
 
 
   function setPracticeObjectSelected(selected) {
-    refs.practiceWindow.classList.toggle('is-object-selected', Boolean(selected));
+    return boardPracticeUI.setPracticeObjectSelected(selected);
   }
 
   function installPracticeObjectSelection() {
-    refs.practiceWindow.dataset.boardObjectType = 'practice-window';
-    refs.practiceWindow.dataset.boardObjectId = 'main';
-    refs.practiceWindow.addEventListener('pointerdown', () => setActiveBoardObject('practice-window', 'main'));
-    refs.board.addEventListener('pointerdown', event => {
-      if (refs.practiceWindow.contains(event.target)) return;
-      if (event.target.closest?.('[data-board-object-type][data-board-object-id]')) return;
-      clearActiveBoardObject();
-    });
-    refs.practiceWindow.addEventListener('focusin', () => setActiveBoardObject('practice-window', 'main'));
-    refs.teacherModeButton.addEventListener('click', () => setActiveBoardObject('practice-window', 'main'));
-    refs.studentModeButton.addEventListener('click', () => setActiveBoardObject('practice-window', 'main'));
+    return boardPracticeUI.installPracticeObjectSelection();
   }
 
   // -------------------- Perkeliamas ir keičiamo dydžio langas --------------------
 
   function initializePracticeWindow() {
-    refs.practiceWindow.hidden = Boolean(state.window.shelved);
-    refs.practiceWindow.classList.toggle('is-student-practice', state.mode === 'student');
-    refs.practiceWindow.classList.toggle('is-authoring', state.mode === 'teacher');
-    const boardRect = getBoardWorldRect();
-    if (state.window.width && state.window.height && state.window.x !== null && state.window.y !== null) {
-      refs.practiceWindow.style.transform = 'none';
-      refs.practiceWindow.style.left = `${state.window.x * boardRect.width}px`;
-      refs.practiceWindow.style.top = `${state.window.y * boardRect.height}px`;
-      refs.practiceWindow.style.width = `${Math.min(1180, Math.max(360, state.window.width * boardRect.width))}px`;
-      refs.practiceWindow.style.height = `${Math.min(920, Math.max(450, state.window.height * boardRect.height))}px`;
-    } else {
-      refs.practiceWindow.style.transform = 'none';
-      refs.practiceWindow.style.left = '24px';
-      refs.practiceWindow.style.top = '24px';
-      refs.practiceWindow.style.width = '650px';
-      refs.practiceWindow.style.height = '730px';
-    }
-    refs.practiceWindow.classList.toggle('is-collapsed', Boolean(state.window.collapsed));
-    refs.collapseButton.textContent = state.window.collapsed ? '+' : '—';
-    clampWindowToBoard();
+    return boardPracticeUI.initializePracticeWindow();
   }
 
   function saveWindowGeometry() {
-    if (state.window.shelved) { scheduleSave(); return; }
-    const boardRect = getBoardWorldRect();
-    if (!boardRect.width || !boardRect.height) return;
-    state.window.x = refs.practiceWindow.offsetLeft / boardRect.width;
-    state.window.y = refs.practiceWindow.offsetTop / boardRect.height;
-    state.window.width = refs.practiceWindow.offsetWidth / boardRect.width;
-    state.window.height = refs.practiceWindow.offsetHeight / boardRect.height;
-    scheduleSave();
+    return boardPracticeUI.saveWindowGeometry();
   }
 
   function clampWindowToBoard() {
-    if (state.window.shelved) return;
-    const boardRect = getBoardWorldRect();
-    if (!boardRect.width) return;
-    refs.practiceWindow.style.transform = 'none';
-    const currentWidth = refs.practiceWindow.offsetWidth || 650;
-    const currentHeight = refs.practiceWindow.offsetHeight || 730;
-    const width = Math.min(Math.max(320, currentWidth), Math.min(1180, boardRect.width));
-    const height = state.window.collapsed ? currentHeight : Math.min(Math.max(410, currentHeight), Math.min(920, boardRect.height));
-    const left = Math.max(0, Math.min(boardRect.width - width, refs.practiceWindow.offsetLeft || 0));
-    const top = Math.max(0, Math.min(boardRect.height - height, refs.practiceWindow.offsetTop || 0));
-    refs.practiceWindow.style.left = `${left}px`;
-    refs.practiceWindow.style.top = `${top}px`;
-    refs.practiceWindow.style.width = `${width}px`;
-    if (!state.window.collapsed) refs.practiceWindow.style.height = `${height}px`;
-    saveWindowGeometry();
+    return boardPracticeUI.clampWindowToBoard();
   }
 
   function centerPracticeWindow() {
-    revealPrimaryPracticeWindow();
-    const boardRect = getBoardWorldRect();
-    const preferredWidth = state.mode === 'teacher' ? 1080 : 650;
-    const preferredHeight = state.mode === 'teacher' ? 790 : 720;
-    const width = Math.min(preferredWidth, boardRect.width - 36);
-    const height = Math.min(preferredHeight, boardRect.height - 36);
-    refs.practiceWindow.style.transform = 'none';
-    refs.practiceWindow.style.width = `${width}px`;
-    refs.practiceWindow.style.height = `${height}px`;
-    const left = state.mode === 'teacher' ? Math.max(18, (boardRect.width - width) / 2) : 24;
-    const top = state.mode === 'teacher' ? Math.max(18, (boardRect.height - height) / 2) : 24;
-    refs.practiceWindow.style.left = `${left}px`;
-    refs.practiceWindow.style.top = `${top}px`;
-    if (state.window.collapsed) {
-      state.window.collapsed = false;
-      refs.practiceWindow.classList.remove('is-collapsed');
-      refs.collapseButton.textContent = '—';
-    }
-    saveWindowGeometry();
+    return boardPracticeUI.centerPracticeWindow();
   }
 
   function installWindowDrag() {
-    let drag = null;
-    refs.dragHandle.addEventListener('pointerdown', event => {
-      if (onlineAccessRole !== 'teacher' || event.target.closest('button') || state.practiceOnly?.active) return;
-      event.preventDefault();
-      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: refs.practiceWindow.offsetLeft, top: refs.practiceWindow.offsetTop };
-      refs.dragHandle.setPointerCapture(event.pointerId);
-    });
-    refs.dragHandle.addEventListener('pointermove', event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const boardRect = getBoardWorldRect();
-      const zoom = currentBoardZoom();
-      const left = Math.max(0, Math.min(boardRect.width - refs.practiceWindow.offsetWidth, drag.left + (event.clientX - drag.startX) / zoom));
-      const top = Math.max(0, Math.min(boardRect.height - refs.practiceWindow.offsetHeight, drag.top + (event.clientY - drag.startY) / zoom));
-      refs.practiceWindow.style.transform = 'none';
-      refs.practiceWindow.style.left = `${left}px`;
-      refs.practiceWindow.style.top = `${top}px`;
-    });
-    refs.dragHandle.addEventListener('pointerup', event => {
-      if (!drag) return;
-      drag = null;
-      try { refs.dragHandle.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
-      saveWindowGeometry();
-    });
+    return boardPracticeUI.installWindowDrag();
   }
 
   function installWindowResize() {
-    let resize = null;
-    refs.resizeHandle.addEventListener('pointerdown', event => {
-      if (onlineAccessRole !== 'teacher' || state.practiceOnly?.active) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const boardRect = getBoardWorldRect();
-      resize = {
-        pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-        width: refs.practiceWindow.offsetWidth, height: refs.practiceWindow.offsetHeight,
-        maxWidth: boardRect.width - refs.practiceWindow.offsetLeft, maxHeight: boardRect.height - refs.practiceWindow.offsetTop
-      };
-      refs.resizeHandle.setPointerCapture(event.pointerId);
-    });
-    refs.resizeHandle.addEventListener('pointermove', event => {
-      if (!resize || event.pointerId !== resize.pointerId) return;
-      const zoom = currentBoardZoom();
-      refs.practiceWindow.style.width = `${Math.max(320, Math.min(resize.maxWidth, resize.width + (event.clientX - resize.startX) / zoom))}px`;
-      refs.practiceWindow.style.height = `${Math.max(410, Math.min(resize.maxHeight, resize.height + (event.clientY - resize.startY) / zoom))}px`;
-    });
-    refs.resizeHandle.addEventListener('pointerup', event => {
-      if (!resize) return;
-      resize = null;
-      try { refs.resizeHandle.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
-      saveWindowGeometry();
-    });
+    return boardPracticeUI.installWindowResize();
   }
 
   // -------------------- ONLINE-P1.1.2 bendros lentos tiltas --------------------
