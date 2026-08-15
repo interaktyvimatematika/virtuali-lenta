@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.7: MathLive / matematinio laukelio branduolys.
-  // UI juostos kategorijos ir konkrečių mygtukų semantika lieka app.js.
+  // P1.7.9.49-M2.8: MathLive / matematinio laukelio branduolys.
+  // Universalios matematikos juostos kategorijos ir įterpimo semantika dabar yra board-math-toolbar.js.
   function createEngine(options = {}) {
     const deps = options.deps || {};
     const hooks = options.hooks || {};
@@ -884,7 +884,7 @@
   }
 
   window.P772BoardMathField = Object.freeze({
-    version: 'P1.7.9.49-M2.7',
+    version: 'P1.7.9.49-M2.8',
     createEngine
   });
 })();
