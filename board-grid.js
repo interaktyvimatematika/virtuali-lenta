@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.2: lentos tinklelio geometrijos / suderinamumo branduolys.
+  // P1.7.9.49-M2.3: lentos tinklelio geometrijos / suderinamumo branduolys.
   // Pats CSS gradientas kol kas lieka styles.css; šis modulis valdo tik jo
   // geometrinius parametrus ir dabartinės / istorinės koordinačių skalės režimą.
 

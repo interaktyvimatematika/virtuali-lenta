@@ -547,10 +547,12 @@
   if (!BoardCamera) throw new Error('P772BoardCamera modulis neįkeltas');
   const BoardGrid = window.P772BoardGrid;
   if (!BoardGrid) throw new Error('P772BoardGrid modulis neįkeltas');
+  const BoardDrawing = window.P772BoardDrawing;
+  if (!BoardDrawing) throw new Error('P772BoardDrawing modulis neįkeltas');
 
-  // P1.7.9.49-M2.2: kameros matematika ir DOM mastelio pritaikymas iškelti į
-  // board-camera.js. app.js palieka tik projekto konfigūraciją ir plonus adapterius,
-  // todėl likusi lentos logika šiame etape elgiasi 1:1 kaip M1.5 bazėje.
+  // P1.7.9.49-M2.3: kameros matematika ir DOM mastelio pritaikymas lieka
+  // board-camera.js. Piešimo / trintuko rasterizavimo branduolys šiame etape
+  // iškeltas į board-drawing.js; app.js palieka pointer, state ir online adapterius.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
   const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
@@ -9140,21 +9142,11 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function configureCanvasContext(context, backingScale, viewport = canvasViewport) {
-    if (!context || !viewport) return;
-    context.setTransform(
-      backingScale, 0, 0, backingScale,
-      -viewport.left * backingScale, -viewport.top * backingScale
-    );
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
+    BoardDrawing.configureCanvasContext(context, backingScale, viewport);
   }
 
   function clearPhysicalCanvas(context, canvas) {
-    if (!context || !canvas) return;
-    context.save();
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.restore();
+    BoardDrawing.clearPhysicalCanvas(context, canvas);
   }
 
   function visibleBoardWorldRect() {
@@ -9370,10 +9362,6 @@ KOKYBĖS REIKALAVIMAI:
     return ready;
   }
 
-  function createStrokeId() {
-    return `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }
-
   function emitLiveStroke(phase, stroke = activeStroke) {
     if (!stroke) return;
     // CustomEvent apdorojamas sinchroniškai. Nekopijuojame viso augančio points masyvo
@@ -9383,63 +9371,32 @@ KOKYBĖS REIKALAVIMAI:
     }));
   }
 
-  // P1.7.9.10.6: mokinio pieštukas juodas, mokytojo – raudonas.
-  // Spalva išsaugoma pačiame brūkšnyje, todėl vienodai matoma abiejuose
-  // įrenginiuose ir išlieka pamokos istorijoje.
-  function currentPenStrokeColor() {
-    return document.body?.dataset?.onlineRole === 'student' ? '#111111' : '#d22f3f';
-  }
-
-  function strokeRenderColor(stroke) {
-    return String(stroke?.color || '#27364f');
+  function boardDrawingRenderOptions() {
+    return { strokeRenderWorldWidth: boardStrokeRenderWorldWidth };
   }
 
   function drawStrokeSegment(context, stroke, fromPoint, toPoint, rect = getBoardWorldRect()) {
-    if (!context || !stroke || !fromPoint || !toPoint) return;
-    context.save();
-    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = boardStrokeRenderWorldWidth(stroke);
-    context.beginPath();
-    context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
-    context.lineTo(toPoint.x * rect.width, toPoint.y * rect.height);
-    context.stroke();
-    context.restore();
+    BoardDrawing.drawStrokeSegment(context, stroke, fromPoint, toPoint, rect, boardDrawingRenderOptions());
   }
 
   function drawStrokePoint(context, stroke, point, rect = getBoardWorldRect()) {
-    if (!point) return;
-    const epsilon = 0.01 / Math.max(1, rect.width);
-    drawStrokeSegment(context, stroke, point, { x: point.x + epsilon, y: point.y }, rect);
+    BoardDrawing.drawStrokePoint(context, stroke, point, rect, boardDrawingRenderOptions());
   }
 
   function drawStrokeToContext(context, stroke, rect = getBoardWorldRect()) {
-    if (!context || !stroke?.points?.length) return;
-    context.save();
-    context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
-    context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = boardStrokeRenderWorldWidth(stroke);
-    context.beginPath();
-    stroke.points.forEach((point, index) => {
-      const x = point.x * rect.width;
-      const y = point.y * rect.height;
-      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
-    });
-    if (stroke.points.length === 1) context.lineTo(stroke.points[0].x * rect.width + 0.01, stroke.points[0].y * rect.height + 0.01);
-    context.stroke();
-    context.restore();
+    BoardDrawing.drawStrokeToContext(context, stroke, rect, boardDrawingRenderOptions());
   }
 
   function rebuildCommittedCanvas() {
-    if (!committedContext || !committedCanvas) return;
-    const rect = getBoardWorldRect();
-    clearPhysicalCanvas(committedContext, committedCanvas);
-    for (const stroke of state.drawing) drawStrokeToContext(committedContext, stroke, rect);
+    BoardDrawing.rebuildCommittedCanvas(
+      committedContext, committedCanvas, state.drawing, getBoardWorldRect(), boardDrawingRenderOptions()
+    );
   }
 
   function paintCommittedStroke(stroke) {
-    if (!committedContext) return;
-    drawStrokeToContext(committedContext, stroke, getBoardWorldRect());
+    BoardDrawing.paintCommittedStroke(
+      committedContext, stroke, getBoardWorldRect(), boardDrawingRenderOptions()
+    );
   }
 
   function startDrawing(event) {
@@ -9453,14 +9410,11 @@ KOKYBĖS REIKALAVIMAI:
     }
     refs.canvas.setPointerCapture(event.pointerId);
     drawingActive = true;
-    activeStroke = {
-      id: createStrokeId(),
-      mode: state.activeTool,
-      width: state.activeTool === 'eraser' ? 22 : 2.6,
-      ...(state.activeTool === 'eraser' ? { widthModel: 'visual-v1' } : {}),
-      color: state.activeTool === 'pen' ? currentPenStrokeColor() : undefined,
-      points: [startPoint]
-    };
+    activeStroke = BoardDrawing.createStroke({
+      tool: state.activeTool,
+      point: startPoint,
+      onlineRole: document.body?.dataset?.onlineRole
+    });
     // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
     drawStrokePoint(drawingContext, activeStroke, activeStroke.points[0]);
     emitLiveStroke('start');
@@ -9472,7 +9426,7 @@ KOKYBĖS REIKALAVIMAI:
     const previousPoint = activeStroke.points[activeStroke.points.length - 1];
     const nextPoint = pointFromEvent(event);
     if (!nextPoint) return;
-    const pointerJump = Math.hypot(nextPoint.x - previousPoint.x, nextPoint.y - previousPoint.y);
+    const pointerJump = BoardDrawing.pointerJump(previousPoint, nextPoint);
     if (pointerJump > 0.12) {
       emitBoardDiagnostic('pointer-coordinate-jump', {
         pointerType: String(event?.pointerType || ''),
@@ -9506,21 +9460,16 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function redrawCanvas() {
-    if (!drawingContext || !refs.canvas) return;
-    const rect = getBoardWorldRect();
-    clearPhysicalCanvas(drawingContext, refs.canvas);
-    if (committedCanvas) {
-      drawingContext.save();
-      drawingContext.setTransform(1, 0, 0, 1, 0, 0);
-      drawingContext.drawImage(committedCanvas, 0, 0);
-      drawingContext.restore();
-    }
-    for (const stroke of remoteLiveStrokes) drawStrokeToContext(drawingContext, stroke, rect);
-    if (activeStroke) drawStrokeToContext(drawingContext, activeStroke, rect);
+    BoardDrawing.redrawCanvas(
+      drawingContext, refs.canvas, committedCanvas, remoteLiveStrokes, activeStroke,
+      getBoardWorldRect(), boardDrawingRenderOptions()
+    );
   }
 
   function drawStroke(stroke) {
-    drawStrokeToContext(drawingContext, stroke, getBoardWorldRect());
+    BoardDrawing.drawStrokeToContext(
+      drawingContext, stroke, getBoardWorldRect(), boardDrawingRenderOptions()
+    );
   }
 
   function mixedEditorFromNode(node) {

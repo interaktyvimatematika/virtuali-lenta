@@ -78,7 +78,7 @@ button { -webkit-tap-highlight-color: transparent; }
     var(--board-grid-minor) var(--board-grid-minor);
   box-shadow: inset 0 0 0 1px rgba(194,204,219,.8), 0 12px 34px rgba(40,52,78,.1);
 }
-/* P1.7.9.49-M2.2: konkretų 720 / legacy tinklelio žingsnį ir linijų storį
+/* P1.7.9.49-M2.3: konkretų 720 / legacy tinklelio žingsnį ir linijų storį
    dabar parenka board-grid.js. Čia paliekamas dabartinės 720 px lentos fallback,
    kad pats CSS gradientas liktų vienoje vietoje iki vėlesnio CSS modularizavimo. */
 .objects-layer { position: absolute; inset: 0; width: 100%; height: 100%; }

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P1.7.9.49-M2.2: lentos kameros / mastelio branduolys.
+  // P1.7.9.49-M2.3: lentos kameros / mastelio branduolys.
   // Šis failas sąmoningai neturi Firebase, piešimo ar objektų duomenų logikos.
   // Jis gauna būseną, DOM nuorodas ir perpiešimo callback'us iš app.js.
 
