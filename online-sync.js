@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.47';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.48';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2909,7 +2909,7 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
   } catch (error) {
-    console.error('P2-SPLIT-P2.5-P4-P1.7.9.47 tvarkaraščio įrašymo klaida', error);
+    console.error('P2-SPLIT-P2.5-P4-P1.7.9.48 tvarkaraščio įrašymo klaida', error);
     const message = String(error?.message || error || 'Nepavyko atnaujinti tvarkaraščio');
     bridge.showToast?.(message);
     window.dispatchEvent(new CustomEvent('p2:schedule-error', { detail: { message } }));
@@ -3896,10 +3896,12 @@ window.addEventListener('p772:shared-state-changed', () => {
 function drawingStrokePayload(stroke) {
   if (!stroke?.id || !Array.isArray(stroke.points) || !stroke.points.length) return null;
   const color = /^#[0-9a-f]{6}$/i.test(String(stroke.color || '')) ? String(stroke.color) : undefined;
+  const widthModel = stroke.widthModel === 'visual-v1' ? 'visual-v1' : undefined;
   return {
     id: String(stroke.id),
     mode: stroke.mode === 'eraser' ? 'eraser' : 'pen',
     width: Math.max(0.5, Number(stroke.width) || 2.6),
+    ...(widthModel ? { widthModel } : {}),
     ...(color ? { color } : {}),
     points: stroke.points.map(point => ({
       x: Math.max(0, Math.min(1, Number(point?.x) || 0)),

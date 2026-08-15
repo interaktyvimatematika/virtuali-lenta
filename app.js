@@ -637,12 +637,24 @@
   }
 
   function boardStrokeWorldWidth(strokeWidth) {
-    // Canvas yra boardWorld viduje ir masteliuojamas kartu su kamera. Senos lentos
-    // bazinis zoom yra 1/3, todėl linijos plotį kompensuojame atvirkščiai: ties
-    // vartotojo 100 % 2.6 px pieštukas ir 22 px trintukas lieka tokio pat ekrano storio
-    // kaip dabartinėje 720 px sistemoje. Išsaugota stroke.width reikšmė nekeičiama.
+    // Pieštuko linijos vizualų storį kompensuojame pagal istorinių lentų 1/3 bazinį zoom.
+    // P1.7.9.48: ISTORINIAMS TRINTUKO brūkšniams šios kompensacijos taikyti negalima:
+    // jie yra destination-out geometrija. Padidinus jų width 3 kartus, senas trynimas
+    // vizualiai pradėdavo ištrinti daugiau, negu buvo išsaugota.
     const width = Math.max(0.1, Number(strokeWidth) || 2.6);
     return width / Math.max(0.001, boardUser100Zoom());
+  }
+
+  function boardStrokeRenderWorldWidth(stroke) {
+    const fallback = stroke?.mode === 'eraser' ? 22 : 2.6;
+    const width = Math.max(0.1, Number(stroke?.width) || fallback);
+    if (stroke?.mode !== 'eraser') return boardStrokeWorldWidth(width);
+    // Nuo P1.7.9.48 nauji trintuko brūkšniai gali būti pažymėti kaip visual-v1:
+    // jų 22 px yra vartotojo 100 % ekrano storis, todėl juos kompensuojame.
+    // Visi senesni trintuko brūkšniai neturi šios žymos ir atkuriami tiksliai pagal
+    // savo įrašytą world width, kad jų istorinė ištrynimo geometrija nesiplėstų.
+    if (stroke?.widthModel === 'visual-v1') return boardStrokeWorldWidth(width);
+    return width;
   }
 
   function boardGeometrySnapshot() {
@@ -9480,7 +9492,7 @@ KOKYBĖS REIKALAVIMAI:
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = boardStrokeWorldWidth(stroke.width);
+    context.lineWidth = boardStrokeRenderWorldWidth(stroke);
     context.beginPath();
     context.moveTo(fromPoint.x * rect.width, fromPoint.y * rect.height);
     context.lineTo(toPoint.x * rect.width, toPoint.y * rect.height);
@@ -9499,7 +9511,7 @@ KOKYBĖS REIKALAVIMAI:
     context.save();
     context.globalCompositeOperation = stroke.mode === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = strokeRenderColor(stroke);
-    context.lineWidth = boardStrokeWorldWidth(stroke.width);
+    context.lineWidth = boardStrokeRenderWorldWidth(stroke);
     context.beginPath();
     stroke.points.forEach((point, index) => {
       const x = point.x * rect.width;
@@ -9538,6 +9550,7 @@ KOKYBĖS REIKALAVIMAI:
       id: createStrokeId(),
       mode: state.activeTool,
       width: state.activeTool === 'eraser' ? 22 : 2.6,
+      ...(state.activeTool === 'eraser' ? { widthModel: 'visual-v1' } : {}),
       color: state.activeTool === 'pen' ? currentPenStrokeColor() : undefined,
       points: [startPoint]
     };
