@@ -7571,3 +7571,49 @@ body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
   overscroll-behavior:contain;
   scrollbar-gutter:stable;
 }
+
+
+/* P1.7.9.49-M2.5.3 — klaviatūros tekstas / formulės yra lentos anotacijų sluoksnis.
+   Paveikslėliai turi likti po teksto lauku taip pat, kaip ir po pieštuko rašalu.
+   Teksto redagavimas nebedengia po juo esančio turinio baltu „lapeliu“: aktyvumą
+   rodo tik kontūras. Piešimo canvas ir toliau yra aukščiau viso objects-layer. */
+.objects-layer > .board-image-object,
+.objects-layer > .board-image-object:hover,
+.objects-layer > .board-image-object.is-active-object {
+  z-index: 1;
+}
+.objects-layer > .board-note.board-mixed-editor {
+  z-index: 2;
+}
+.objects-layer > .board-note.board-mixed-editor.is-active-object,
+.objects-layer > .board-note.board-mixed-editor:focus-within,
+.objects-layer > .board-note.board-mixed-editor.is-mixed-editing {
+  z-index: 3;
+}
+
+body.p2-shell .board-note.board-mixed-editor,
+body.p2-shell .board-note.board-mixed-editor:hover,
+body.p2-shell .board-note.board-mixed-editor:focus-within,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing,
+body.p2-shell .board-note.board-mixed-editor.is-active-object {
+  background: transparent;
+  box-shadow: none;
+}
+body.p2-shell .board-note.board-mixed-editor {
+  border-color: transparent;
+}
+body.p2-shell .board-note.board-mixed-editor:hover:not(.is-active-object):not(.is-mixed-editing):not(:focus-within) {
+  border-color: rgba(113,137,221,.42);
+}
+body.p2-shell .board-note.board-mixed-editor.is-active-object,
+body.p2-shell .board-note.board-mixed-editor:focus-within,
+body.p2-shell .board-note.board-mixed-editor.is-mixed-editing {
+  border-color: #617bd8;
+}
+
+/* Eilutinė MathLive formulė taip pat nebeturi balto fokusavimo užpildo. */
+body.p2-shell .mixed-inline-formula math-field.direct-math-field.math-field-is-active,
+body.p2-shell .mixed-inline-formula math-field.direct-math-field:focus,
+body.p2-shell .mixed-inline-formula math-field.direct-math-field:focus-within {
+  background: transparent !important;
+}
