@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.5.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.5.2';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1345,10 +1345,40 @@ function subscribeWorkspaceParts() {
     if (ownEcho) return;
     if (stable(bridge.getSharedSnapshot().boardGeometry || {}) !== fp) bridge.applySharedPart('boardGeometry', value);
   });
-  roomOnValue(drawingRef, snapshot => applyMapPart('drawing', snapshot.val()));
+  roomOnValue(drawingRef, snapshot => {
+    diagnosticSyncState.drawingPrimarySnapshotAt = Date.now();
+    applyMapPart('drawing', snapshot.val());
+  });
   // Notes skaitome kartu su jų meta žyma viename atominiame workspace snapshot'e.
+  // M2.5.2: tas pats workspace snapshotas yra ir atsarginis piešimo kanalas. Praktikoje
+  // retkarčiais vienas workspace/drawing listenerio atnaujinimas nepasiekdavo kito
+  // lango iki reload, nors duomenys Firebase jau būdavo išsaugoti. Persistent drawing
+  // brūkšniai po commit yra nekintami, todėl užtenka palyginti jų ID aibę su realia
+  // app.js būsena. Taip išvengiame visos didelės lentos JSON serializavimo kiekvienam
+  // workspace įvykiui ir kartu turime nepriklausomą atsarginį atnaujinimo kelią.
   roomOnValue(workspaceRef, snapshot => {
     const workspace = snapshot.val() || {};
+    const fallbackDrawing = workspace.drawing || {};
+    const localDrawing = Array.isArray(bridge.getSharedSnapshot().drawing)
+      ? bridge.getSharedSnapshot().drawing
+      : [];
+    const localIds = new Set(localDrawing.map(item => String(item?.id || '')).filter(Boolean));
+    const fallbackIds = Object.entries(fallbackDrawing).map(([key, item]) => String(item?.id || key));
+    const drawingIdsMatch = fallbackIds.length === localIds.size
+      && fallbackIds.every(id => localIds.has(id));
+    if (!drawingIdsMatch) {
+      diagnosticSyncState.drawingFallbackAt = Date.now();
+      diagnosticSyncState.drawingFallbackCount = Number(diagnosticSyncState.drawingFallbackCount || 0) + 1;
+      diagnosticLog('drawing-workspace-fallback', {
+        count: diagnosticSyncState.drawingFallbackCount,
+        primaryAgeMs: diagnosticSyncState.drawingPrimarySnapshotAt
+          ? Math.max(0, Date.now() - diagnosticSyncState.drawingPrimarySnapshotAt)
+          : null,
+        localStrokeCount: localIds.size,
+        remoteStrokeCount: fallbackIds.length
+      }, { urgent: true });
+      applyMapPart('drawing', fallbackDrawing);
+    }
     applyNotesPart(workspace.notes || {}, workspace.meta || {});
   });
   roomOnValue(boardImagesRef, snapshot => applyMapPart('boardImages', snapshot.val()));
