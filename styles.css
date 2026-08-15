@@ -7546,3 +7546,31 @@ body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
     min-height: 18px;
   }
 }
+
+
+/* P2-SPLIT-P2.5-P4-P1.7.9.49 · mokinių / tvarkaraščio slinkties našumas
+   Fiksuoti modalai nebesulieja po jais esančios didelės lentos kiekvieno scroll kadro metu.
+   Mokinių kortelėms pašalintas translateY hover judesys, kuris slenkant pele per sąrašą
+   nuolat kurdavo naujus kompozicijos sluoksnius. Duomenų ir lentos renderio logika nekeičiama. */
+.p2-students-backdrop,
+.p2-schedule-backdrop {
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+}
+.p2-schedule-week-toolbar {
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+  background:#f7f9fc;
+}
+.p2-student-overview-card {
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+.p2-student-overview-card:hover {
+  transform:none;
+}
+.p2-student-detail-pane-full,
+.p2-schedule-week-pane,
+.p2-schedule-editor-pane {
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+}
