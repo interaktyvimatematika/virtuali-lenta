@@ -559,7 +559,7 @@
   const BoardMathToolbar = window.P772BoardMathToolbar;
   if (!BoardMathToolbar) throw new Error('P772BoardMathToolbar modulis neįkeltas');
 
-  // P1.7.9.49-M2.8: kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.8.1: kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
   // seansas board-input.js, bendra objektų geometrija board-objects.js,
   // teksto / formulės DOM redagavimas board-text-editor.js, MathLive laukų
@@ -1507,7 +1507,7 @@
     updateMathToolbarUi();
   }
 
-  // P1.7.9.49-M2.8: MathLive lauko branduolys lieka board-math-field.js,
+  // P1.7.9.49-M2.8.1: MathLive lauko branduolys lieka board-math-field.js,
   // o matematikos juostos kategorijos / įterpimo semantika iškelta į
   // board-math-toolbar.js.
   const boardMathFieldEngine = BoardMathField.createEngine({
@@ -1590,7 +1590,7 @@
   function scheduleUniversalMathKeyboardPageLayout() { return boardMathToolbarEngine.scheduleUniversalMathKeyboardPageLayout(); }
   function initializeUniversalMathKeyboard() { return boardMathToolbarEngine.initializeUniversalMathKeyboard(); }
 
-  // P1.7.9.49-M2.8: matematikos juostos kategorijos, klavišai, įterpimo
+  // P1.7.9.49-M2.8.1: matematikos juostos kategorijos, klavišai, įterpimo
   // komandos ir puslapiavimas iškelti į board-math-toolbar.js.
 
   function installMathEditingBoundary() {
