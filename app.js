@@ -11322,7 +11322,17 @@ KOKYBĖS REIKALAVIMAI:
         if (!element.isConnected) return;
         const minWidth = mixedNoteContentMinimumWidth(editor);
         element.style.setProperty('--mixed-note-content-min-width', `${minWidth}px`);
-        note.width = Math.max(minWidth, Math.min(900, element.offsetWidth));
+
+        // M2.6.1: native horizontal resize must stop at the visible board edge.
+        // The limit is recalculated from the note's current X position on every
+        // size change, so it remains correct even after the note was moved.
+        const currentBoardRect = getBoardWorldRect();
+        const availableWidth = Math.max(1, Math.min(900, currentBoardRect.width - element.offsetLeft));
+        element.style.maxWidth = `${availableWidth}px`;
+        const effectiveMinWidth = Math.min(minWidth, availableWidth);
+        const boundedWidth = Math.max(effectiveMinWidth, Math.min(availableWidth, element.offsetWidth));
+        if (Math.abs(element.offsetWidth - boundedWidth) > 0.5) element.style.width = `${boundedWidth}px`;
+        note.width = boundedWidth;
         note.minHeight = 44;
         scheduleSave();
       });

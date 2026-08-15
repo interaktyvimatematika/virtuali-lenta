@@ -7617,3 +7617,64 @@ body.p2-shell .mixed-inline-formula math-field.direct-math-field:focus,
 body.p2-shell .mixed-inline-formula math-field.direct-math-field:focus-within {
   background: transparent !important;
 }
+
+
+/* P1.7.9.49-M2.6.1 — mišraus teksto laukui neberezervuojami atskiri šoniniai
+   stulpeliai perkėlimo ir trynimo valdikliams. Turinys gali naudoti beveik visą
+   rėmelio plotį; valdikliai tampa mažais aktyvaus rėmelio skirtukais. */
+body.p2-shell .board-note.board-mixed-editor {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+  padding: 2px 3px 3px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-content {
+  width: 100%;
+  padding: 1px 2px 2px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-remove {
+  position: absolute;
+  z-index: 6;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(113,137,221,.48);
+  border-radius: 6px;
+  background: rgba(255,255,255,.88);
+  line-height: 18px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-handle {
+  left: 2px;
+  font-size: 14px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-remove {
+  right: 2px;
+  font-size: 17px;
+}
+/* Kai valdikliai paslėpti, jie neturi užstoti teksto paspaudimų. */
+body.p2-shell .board-note.board-mixed-editor:not(:hover):not(:focus-within):not(.is-mixed-editing):not(.is-active-object) .mixed-editor-handle,
+body.p2-shell .board-note.board-mixed-editor:not(:hover):not(:focus-within):not(.is-mixed-editing):not(.is-active-object) .mixed-editor-remove {
+  pointer-events: none;
+}
+/* M2.6.1 valdiklių galutinė padėtis: perkėlimo skirtukas yra ant viršutinės
+   rėmelio briaunos centre, kad neuždengtų teksto pradžios kairėje. */
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-handle {
+  left: 50%;
+  top: 1px;
+  width: 32px;
+  height: 12px;
+  transform: translateX(-50%);
+  border-radius: 0 0 7px 7px;
+  line-height: 10px;
+  font-size: 12px;
+}
+body.p2-shell .board-note.board-mixed-editor .mixed-editor-remove {
+  top: 1px;
+  right: 1px;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+}

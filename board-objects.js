@@ -180,6 +180,7 @@
       const top = Math.max(0, Math.min(boardRect.height - element.offsetHeight, note.y * boardRect.height));
       element.style.left = `${left}px`;
       element.style.top = `${top}px`;
+      element.style.maxWidth = `${Math.max(1, Math.min(900, boardRect.width - left))}px`;
       note.x = boardRect.width ? left / boardRect.width : note.x;
       note.y = boardRect.height ? top / boardRect.height : note.y;
     }

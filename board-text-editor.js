@@ -88,7 +88,7 @@
       );
       if (Number.isFinite(width)) widestFormula = Math.max(widestFormula, Math.ceil(width));
     });
-    return Math.max(110, Math.min(900, widestFormula ? widestFormula + 78 : 110));
+    return Math.max(110, Math.min(900, widestFormula ? widestFormula + 10 : 110));
   }
 
   function applyContentSizing(note, editor, { expandForFormula = true } = {}) {
@@ -270,7 +270,7 @@
   }
 
   window.P772BoardTextEditor = Object.freeze({
-    version: 'P1.7.9.49-M2.6',
+    version: 'P1.7.9.49-M2.6.1',
     editorFromNode,
     formulaWrapperFromNode,
     currentTextRange,
