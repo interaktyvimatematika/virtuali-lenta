@@ -7678,3 +7678,46 @@ body.p2-shell .board-note.board-mixed-editor .mixed-editor-remove {
   height: 18px;
   line-height: 16px;
 }
+
+
+/* P3.1 — matoma Firebase sinchronizacijos būsena mokytojui ir mokiniui. */
+.p2-sync-status { display:none; }
+body.p2-shell .p2-sync-status {
+  display:inline-flex;
+  align-items:center;
+  max-width:118px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#58677a;
+  font-size:10px;
+  font-weight:850;
+  letter-spacing:.01em;
+}
+body.p2-shell .online-session.is-sync-synced .online-dot {
+  background:#25a866;
+  box-shadow:0 0 0 3px rgba(37,168,102,.11);
+}
+body.p2-shell .online-session.is-sync-sending .online-dot,
+body.p2-shell .online-session.is-sync-connecting .online-dot {
+  background:#d78b22;
+  box-shadow:0 0 0 3px rgba(215,139,34,.12);
+  animation:p2-sync-pulse 1.05s ease-in-out infinite;
+}
+body.p2-shell .online-session.is-sync-disconnected .online-dot,
+body.p2-shell .online-session.is-sync-error .online-dot {
+  background:#d65d63;
+  box-shadow:0 0 0 3px rgba(214,93,99,.12);
+  animation:none;
+}
+body.p2-shell .online-session.is-sync-sending .p2-sync-status,
+body.p2-shell .online-session.is-sync-connecting .p2-sync-status { color:#8b6227; }
+body.p2-shell .online-session.is-sync-disconnected .p2-sync-status,
+body.p2-shell .online-session.is-sync-error .p2-sync-status { color:#a64c52; }
+@keyframes p2-sync-pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:.58; transform:scale(.88); }
+}
+@media (max-width: 980px) {
+  body.p2-shell .p2-sync-status { max-width:92px; font-size:9px; }
+}

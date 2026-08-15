@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M2.6.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -110,6 +110,7 @@ function assignmentContentMetadata(detail = {}, fallback = {}) {
 const bridge = window.P772OnlineBridge;
 const sessionBox = document.getElementById('onlineSession');
 const statusEl = document.getElementById('onlineStatus');
+const p2SyncStatusEl = document.getElementById('p2SyncStatus');
 const roomEl = document.getElementById('onlineRoomCode');
 const usersEl = document.getElementById('onlineUsers');
 const copyButton = document.getElementById('copySessionLinkButton');
@@ -970,8 +971,15 @@ window.addEventListener('p2:view-changed', event => diagnosticLog('view-changed'
 window.addEventListener('resize', () => diagnosticLog('window-resize', { width: window.innerWidth, height: window.innerHeight }));
 window.addEventListener('orientationchange', () => diagnosticLog('orientation-change', diagnosticDeviceSnapshot(), { urgent: true }));
 document.addEventListener('visibilitychange', () => diagnosticLog('visibility-change', { visibility: document.visibilityState }));
-window.addEventListener('online', () => diagnosticLog('browser-online', {}, { urgent: true }));
-window.addEventListener('offline', () => diagnosticLog('browser-offline', {}, { urgent: true }));
+window.addEventListener('online', () => {
+  diagnosticLog('browser-online', {}, { urgent: true });
+  renderP2SyncIndicator();
+});
+window.addEventListener('offline', () => {
+  connectionStateKnown = true;
+  diagnosticLog('browser-offline', {}, { urgent: true });
+  renderP2SyncIndicator();
+});
 setInterval(() => {
   if (diagnosticSessionId && document.visibilityState !== 'hidden') scheduleDiagnosticFlush(false);
 }, 30000);
@@ -982,9 +990,109 @@ setInterval(() => {
 let roomGeneration = 0;
 let roomSubscriptions = [];
 let connectedNow = false;
+let connectionStateKnown = false;
+let syncWorkspaceReady = false;
+let syncPendingWrites = 0;
+let syncActivityUntil = 0;
+let syncActivityTimer = null;
+let syncErrorMessage = '';
 let presenceDisconnectHandle = null;
 let liveDisconnectHandle = null;
 let activePresenceRoom = '';
+
+
+// P3.1: matomas sinchronizacijos indikatorius. Jis sąmoningai remiasi ne vien
+// navigator.onLine, o Firebase .info/connected ir šio kliento nebaigtais
+// realtime įrašais. „Sinchronizuota“ reiškia, kad šio lango vietiniai pakeitimai
+// nebelaukia Firebase patvirtinimo; tai nėra atskiro kito įrenginio render ACK.
+const P2_SYNC_STATE_CLASSES = ['is-sync-connecting', 'is-sync-sending', 'is-sync-synced', 'is-sync-disconnected', 'is-sync-error'];
+
+function setP2SyncIndicator(mode, text, title = '') {
+  if (!sessionBox) return;
+  for (const cls of P2_SYNC_STATE_CLASSES) sessionBox.classList.remove(cls);
+  sessionBox.classList.add(`is-sync-${mode}`);
+  if (p2SyncStatusEl) {
+    p2SyncStatusEl.textContent = text;
+    p2SyncStatusEl.title = title || text;
+    p2SyncStatusEl.dataset.syncState = mode;
+  }
+}
+
+function scheduleSyncIndicatorRefresh() {
+  if (syncActivityTimer) clearTimeout(syncActivityTimer);
+  const delay = Math.max(20, syncActivityUntil - Date.now() + 25);
+  if (delay <= 25) return;
+  syncActivityTimer = setTimeout(() => {
+    syncActivityTimer = null;
+    renderP2SyncIndicator();
+  }, delay);
+}
+
+function renderP2SyncIndicator() {
+  if (!p2SyncStatusEl) return;
+  if (!connectionStateKnown) {
+    setP2SyncIndicator('connecting', 'Jungiamasi…', 'Jungiamasi prie Firebase');
+    return;
+  }
+  if (!navigator.onLine || !connectedNow) {
+    setP2SyncIndicator('disconnected', 'Ryšys nutrūko', 'Pakeitimai bus siunčiami atkūrus ryšį');
+    return;
+  }
+  if (syncErrorMessage) {
+    setP2SyncIndicator('error', 'Sinchronizavimo klaida', syncErrorMessage);
+    return;
+  }
+  if (!syncWorkspaceReady) {
+    setP2SyncIndicator('connecting', 'Jungiamasi…', 'Kraunama dabartinės pamokos sinchronizacija');
+    return;
+  }
+  if (syncPendingWrites > 0 || Date.now() < syncActivityUntil) {
+    setP2SyncIndicator('sending', 'Siunčiama…', 'Vietiniai pakeitimai siunčiami į Firebase');
+    scheduleSyncIndicatorRefresh();
+    return;
+  }
+  setP2SyncIndicator('synced', 'Sinchronizuota', 'Šio lango vietiniai pakeitimai patvirtinti Firebase');
+}
+
+function markSyncActivity(durationMs = 260) {
+  syncErrorMessage = '';
+  syncActivityUntil = Math.max(syncActivityUntil, Date.now() + Math.max(80, Number(durationMs) || 260));
+  renderP2SyncIndicator();
+}
+
+function beginSyncWrite(label = 'sync') {
+  let settled = false;
+  syncPendingWrites += 1;
+  syncErrorMessage = '';
+  markSyncActivity(180);
+  return {
+    ok() {
+      if (settled) return;
+      settled = true;
+      syncPendingWrites = Math.max(0, syncPendingWrites - 1);
+      renderP2SyncIndicator();
+    },
+    fail(error) {
+      if (settled) return;
+      settled = true;
+      syncPendingWrites = Math.max(0, syncPendingWrites - 1);
+      syncErrorMessage = `${label}: ${String(error?.message || error || 'nežinoma klaida').slice(0, 180)}`;
+      renderP2SyncIndicator();
+    }
+  };
+}
+
+function resetSyncIndicatorRuntime() {
+  syncWorkspaceReady = false;
+  syncPendingWrites = 0;
+  syncActivityUntil = 0;
+  syncErrorMessage = '';
+  if (syncActivityTimer) {
+    clearTimeout(syncActivityTimer);
+    syncActivityTimer = null;
+  }
+  renderP2SyncIndicator();
+}
 
 function roomOnValue(targetRef, callback, errorCallback) {
   const generation = roomGeneration;
@@ -1023,6 +1131,7 @@ function resetRoomRuntimeState() {
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
+  resetSyncIndicatorRuntime();
   bridge.setRemoteLiveStrokes([]);
 }
 
@@ -1178,9 +1287,12 @@ async function publishLocalChanges() {
 
   updates['workspace/meta/updatedAt'] = serverTimestamp();
   updates['workspace/meta/updatedBy'] = me;
+  const syncWrite = beginSyncWrite('Lentos būsena');
   try {
     await update(roomRef, updates);
+    syncWrite.ok();
   } catch (error) {
+    syncWrite.fail(error);
     for (const [part, fp] of Object.entries(echoes)) forgetLocalEcho(part, fp);
     if (changed.notes && remoteCache.notes === stable(parts.notes) && previousNotesCache !== null) {
       remoteCache.notes = previousNotesCache;
@@ -1216,9 +1328,12 @@ async function publishNotesLive() {
   const echoFp = rememberLocalEcho('notes', notes);
 
   notesLivePublishing = true;
+  const syncWrite = beginSyncWrite('Tekstas');
   try {
     await update(roomRef, updates);
+    syncWrite.ok();
   } catch (error) {
+    syncWrite.fail(error);
     forgetLocalEcho('notes', echoFp);
     if (remoteCache.notes === notesFp) remoteCache.notes = previousNotesCache;
     console.warn('P2-SPLIT-P2.2.3 gyvo lentos teksto sinchronizavimo klaida', error);
@@ -1489,6 +1604,8 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
 
     bootstrapped = true;
+    syncWorkspaceReady = true;
+    renderP2SyncIndicator();
     subscribeRoomRealtimeListeners(generation);
     // Presence užregistruojame fone; mokinio skirtuko UI neturi laukti dar
     // kelių Firebase round-trip vien tam, kad galėtų parodyti jau užkrautą lentą.
@@ -1507,7 +1624,10 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     if (generation !== roomGeneration) return;
     console.error('P2-SPLIT-P2.5-P4-P1.2 workspace inicijavimo klaida', error);
     diagnosticLog('workspace-init-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
+    syncWorkspaceReady = false;
+    syncErrorMessage = `Pamokos sinchronizacija: ${String(error?.message || error || 'nežinoma klaida').slice(0, 180)}`;
     setUi('error', 'Firebase Rules klaida');
+    renderP2SyncIndicator();
     if (switched) window.dispatchEvent(new CustomEvent('p2:room-switch-error', { detail: { roomId: targetRoom } }));
   }
 }
@@ -3786,7 +3906,14 @@ async function persistP2PracticeProgress(event) {
       updates[`taskStates/${taskId}`] = taskState;
     }
 
-    await update(p2ProgressRef, updates);
+    const syncWrite = beginSyncWrite('Pratybų progresas');
+    try {
+      await update(p2ProgressRef, updates);
+      syncWrite.ok();
+    } catch (error) {
+      syncWrite.fail(error);
+      throw error;
+    }
     diagnosticSyncState.progressWriteAt = now;
     diagnosticSyncState.lastProgressStatus = String(merged.status || '');
     diagnosticSyncState.lastCurrentTaskId = String(merged.currentTaskId || '');
@@ -3843,7 +3970,9 @@ function subscribeRoomRealtimeListeners(generation = roomGeneration) {
 }
 
 onValue(connectedRef, snapshot => {
+  connectionStateKnown = true;
   connectedNow = snapshot.val() === true;
+  if (connectedNow) syncErrorMessage = '';
   diagnosticSyncState.connected = connectedNow;
   diagnosticLog(connectedNow ? 'firebase-connected' : 'firebase-disconnected', {}, { urgent: true });
   if (connectedNow) {
@@ -3853,12 +3982,16 @@ onValue(connectedRef, snapshot => {
   } else {
     setUi('offline', 'Nėra ryšio');
   }
+  renderP2SyncIndicator();
 }, error => {
+  connectionStateKnown = true;
   connectedNow = false;
   diagnosticSyncState.connected = false;
   diagnosticLog('firebase-connection-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
   console.error('P2-SPLIT-P2.5-P4-P1.2 connection klaida', error);
+  syncErrorMessage = `Firebase ryšys: ${String(error?.message || error || 'nežinoma klaida').slice(0, 180)}`;
   setUi('error', 'Nepavyko prisijungti');
+  renderP2SyncIndicator();
 });
 
 async function switchActiveTeacherRoom(targetRoom, { preserveStay = true } = {}) {
@@ -3921,12 +4054,14 @@ window.addEventListener('p2:room-switch-request', event => {
 
 
 window.addEventListener('p772:shared-notes-live', () => {
+  markSyncActivity(240);
   // Throttle, ne debounce: net jei mokinys rašo be jokios pauzės kelias sekundes,
   // mokytojo lenta gauna tarpines teksto būsenas maždaug kas 55 ms.
   queueNotesLivePublish();
 });
 
 window.addEventListener('p772:shared-state-changed', () => {
+  markSyncActivity(260);
   clearTimeout(window.__p772OnlinePublishTimer);
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
 });
@@ -3951,10 +4086,13 @@ function drawingStrokePayload(stroke) {
 async function writeLiveStroke(stroke) {
   const payload = drawingStrokePayload(stroke);
   if (!payload) return;
+  const syncWrite = beginSyncWrite('Gyvas brūkšnys');
   try {
     // Kopiją darome tik čia (daugiausia kas ~40 ms), o ne per kiekvieną pointermove.
     await set(myLiveStrokeRef(payload.id), { ...payload, updatedAt: Date.now(), clientId: me });
+    syncWrite.ok();
   } catch (error) {
+    syncWrite.fail(error);
     console.warn('P2-SPLIT-P1.7 live stroke klaida', error);
   }
 }
@@ -3968,11 +4106,14 @@ async function commitDrawingStroke(stroke) {
     'workspace/meta/updatedAt': serverTimestamp(),
     'workspace/meta/updatedBy': me
   };
+  const syncWrite = beginSyncWrite('Brūkšnys');
   try {
     // Baigtą brūkšnį įrašome tiesiai į jo Firebase mazgą. Ankstesnė versija
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
+    syncWrite.ok();
   } catch (error) {
+    syncWrite.fail(error);
     console.warn('P2-SPLIT-P2.5-P2 brūkšnio persistavimo klaida', error);
     // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
     window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
@@ -3990,6 +4131,7 @@ async function sendLive() {
 window.__p772DirectDrawingSyncReady = true;
 
 window.addEventListener('p772:live-stroke', event => {
+  markSyncActivity(180);
   const detail = event.detail || {};
   const stroke = detail.stroke;
   if (!stroke?.id) return;
