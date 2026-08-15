@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M1.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-M1.2';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -47,6 +47,20 @@
     LESSON_CATALOG
   } = builtInLessons;
 
+  // M1.2: lesson lookup, content snapshots and assignment-content metadata
+  // live in p2-catalog.js. p2-ui.js keeps only UI/state orchestration.
+  const catalogService = window.P772LessonCatalogService;
+  if (!catalogService || typeof catalogService.lessonForId !== 'function') {
+    console.error('P2 pamokų katalogo aptarnavimo modulis nerastas');
+    return;
+  }
+  const {
+    lessonForId,
+    lessonContentSnapshot,
+    assignmentContentDetail,
+    lessonFromAssignmentSnapshot
+  } = catalogService;
+
   let assignment = null;
   let pendingAttemptPolicy = { defaultMaxAttempts: 3, taskMaxAttempts: {} };
   let progress = null;
@@ -84,51 +98,6 @@
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
   let roomSwitching = false;
-
-  function lessonForId(lessonId) {
-    const id = String(lessonId || '').trim();
-    return LESSON_CATALOG.find(lesson => lesson.id === id) || null;
-  }
-
-  function contentHash(value) {
-    const text = JSON.stringify(value ?? null);
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < text.length; i += 1) {
-      hash ^= text.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return `fnv1a-${hash.toString(16).padStart(8, '0')}`;
-  }
-
-  function lessonContentSnapshot(lesson) {
-    if (!lesson) return null;
-    const snapshot = {
-      schemaVersion: P2_DATA_SCHEMA_VERSION,
-      lessonId: String(lesson.id || ''),
-      contentVersion: Math.max(1, Math.round(Number(lesson.contentVersion) || 1)),
-      title: String(lesson.title || ''),
-      shortTitle: String(lesson.shortTitle || lesson.title || ''),
-      description: String(lesson.description || ''),
-      taskCount: Math.max(0, Number(lesson.taskCount) || 0),
-      classCount: Math.max(0, Number(lesson.classCount) || 0),
-      selfCount: Math.max(0, Number(lesson.selfCount) || 0),
-      taskIds: Array.isArray(lesson.tasks) ? lesson.tasks.map(task => String(task?.id || '')).filter(Boolean) : [],
-      tasks: Array.isArray(lesson.tasks) ? JSON.parse(JSON.stringify(lesson.tasks)) : []
-    };
-    snapshot.contentHash = contentHash(snapshot);
-    return snapshot;
-  }
-
-  function assignmentContentDetail(lesson) {
-    const snapshot = lessonContentSnapshot(lesson);
-    return snapshot ? {
-      schemaVersion: P2_DATA_SCHEMA_VERSION,
-      contentVersion: snapshot.contentVersion,
-      contentHash: snapshot.contentHash,
-      taskIds: snapshot.taskIds,
-      contentSnapshot: snapshot
-    } : { schemaVersion: P2_DATA_SCHEMA_VERSION };
-  }
 
   // P1.7.3.1: senų, dar iki turinio versijavimo pradėtų priskyrimų backfill.
   // Čia tik paruošiame katalogo metaduomenis; realų Firebase įrašymą ir
@@ -182,27 +151,8 @@
   // snapshot. Taip Bibliotekoje atnaujinus tą patį lessonId jau pradėto mokinio
   // užduotys, jų ID ir progresas nepasikeičia. Tik naujas priskyrimas gauna
   // naujausią katalogo versiją.
-  function lessonFromAssignmentSnapshot(record = assignment) {
-    const snapshot = record?.contentSnapshot && typeof record.contentSnapshot === 'object'
-      ? record.contentSnapshot
-      : null;
-    if (!snapshot || !Array.isArray(snapshot.tasks) || !snapshot.tasks.length) return null;
-    const lessonId = String(snapshot.lessonId || record?.lessonId || '').trim();
-    return {
-      ...snapshot,
-      id: lessonId,
-      lessonId,
-      title: String(snapshot.title || record?.title || ''),
-      shortTitle: String(snapshot.shortTitle || snapshot.title || record?.title || ''),
-      taskCount: Math.max(0, Number(snapshot.taskCount) || snapshot.tasks.length),
-      classCount: Math.max(0, Number(snapshot.classCount) || snapshot.tasks.filter(task => task?.section === 'class').length),
-      selfCount: Math.max(0, Number(snapshot.selfCount) || snapshot.tasks.filter(task => task?.section === 'self').length),
-      tasks: snapshot.tasks
-    };
-  }
-
   function activeLesson() {
-    return lessonFromAssignmentSnapshot() || lessonForId(assignment?.lessonId) || DEMO_LESSON;
+    return lessonFromAssignmentSnapshot(assignment) || lessonForId(assignment?.lessonId) || DEMO_LESSON;
   }
 
   function isSimpleInputTask(task) {

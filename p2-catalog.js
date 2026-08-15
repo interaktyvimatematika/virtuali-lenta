@@ -1,0 +1,85 @@
+(() => {
+  'use strict';
+
+  // M1.2: pure lesson-catalog / assignment-content helpers extracted from p2-ui.js.
+  // This module owns no UI state and performs no Firebase writes.
+  const P2_DATA_SCHEMA_VERSION = 1;
+  const builtInLessons = window.P772BuiltInLessons;
+  const LESSON_CATALOG = Array.isArray(builtInLessons?.LESSON_CATALOG)
+    ? builtInLessons.LESSON_CATALOG
+    : [];
+
+  function lessonForId(lessonId) {
+    const id = String(lessonId || '').trim();
+    return LESSON_CATALOG.find(lesson => lesson.id === id) || null;
+  }
+
+  function contentHash(value) {
+    const text = JSON.stringify(value ?? null);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `fnv1a-${hash.toString(16).padStart(8, '0')}`;
+  }
+
+  function lessonContentSnapshot(lesson) {
+    if (!lesson) return null;
+    const snapshot = {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      lessonId: String(lesson.id || ''),
+      contentVersion: Math.max(1, Math.round(Number(lesson.contentVersion) || 1)),
+      title: String(lesson.title || ''),
+      shortTitle: String(lesson.shortTitle || lesson.title || ''),
+      description: String(lesson.description || ''),
+      taskCount: Math.max(0, Number(lesson.taskCount) || 0),
+      classCount: Math.max(0, Number(lesson.classCount) || 0),
+      selfCount: Math.max(0, Number(lesson.selfCount) || 0),
+      taskIds: Array.isArray(lesson.tasks) ? lesson.tasks.map(task => String(task?.id || '')).filter(Boolean) : [],
+      tasks: Array.isArray(lesson.tasks) ? JSON.parse(JSON.stringify(lesson.tasks)) : []
+    };
+    snapshot.contentHash = contentHash(snapshot);
+    return snapshot;
+  }
+
+  function assignmentContentDetail(lesson) {
+    const snapshot = lessonContentSnapshot(lesson);
+    return snapshot ? {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      contentVersion: snapshot.contentVersion,
+      contentHash: snapshot.contentHash,
+      taskIds: snapshot.taskIds,
+      contentSnapshot: snapshot
+    } : { schemaVersion: P2_DATA_SCHEMA_VERSION };
+  }
+
+  function lessonFromAssignmentSnapshot(record) {
+    const snapshot = record?.contentSnapshot && typeof record.contentSnapshot === 'object'
+      ? record.contentSnapshot
+      : null;
+    if (!snapshot || !Array.isArray(snapshot.tasks) || !snapshot.tasks.length) return null;
+    const lessonId = String(snapshot.lessonId || record?.lessonId || '').trim();
+    return {
+      ...snapshot,
+      id: lessonId,
+      lessonId,
+      title: String(snapshot.title || record?.title || ''),
+      shortTitle: String(snapshot.shortTitle || snapshot.title || record?.title || ''),
+      taskCount: Math.max(0, Number(snapshot.taskCount) || snapshot.tasks.length),
+      classCount: Math.max(0, Number(snapshot.classCount) || snapshot.tasks.filter(task => task?.section === 'class').length),
+      selfCount: Math.max(0, Number(snapshot.selfCount) || snapshot.tasks.filter(task => task?.section === 'self').length),
+      tasks: snapshot.tasks
+    };
+  }
+
+  window.P772LessonCatalogService = Object.freeze({
+    P2_DATA_SCHEMA_VERSION,
+    LESSON_CATALOG,
+    lessonForId,
+    contentHash,
+    lessonContentSnapshot,
+    assignmentContentDetail,
+    lessonFromAssignmentSnapshot
+  });
+})();
