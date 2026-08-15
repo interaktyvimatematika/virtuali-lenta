@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P3.1.1 — bendras kompaktiškų valdiklių informacinis rėmelis.
+  // P3.1.2 — bendras kompaktiškų valdiklių informacinis rėmelis.
   // Event delegation leidžia jį naudoti ir vėliau dinamiškai sukuriamiems mygtukams.
   const SELECTOR = '[data-p2-tooltip]';
   let tooltip = null;
@@ -101,5 +101,5 @@
   window.addEventListener('resize', () => activeTarget ? position(activeTarget) : undefined, { passive: true });
   window.addEventListener('scroll', () => hide(), { passive: true, capture: true });
 
-  window.P772UiTooltip = Object.freeze({ version: 'P3.1.1', show, hide });
+  window.P772UiTooltip = Object.freeze({ version: 'P3.1.2', show, hide });
 })();
