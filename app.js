@@ -543,93 +543,73 @@
   // senų Room worldWidth / worldHeight paliekami tokie, kokie buvo išsaugoti.
   // Mastelio suderinimas nuo šiol yra tik kameros / peržiūros atsakomybė.
 
+  const BoardCamera = window.P772BoardCamera;
+  if (!BoardCamera) throw new Error('P772BoardCamera modulis neįkeltas');
+
+  // P1.7.9.49-M2.1: kameros matematika ir DOM mastelio pritaikymas iškelti į
+  // board-camera.js. app.js palieka tik projekto konfigūraciją ir plonus adapterius,
+  // todėl likusi lentos logika šiame etape elgiasi 1:1 kaip M1.5 bazėje.
+  const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
+  const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
+  const BOARD_LEGACY_FIT_PADDING_X = 28;
+  const BOARD_CAMERA_CONFIG = Object.freeze({
+    worldMinWidth: BOARD_WORLD_MIN_WIDTH,
+    worldMinHeight: BOARD_WORLD_MIN_HEIGHT,
+    worldMaxWidth: BOARD_WORLD_MAX_WIDTH,
+    worldMaxHeight: BOARD_WORLD_MAX_HEIGHT,
+    worldDefaultWidth: BOARD_STRIP_DEFAULT_WIDTH,
+    worldDefaultHeight: BOARD_STRIP_INITIAL_HEIGHT,
+    fitSideMarginScreen: BOARD_FIT_SIDE_MARGIN_SCREEN,
+    legacyUser100Zoom: BOARD_LEGACY_USER_100_ZOOM,
+    legacyFitPaddingX: BOARD_LEGACY_FIT_PADDING_X
+  });
+
   function clampCameraZoom(value) {
-    return Math.max(0.005, Math.min(1.8, Number(value) || 1));
+    return BoardCamera.clampCameraZoom(value);
   }
 
   function normalizeCamera(camera) {
-    return {
-      zoom: clampCameraZoom(camera?.zoom),
-      scrollLeft: Math.max(0, Number(camera?.scrollLeft) || 0),
-      scrollTop: Math.max(0, Number(camera?.scrollTop) || 0),
-      worldWidth: Math.max(BOARD_WORLD_MIN_WIDTH, Math.min(BOARD_WORLD_MAX_WIDTH, Number(camera?.worldWidth) || BOARD_STRIP_DEFAULT_WIDTH)),
-      worldHeight: Math.max(BOARD_WORLD_MIN_HEIGHT, Math.min(BOARD_WORLD_MAX_HEIGHT, Number(camera?.worldHeight) || BOARD_STRIP_INITIAL_HEIGHT)),
-      worldOriginX: Math.max(0, Number(camera?.worldOriginX) || 0),
-      worldOriginY: Math.max(0, Number(camera?.worldOriginY) || 0),
-      layoutMode: 'vertical-strip'
-    };
+    return BoardCamera.normalizeCamera(camera, BOARD_CAMERA_CONFIG);
   }
 
   function getBoardWorldRect() {
-    const camera = normalizeCamera(state?.camera || {});
-    return { width: camera.worldWidth, height: camera.worldHeight, left: 0, top: 0, right: camera.worldWidth, bottom: camera.worldHeight };
+    return BoardCamera.getWorldRect(state?.camera || {}, BOARD_CAMERA_CONFIG);
   }
 
   function currentBoardZoom() {
-    return clampCameraZoom(state?.camera?.zoom);
+    return BoardCamera.currentZoom(state?.camera || {});
   }
 
-  // P1.7.9.47: naujos 720 px lentos pradinis fit remiasi pačiu realiu viewport'u.
-  // Nebereikalaujame papildomų dirbtinių 14 px paraščių abiejuose šonuose:
-  // jei 720 px lenta fiziškai telpa, ji turi atsidaryti tikru 100 % masteliu.
-  // Istorinių lentų turinio sutalpinimas turi atskirą LEGACY padding logiką.
-  const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
-
   function boardFitZoom(viewportWidthOverride = null) {
-    const world = getBoardWorldRect();
     const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
-    const availableWidth = Math.max(1, viewportWidth - BOARD_FIT_SIDE_MARGIN_SCREEN * 2);
-    return clampCameraZoom(Math.min(1, availableWidth / Math.max(1, world.width)));
+    return BoardCamera.fitZoom(state?.camera || {}, viewportWidth, BOARD_CAMERA_CONFIG);
   }
 
   function boardUsesLegacyReadableScale() {
-    const world = getBoardWorldRect();
-    return world.width > BOARD_STRIP_DEFAULT_WIDTH + 1;
+    return BoardCamera.usesLegacyReadableScale(state?.camera || {}, BOARD_CAMERA_CONFIG);
   }
 
-  // P1.7.9.43: nedestruktyvus istorinių lentų mastelio suderinamumo sluoksnis.
-  // Iki 720 px vertikalios juostos senieji Room naudojo 2400 px bazinę koordinačių
-  // sistemą ir 54 px smulkų tinklelio žingsnį. Dabartinėje sistemoje smulkus žingsnis
-  // yra 18 px. Todėl senos sistemos vizualus 100 % yra 18/54 = 1/3 tikro camera.zoom.
-  // Tai nekeičia worldWidth/worldHeight, piešinių taškų ar jokių Firebase duomenų.
-  const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
-  const BOARD_LEGACY_FIT_PADDING_X = 28;
-
   function boardUser100Zoom() {
-    return boardUsesLegacyReadableScale() ? BOARD_LEGACY_USER_100_ZOOM : 1;
+    return BoardCamera.user100Zoom(state?.camera || {}, BOARD_CAMERA_CONFIG);
   }
 
   function boardZoomForUserPercent(percent) {
-    const normalized = Math.max(1, Math.min(180, Number(percent) || 100));
-    return clampCameraZoom(boardUser100Zoom() * normalized / 100);
+    return BoardCamera.zoomForUserPercent(state?.camera || {}, percent, BOARD_CAMERA_CONFIG);
   }
 
   function boardLegacyContentFitZoom(viewportWidthOverride = null) {
-    const bounds = boardContentBounds();
     const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
-    // Tuščios senos lentos neturi ko „sutalpinti“ — jos iškart rodomos natūraliu 100 %.
-    if (!bounds) return boardUser100Zoom();
-    const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
-    const user100Zoom = boardUser100Zoom();
-
-    // P1.7.9.47: pirmiausia tikriname, ar pats istorinis turinys TELPA ties vizualiu 100 %.
-    // Papildomas 28 px fokusavimo tarpas neturi vien dėl paraščių sumažinti, pvz., Viltės
-    // lentos iki 97 %, kai visas realus turinys 100 % masteliu jau telpa viewport'e.
-    // Padding naudojamas tik tada, kai turinį iš tiesų reikia mažinti (pvz., labai plati Adomo lenta).
-    if (contentWidth * user100Zoom <= viewportWidth + 0.5) return user100Zoom;
-
-    const availableWidth = Math.max(1, viewportWidth - BOARD_LEGACY_FIT_PADDING_X * 2);
-    return clampCameraZoom(Math.min(user100Zoom, availableWidth / contentWidth));
+    return BoardCamera.legacyContentFitZoom(state?.camera || {}, boardContentBounds(), viewportWidth, BOARD_CAMERA_CONFIG);
   }
 
   function boardInitialFitZoom(viewportWidthOverride = null) {
-    if (boardUsesLegacyReadableScale()) return boardLegacyContentFitZoom(viewportWidthOverride);
-    return Math.min(boardUser100Zoom(), boardFitZoom(viewportWidthOverride));
+    const viewportWidth = Math.max(1, Number(viewportWidthOverride) || refs.board?.clientWidth || 1);
+    const bounds = boardUsesLegacyReadableScale() ? boardContentBounds() : null;
+    return BoardCamera.initialFitZoom(state?.camera || {}, bounds, viewportWidth, BOARD_CAMERA_CONFIG);
   }
 
   function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
-    const baseZoom = Math.max(0.001, boardUser100Zoom());
-    return Math.max(1, Math.round((clampCameraZoom(actualZoom) / baseZoom) * 100));
+    return BoardCamera.userZoomPercent(state?.camera || {}, actualZoom, BOARD_CAMERA_CONFIG);
   }
 
   function setBoardUserZoomPercent(percent, options = {}) {
@@ -637,36 +617,15 @@
   }
 
   function boardStrokeWorldWidth(strokeWidth) {
-    // Pieštuko linijos vizualų storį kompensuojame pagal istorinių lentų 1/3 bazinį zoom.
-    // P1.7.9.48: ISTORINIAMS TRINTUKO brūkšniams šios kompensacijos taikyti negalima:
-    // jie yra destination-out geometrija. Padidinus jų width 3 kartus, senas trynimas
-    // vizualiai pradėdavo ištrinti daugiau, negu buvo išsaugota.
-    const width = Math.max(0.1, Number(strokeWidth) || 2.6);
-    return width / Math.max(0.001, boardUser100Zoom());
+    return BoardCamera.strokeWorldWidth(state?.camera || {}, strokeWidth, BOARD_CAMERA_CONFIG);
   }
 
   function boardStrokeRenderWorldWidth(stroke) {
-    const fallback = stroke?.mode === 'eraser' ? 22 : 2.6;
-    const width = Math.max(0.1, Number(stroke?.width) || fallback);
-    if (stroke?.mode !== 'eraser') return boardStrokeWorldWidth(width);
-    // Nuo P1.7.9.48 nauji trintuko brūkšniai gali būti pažymėti kaip visual-v1:
-    // jų 22 px yra vartotojo 100 % ekrano storis, todėl juos kompensuojame.
-    // Visi senesni trintuko brūkšniai neturi šios žymos ir atkuriami tiksliai pagal
-    // savo įrašytą world width, kad jų istorinė ištrynimo geometrija nesiplėstų.
-    if (stroke?.widthModel === 'visual-v1') return boardStrokeWorldWidth(width);
-    return width;
+    return BoardCamera.strokeRenderWorldWidth(state?.camera || {}, stroke, BOARD_CAMERA_CONFIG);
   }
 
   function boardGeometrySnapshot() {
-    const camera = normalizeCamera(state?.camera || {});
-    return {
-      schemaVersion: 2,
-      layoutMode: 'vertical-strip',
-      worldWidth: camera.worldWidth,
-      worldHeight: camera.worldHeight,
-      worldOriginX: camera.worldOriginX,
-      worldOriginY: camera.worldOriginY
-    };
+    return BoardCamera.geometrySnapshot(state?.camera || {}, BOARD_CAMERA_CONFIG);
   }
 
   function normalizeBoardGeometry(geometry) {
@@ -8804,76 +8763,21 @@ KOKYBĖS REIKALAVIMAI:
   });
 
   function boardHorizontalCenterOffsetScreen(zoom = currentBoardZoom(), world = getBoardWorldRect()) {
-    if (!refs.board) return 0;
-    const viewportWidth = Math.max(1, refs.board.clientWidth);
-    const renderedWidth = Math.max(1, world.width * Math.max(0.001, zoom));
-    return Math.max(0, (viewportWidth - renderedWidth) / 2);
+    return BoardCamera.horizontalCenterOffsetScreen(state?.camera || {}, refs, zoom, world, BOARD_CAMERA_CONFIG);
   }
 
   function applyBoardCamera(options = {}) {
-    state.camera = normalizeCamera(state.camera);
-    const oldZoom = Number(options.oldZoom) || currentBoardZoom();
-    const zoom = currentBoardZoom();
-    const viewportWidth = Math.max(1, refs.board.clientWidth);
-    const viewportHeight = Math.max(1, refs.board.clientHeight);
-    let anchorWorldX = null;
-    let anchorWorldY = null;
-    let anchorViewportX = null;
-    let anchorViewportY = null;
-
-    const world = getBoardWorldRect();
-    const oldCenterOffsetX = boardHorizontalCenterOffsetScreen(oldZoom, world);
-    if (options.anchorViewportX !== undefined && options.anchorViewportY !== undefined) {
-      anchorViewportX = Number(options.anchorViewportX) || 0;
-      anchorViewportY = Number(options.anchorViewportY) || 0;
-      anchorWorldX = (refs.board.scrollLeft + anchorViewportX - oldCenterOffsetX) / Math.max(0.001, oldZoom);
-      anchorWorldY = (refs.board.scrollTop + anchorViewportY) / Math.max(0.001, oldZoom);
-    } else if (options.preserveCenter) {
-      anchorViewportX = viewportWidth / 2;
-      anchorViewportY = viewportHeight / 2;
-      anchorWorldX = (refs.board.scrollLeft + anchorViewportX - oldCenterOffsetX) / Math.max(0.001, oldZoom);
-      anchorWorldY = (refs.board.scrollTop + anchorViewportY) / Math.max(0.001, oldZoom);
-    }
-
-    refs.boardWorld.style.width = `${world.width}px`;
-    refs.boardWorld.style.height = `${world.height}px`;
-    // P1.7.9.43: tik vaizdavimo žyma. Senose 2400 px koordinatėse tinklelio
-    // pasaulio žingsnis yra 3 kartus didesnis, kad ties jų vizualiu 100 %
-    // ekrane liktų tas pats 18/90 px tinklelis kaip dabartinėje lentoje.
-    refs.boardWorld.dataset.coordinateScale = boardUsesLegacyReadableScale() ? 'legacy-2400' : 'current-720';
-    // Chromium CSS zoom perskaičiuoja MathLive geometriją prieš piešimą. Tai nepalieka
-    // trupmeninio transformavimo siūlių ties ištempiamu šaknies ženklu.
-    const useLayoutZoom = Boolean(window.CSS?.supports?.('zoom', '1'));
-    refs.boardWorld.dataset.cameraScaleMode = useLayoutZoom ? 'layout-zoom' : 'transform';
-    refs.boardWorld.style.zoom = useLayoutZoom ? String(zoom) : '';
-    refs.boardWorld.style.transform = useLayoutZoom ? 'none' : `scale(${zoom})`;
-    const renderedWorldWidth = Math.round(world.width * zoom);
-    const centerOffsetX = boardHorizontalCenterOffsetScreen(zoom, world);
-    // Kai lapas mažesnis už matomą sritį, jis centruojamas pačiame viewport'e.
-    // CSS zoom masteliuoja ir poziciją, todėl Chrome režime offsetą paverčiame
-    // atgal į nemastelio pasaulio vienetus; transform fallback'e paliekame px.
-    refs.boardWorld.style.left = `${useLayoutZoom ? centerOffsetX / Math.max(0.001, zoom) : centerOffsetX}px`;
-    refs.boardStage.style.width = `${Math.max(viewportWidth, renderedWorldWidth)}px`;
-    refs.boardStage.style.height = `${Math.max(viewportHeight, Math.round(world.height * zoom))}px`;
-    refs.boardZoomLabel.textContent = `${boardUserZoomPercent(zoom)} %`;
-
-    cameraApplying = true;
-    requestAnimationFrame(() => {
-      if (anchorWorldX !== null && anchorWorldY !== null) {
-        refs.board.scrollLeft = Math.max(0, anchorWorldX * zoom + centerOffsetX - anchorViewportX);
-        refs.board.scrollTop = Math.max(0, anchorWorldY * zoom - anchorViewportY);
-      } else if (options.restoreScroll) {
-        refs.board.scrollLeft = Math.max(0, Number(state.camera.scrollLeft) || 0);
-        refs.board.scrollTop = Math.max(0, Number(state.camera.scrollTop) || 0);
+    BoardCamera.applyCamera({
+      getState: () => state,
+      refs,
+      config: BOARD_CAMERA_CONFIG,
+      callbacks: {
+        setApplying: value => { cameraApplying = Boolean(value); },
+        resizeCanvas,
+        layoutBoardObjects,
+        refreshMathFieldRendering
       }
-      state.camera.scrollLeft = refs.board.scrollLeft;
-      state.camera.scrollTop = refs.board.scrollTop;
-      cameraApplying = false;
-      resizeCanvas({ force: true });
-      layoutBoardObjects();
-      refreshMathFieldRendering(refs.boardWorld);
-      if (state.practiceOnly?.active) refreshMathFieldRendering(refs.practiceOnlyHost);
-    });
+    }, options);
   }
 
   function setBoardZoom(value, options = {}) {
