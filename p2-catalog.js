@@ -17,6 +17,7 @@
     if (!id || !tasks.length) return null;
     const classCount = tasks.filter(task => task?.section === 'class').length;
     const selfCount = tasks.filter(task => task?.section === 'self').length;
+    const title = String(raw.title || raw.shortTitle || 'Mano pratybos').trim() || 'Mano pratybos';
     return {
       ...raw,
       id,
@@ -24,8 +25,9 @@
       source: 'custom',
       isCustom: true,
       contentVersion: Math.max(1, Math.round(Number(raw.contentVersion) || 1)),
-      title: String(raw.title || raw.shortTitle || 'Mano pratybos').trim() || 'Mano pratybos',
-      shortTitle: String(raw.shortTitle || raw.title || 'Mano pratybos').trim() || 'Mano pratybos',
+      title,
+      // Compatibility alias: custom practices now have one teacher-facing title.
+      shortTitle: title,
       description: String(raw.description || '').trim(),
       taskCount: tasks.length,
       classCount,

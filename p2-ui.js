@@ -3748,7 +3748,7 @@
       if (pendingCustomLessonSave) pendingCustomLessonSave.reject?.(new Error('Ankstesnis išsaugojimas dar nebaigtas.'));
       pendingCustomLessonSave = { lessonId: lesson.id, resolve, reject };
       window.dispatchEvent(new CustomEvent('p2:custom-lesson-request', { detail: { action: 'save', lesson } }));
-      toast('Rinkinys saugomas…');
+      toast('Pratybos saugomos…');
     }));
     return libraryEditor;
   }
@@ -3800,9 +3800,9 @@
       button.addEventListener('click', () => {
         const lesson = lessonForId(button.dataset.lessonId);
         if (!lesson?.isCustom || button.disabled) return;
-        if (!window.confirm(`Ištrinti tavo rinkinį „${lesson.shortTitle || lesson.title}“? Jau anksčiau mokiniams priskirtų pamokų istorijos kopijos išliks.`)) return;
+        if (!window.confirm(`Ištrinti tavo pratybas „${lesson.title || lesson.shortTitle}“? Jau anksčiau mokiniams priskirtų pamokų istorijos kopijos išliks.`)) return;
         window.dispatchEvent(new CustomEvent('p2:custom-lesson-request', { detail: { action: 'delete', lessonId: lesson.id } }));
-        toast('Rinkinys trinamas…');
+        toast('Pratybos trinamos…');
       });
     });
 
@@ -3840,21 +3840,21 @@
       pendingCustomLessonSave = null;
       libraryEditor?.markSaved('Išsaugota');
     }
-    toast('Užduočių rinkinys išsaugotas');
+    toast('Pratybos išsaugotos');
     renderLibraryContent();
     renderScheduleModal();
     renderStudentsModal();
   });
 
   window.addEventListener('p2:custom-lesson-deleted', () => {
-    toast('Užduočių rinkinys ištrintas');
+    toast('Pratybos ištrintos');
     renderLibraryContent();
     renderScheduleModal();
     renderStudentsModal();
   });
 
   window.addEventListener('p2:custom-lesson-error', event => {
-    const message = String(event.detail?.message || 'Nepavyko išsaugoti užduočių rinkinio.');
+    const message = String(event.detail?.message || 'Nepavyko išsaugoti pratybų.');
     if (pendingCustomLessonSave) {
       pendingCustomLessonSave.reject?.(new Error(message));
       pendingCustomLessonSave = null;

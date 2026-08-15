@@ -45,7 +45,6 @@
       sourceVersion: Math.max(0, Number(source.contentVersion) || 0),
       createdAt: duplicate ? now : Math.max(0, Number(source.createdAt) || now),
       title: duplicate ? `${String(source.title || source.shortTitle || 'Mano pratybos')} – kopija` : String(source.title || source.shortTitle || ''),
-      shortTitle: duplicate ? `${String(source.shortTitle || source.title || 'Mano pratybos')} – kopija` : String(source.shortTitle || source.title || ''),
       description: String(source.description || ''),
       defaultMaxAttempts: [0,1,2,3].includes(Number(source.defaultMaxAttempts)) ? Number(source.defaultMaxAttempts) : 3,
       tasks
@@ -75,15 +74,14 @@
       <div class="p2-library-editor-backdrop" data-editor-close></div>
       <section class="p2-library-editor-panel" role="dialog" aria-modal="true" aria-label="Pratybų rengyklė">
         <header class="p2-library-editor-head">
-          <div><span class="p2-side-kicker">PRATYBŲ RENGYKLĖ</span><h2 data-editor-heading>Užduočių rinkinys</h2></div>
+          <div><span class="p2-side-kicker">PRATYBŲ RENGYKLĖ</span><h2 data-editor-heading>Pratybos</h2></div>
           <button type="button" data-editor-close aria-label="Uždaryti">×</button>
         </header>
         <div class="p2-library-editor-scroll">
           <section class="p2-library-editor-meta">
-            <label><span>Rinkinio pavadinimas</span><input type="text" data-lesson-field="title" maxlength="100" placeholder="Pvz., Trupmenų kartojimas"></label>
-            <label><span>Trumpas pavadinimas</span><input type="text" data-lesson-field="shortTitle" maxlength="60" placeholder="Pvz., Trupmenos"></label>
-            <label class="is-wide"><span>Aprašymas</span><textarea data-lesson-field="description" rows="2" maxlength="500" placeholder="Ką mokinys kartos šiame rinkinyje?"></textarea></label>
+            <label class="is-wide"><span>Pratybų pavadinimas</span><input type="text" data-lesson-field="title" maxlength="100" placeholder="Pvz., Trupmenų kartojimas"></label>
             <label><span>Numatytieji bandymai</span><select data-lesson-field="defaultMaxAttempts"><option value="1">1 bandymas</option><option value="2">2 bandymai</option><option value="3">3 bandymai</option><option value="0">Neribotai</option></select></label>
+            <label class="is-wide"><span>Aprašymas</span><textarea data-lesson-field="description" rows="2" maxlength="500" placeholder="Ką mokinys kartos šiose pratybose?"></textarea></label>
           </section>
 
           <div class="p2-library-editor-taskbar">
@@ -97,7 +95,7 @@
         </div>
         <footer class="p2-library-editor-footer">
           <span class="p2-library-editor-status" data-editor-status></span>
-          <div><button type="button" class="p2-secondary" data-editor-close>Atšaukti</button><button type="button" class="p2-primary" data-editor-save>Išsaugoti rinkinį</button></div>
+          <div><button type="button" class="p2-secondary" data-editor-close>Atšaukti</button><button type="button" class="p2-primary" data-editor-save>Išsaugoti pratybas</button></div>
         </footer>
       </section>`;
 
@@ -187,7 +185,7 @@
         setStatus('Yra neišsaugotų pakeitimų', 'pending');
       }));
       card.querySelector('[data-remove-task]')?.addEventListener('click', () => {
-        if (draft.tasks.length === 1 && !window.confirm('Rinkinyje neliks nė vienos užduoties. Pašalinti?')) return;
+        if (draft.tasks.length === 1 && !window.confirm('Pratybose neliks nė vienos užduoties. Pašalinti?')) return;
         draft.tasks = draft.tasks.filter(item => item.id !== taskId);
         renderTasks();
         setStatus('Yra neišsaugotų pakeitimų', 'pending');
@@ -233,13 +231,12 @@
 
     function open(lesson = null, options = {}) {
       draft = normalizeLesson(lesson, { duplicate: Boolean(options.duplicate) });
-      modal.querySelector('[data-editor-heading]').textContent = options.duplicate ? 'Kopijuojamas užduočių rinkinys' : (lesson ? 'Redaguoti užduočių rinkinį' : 'Naujas užduočių rinkinys');
+      modal.querySelector('[data-editor-heading]').textContent = options.duplicate ? 'Kopijuojamos pratybos' : (lesson ? 'Redaguoti pratybas' : 'Naujos pratybos');
       modal.querySelector('[data-lesson-field="title"]').value = draft.title;
-      modal.querySelector('[data-lesson-field="shortTitle"]').value = draft.shortTitle;
       modal.querySelector('[data-lesson-field="description"]').value = draft.description;
       modal.querySelector('[data-lesson-field="defaultMaxAttempts"]').value = String(draft.defaultMaxAttempts);
       renderTasks();
-      setStatus(lesson && !options.duplicate ? `Versija ${Math.max(1, draft.sourceVersion)}` : 'Naujas rinkinys');
+      setStatus(lesson && !options.duplicate ? `Versija ${Math.max(1, draft.sourceVersion)}` : 'Naujos pratybos');
       modal.hidden = false;
       modal.querySelector('[data-lesson-field="title"]')?.focus();
     }
@@ -247,7 +244,7 @@
     function validateAndBuild() {
       syncAll();
       const title = String(draft.title || '').trim();
-      if (!title) throw new Error('Įrašyk rinkinio pavadinimą.');
+      if (!title) throw new Error('Įrašyk pratybų pavadinimą.');
       if (!draft.tasks.length) throw new Error('Pridėk bent vieną užduotį.');
       const tasks = draft.tasks.map((task, index) => {
         const prompt = String(task.prompt || '').trim();
@@ -299,7 +296,7 @@
         isCustom: true,
         contentVersion: draft.isNew ? 1 : Math.max(1, draft.sourceVersion + 1),
         title,
-        shortTitle: String(draft.shortTitle || '').trim() || title,
+        shortTitle: title,
         description: String(draft.description || '').trim(),
         defaultMaxAttempts: [0,1,2,3].includes(Number(draft.defaultMaxAttempts)) ? Number(draft.defaultMaxAttempts) : 3,
         taskCount: tasks.length,
