@@ -552,11 +552,13 @@
   if (!BoardInput) throw new Error('P772BoardInput modulis neįkeltas');
   const BoardObjects = window.P772BoardObjects;
   if (!BoardObjects) throw new Error('P772BoardObjects modulis neįkeltas');
+  const BoardTextEditor = window.P772BoardTextEditor;
+  if (!BoardTextEditor) throw new Error('P772BoardTextEditor modulis neįkeltas');
 
-  // P1.7.9.49-M2.5.1: kameros matematika lieka board-camera.js, tinklelio
+  // P1.7.9.49-M2.6: kameros matematika lieka board-camera.js, tinklelio
   // suderinimas board-grid.js, rasterizavimas board-drawing.js, pointer
-  // seansas board-input.js, o bendra objektų geometrija / pozicionavimas
-  // iškelti į board-objects.js.
+  // seansas board-input.js, bendra objektų geometrija board-objects.js, o
+  // teksto / formulės objekto DOM redagavimo valdymas board-text-editor.js.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
   const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
@@ -9365,13 +9367,11 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function mixedEditorFromNode(node) {
-    return node instanceof Element ? node.closest?.('.mixed-editor-content') || null : node?.parentElement?.closest?.('.mixed-editor-content') || null;
+    return BoardTextEditor.editorFromNode(node);
   }
 
   function mixedFormulaWrapperFromNode(node) {
-    return node instanceof Element
-      ? node.closest?.('.mixed-inline-formula') || null
-      : node?.parentElement?.closest?.('.mixed-inline-formula') || null;
+    return BoardTextEditor.formulaWrapperFromNode(node);
   }
 
   function directMathFieldHasDomFocus(field) {
@@ -9380,13 +9380,7 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function currentMixedTextRange(editor) {
-    if (!editor?.isConnected) return null;
-    const selection = window.getSelection?.();
-    if (!selection?.rangeCount) return null;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return null;
-    if (mixedFormulaWrapperFromNode(range.commonAncestorContainer)) return null;
-    try { return range.cloneRange(); } catch (_) { return null; }
+    return BoardTextEditor.currentTextRange(editor);
   }
 
   function deactivateMathForMixedTextRange(editor, range = null) {
@@ -9398,52 +9392,33 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
-  // P2-SPLIT-P2.2.2: vien DOM fokusas negali reikšti, kad šis klientas vis dar
-  // "valdo" teksto objektą. Perėjus iš mokinio lango į mokytojo langą Chromium
-  // palieka document.activeElement sename contenteditable, todėl kito kliento
-  // pakeitimai ten būdavo kaupiami pendingRemoteNotes ir atrodydavo "užšalę".
-  // Vietinį DOM saugome tik trumpos realios įvesties sesijos metu. Sustojus rašyti
-  // arba langui praradus fokusą, naujausias nuotolinis tekstas iškart gali būti
-  // pritaikytas.
-  const SHARED_NOTE_EDIT_LEASE_MS = 420;
-  let lastSharedNoteLocalActivityAt = 0;
-  let sharedNoteEditLeaseTimer = null;
+  // P2-SPLIT-P2.2.2 / M2.6: trumpa vietinio teksto redagavimo nuoma dabar
+  // priklauso board-text-editor.js. Taip nuotolinis tekstas neužšąla dėl seno
+  // Chromium focus, tačiau MathLive sesijos šaltinis ir Firebase lieka app.js.
+  const sharedNoteEditLease = BoardTextEditor.createSharedEditLease({
+    leaseMs: 420,
+    getActiveEditor: () => activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null,
+    getActiveMathField: () => activeDirectMathField?.isConnected ? activeDirectMathField : null,
+    mathFieldHasFocus: directMathFieldHasDomFocus,
+    registeredBoardMathEditing: () => {
+      const registered = mathFieldRegistry.get(mathEditSession.key);
+      return Boolean(registered?.isConnected
+        && registered.closest?.('.board-note')
+        && (directMathFieldHasDomFocus(registered) || mathEditSession.restorePending));
+    },
+    onEditingEnded: () => window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'))
+  });
 
   function markSharedNoteLocalActivity() {
-    lastSharedNoteLocalActivityAt = performance.now();
-    clearTimeout(sharedNoteEditLeaseTimer);
-    sharedNoteEditLeaseTimer = window.setTimeout(() => {
-      sharedNoteEditLeaseTimer = null;
-      if (!sharedNoteEditingActive()) {
-        window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
-      }
-    }, SHARED_NOTE_EDIT_LEASE_MS + 30);
+    sharedNoteEditLease.markActivity();
   }
 
   function sharedNoteEditingActive() {
-    if (document.visibilityState === 'hidden') return false;
-    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
-    if (performance.now() - lastSharedNoteLocalActivityAt > SHARED_NOTE_EDIT_LEASE_MS) return false;
-
-    const activeElement = document.activeElement;
-    const editor = activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null;
-    if (editor?.closest('.board-note')) {
-      if (activeElement === editor || editor.contains(activeElement)) return true;
-      const noteElement = editor.closest('.board-note');
-      if (activeElement && noteElement?.contains(activeElement)) return true;
-    }
-    if (activeDirectMathField?.isConnected && activeDirectMathField.closest('.board-note')
-      && directMathFieldHasDomFocus(activeDirectMathField)) return true;
-    const registered = mathFieldRegistry.get(mathEditSession.key);
-    return Boolean(registered?.isConnected
-      && registered.closest?.('.board-note')
-      && (directMathFieldHasDomFocus(registered) || mathEditSession.restorePending));
+    return sharedNoteEditLease.isEditing();
   }
 
   function notifySharedNoteEditingEndedSoon() {
-    queueMicrotask(() => {
-      if (!sharedNoteEditingActive()) window.dispatchEvent(new CustomEvent('p772:shared-note-editing-ended'));
-    });
+    sharedNoteEditLease.notifyEndedSoon();
   }
 
   function setActiveMixedTextEditor(editor, options = {}) {
@@ -9551,87 +9526,20 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
-  function appendMixedNode(nodes, node) {
-    if (node.type === 'text') {
-      const text = String(node.text || '').replace(/\u200B/g, '');
-      const previous = nodes[nodes.length - 1];
-      if (previous?.type === 'text') previous.text += text;
-      else nodes.push({ type: 'text', text });
-      return;
-    }
-    if (node.type === 'break') {
-      // P2-SPLIT-P2.2.3: saugome kiekvieną realų eilutės lūžį. Ankstesnis
-      // deduplikavimas prarasdavo kelias tuščias eilutes siunčiant tekstą internetu.
-      nodes.push({ type: 'break' });
-      return;
-    }
-    nodes.push(node);
-  }
-
   function mixedNodesFromEditor(editor) {
-    const nodes = [];
-    const walk = parent => {
-      [...parent.childNodes].forEach(child => {
-        if (child.nodeType === Node.TEXT_NODE) {
-          appendMixedNode(nodes, { type: 'text', text: child.nodeValue || '' });
-          return;
-        }
-        if (!(child instanceof Element)) return;
-        if (child.matches('.mixed-inline-formula')) {
-          const field = child.querySelector('math-field.direct-math-field');
-          appendMixedNode(nodes, {
-            type: 'formula',
-            id: String(child.dataset.formulaNodeId || `mixed-formula-${Date.now()}`),
-            value: field ? readDirectMathField(field) : String(child.dataset.value || ''),
-            latex: field ? readDirectMathLatex(field) : String(child.dataset.latex || '')
-          });
-          return;
-        }
-        if (child.tagName === 'BR') {
-          appendMixedNode(nodes, { type: 'break' });
-          return;
-        }
-        const isBlock = ['DIV', 'P'].includes(child.tagName);
-        if (isBlock && nodes.length && nodes[nodes.length - 1]?.type !== 'break') appendMixedNode(nodes, { type: 'break' });
-        walk(child);
-        if (isBlock && nodes[nodes.length - 1]?.type !== 'break') appendMixedNode(nodes, { type: 'break' });
-      });
-    };
-    walk(editor);
-    while (nodes.length > 1 && nodes[nodes.length - 1]?.type === 'break') nodes.pop();
-    return normalizeMixedContentNodes(nodes);
+    return BoardTextEditor.nodesFromEditor(editor, {
+      readMathValue: readDirectMathField,
+      readMathLatex: readDirectMathLatex,
+      normalizeNodes: normalizeMixedContentNodes
+    });
   }
 
   function mixedNoteContentMinimumWidth(editor) {
-    if (!editor?.isConnected) return 110;
-    let widestFormula = 0;
-    editor.querySelectorAll('.mixed-inline-formula').forEach(wrapper => {
-      const field = wrapper.querySelector('math-field');
-      const width = Math.max(
-        Number(wrapper.scrollWidth) || 0,
-        Number(wrapper.offsetWidth) || 0,
-        Number(field?.scrollWidth) || 0,
-        Number(field?.offsetWidth) || 0
-      );
-      if (Number.isFinite(width)) widestFormula = Math.max(widestFormula, Math.ceil(width));
-    });
-    // 30 px perkėlimo rankenėlė + 30 px šalinimo mygtukas + tarpai/padding.
-    return Math.max(110, Math.min(900, widestFormula ? widestFormula + 78 : 110));
+    return BoardTextEditor.contentMinimumWidth(editor);
   }
 
-  function applyMixedNoteContentSizing(note, editor, { expandForFormula = true } = {}) {
-    const element = editor?.closest?.('.board-note');
-    if (!element) return;
-    const minWidth = mixedNoteContentMinimumWidth(editor);
-    element.style.setProperty('--mixed-note-content-min-width', `${minWidth}px`);
-    // Aukščio vartotojui fiksuoti nebereikia: jis visada seka turinį.
-    element.style.removeProperty('height');
-    element.style.minHeight = '44px';
-    if (expandForFormula && element.offsetWidth < minWidth) element.style.width = `${minWidth}px`;
-    if (note) {
-      note.width = Math.max(minWidth, Math.min(900, element.offsetWidth || note.width || 420));
-      note.minHeight = 44;
-    }
+  function applyMixedNoteContentSizing(note, editor, options = {}) {
+    BoardTextEditor.applyContentSizing(note, editor, options);
   }
 
   function saveMixedNoteFromEditor(note, editor) {
@@ -10078,52 +9986,20 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function installMixedTextEditing() {
-    document.addEventListener('selectionchange', () => {
-      const selection = window.getSelection?.();
-      if (!selection?.rangeCount) return;
-      const editor = mixedEditorFromNode(selection.anchorNode);
-      if (!editor) return;
-      setActiveMixedTextEditor(editor, { save: false });
-      captureMixedTextSelection(editor);
+    BoardTextEditor.installDocumentEditing({
+      eventPath: eventComposedPath,
+      setActiveEditor: setActiveMixedTextEditor,
+      captureTextSelection: captureMixedTextSelection,
+      getActiveMathField: () => activeDirectMathField?.isConnected ? activeDirectMathField : null,
+      clearMathSession: clearMathEditSession,
+      currentTextRange: currentMixedTextRange,
+      deactivateMathForTextRange: deactivateMathForMixedTextRange,
+      eventTouchesMathToolbar,
+      mathFieldFromEvent,
+      eventOriginatesInMathField: eventOriginatesInDirectMathField,
+      getActiveEditor: () => activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null,
+      activateExplicitMathMode
     });
-    document.addEventListener('pointerdown', event => {
-      const path = eventComposedPath(event);
-      const editor = path.map(node => mixedEditorFromNode(node)).find(Boolean) || null;
-      if (editor) {
-        setActiveMixedTextEditor(editor, { save: false });
-        const touchesFormula = path.some(node => mixedFormulaWrapperFromNode(node));
-        if (!touchesFormula) {
-          if (activeDirectMathField) clearMathEditSession();
-          // Native naršyklės caret pozicija nustatoma po pointerdown, todėl po gesto
-          // dar kartą išsaugome būtent teksto žymeklio vietą matematikos juostai.
-          window.setTimeout(() => {
-            if (!editor.isConnected) return;
-            const range = currentMixedTextRange(editor);
-            if (range) deactivateMathForMixedTextRange(editor, range);
-          }, 0);
-        }
-        return;
-      }
-      if (eventTouchesMathToolbar(event)) return;
-      setActiveMixedTextEditor(null, { save: false });
-    }, true);
-    document.addEventListener('focusin', event => {
-      const editor = mixedEditorFromNode(event.target);
-      if (!editor) return;
-      setActiveMixedTextEditor(editor, { save: false });
-      if (!mathFieldFromEvent(event) && !mixedFormulaWrapperFromNode(event.target)) captureMixedTextSelection(editor);
-    }, true);
-    document.addEventListener('keydown', event => {
-      const isShortcut = event.altKey && !event.ctrlKey && !event.metaKey
-        && (event.key === '=' || event.code === 'Equal');
-      if (!isShortcut || eventOriginatesInDirectMathField(event)) return;
-      const editor = mixedEditorFromNode(event.target) || (activeMixedTextEditor?.isConnected ? activeMixedTextEditor : null);
-      if (!editor) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setActiveMixedTextEditor(editor, { save: false });
-      activateExplicitMathMode(editor);
-    }, true);
   }
 
   function addNote() {
@@ -11422,58 +11298,20 @@ KOKYBĖS REIKALAVIMAI:
         scheduleSave();
       });
 
-      editor.addEventListener('input', event => {
-        setActiveMixedTextEditor(editor, { save: false });
-        if (eventOriginatesInDirectMathField(event)) return;
-        captureMixedTextSelection(editor);
-        saveMixedNoteFromEditor(note, editor);
-      });
-      editor.addEventListener('pointerdown', event => {
-        event.stopPropagation();
-        markSharedNoteLocalActivity();
-        setActiveMixedTextEditor(editor, { save: false });
-        if (eventOriginatesInDirectMathField(event)) return;
-        if (activeDirectMathField) clearMathEditSession();
-        requestAnimationFrame(() => captureMixedTextSelection(editor));
-      });
-      editor.addEventListener('focusin', () => {
-        markSharedNoteLocalActivity();
-        setActiveMixedTextEditor(editor, { save: false });
-      });
-      editor.addEventListener('keyup', event => {
-        if (!eventOriginatesInDirectMathField(event)) captureMixedTextSelection(editor);
-      });
-      editor.addEventListener('mouseup', event => {
-        if (!eventOriginatesInDirectMathField(event)) captureMixedTextSelection(editor);
-      });
-      let lastSmartMathTrigger = { character: '', at: 0 };
-      editor.addEventListener('keydown', event => {
-        if (eventOriginatesInDirectMathField(event)) return;
-        const textRange = currentMixedTextRange(editor);
-        if (textRange) deactivateMathForMixedTextRange(editor, textRange);
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'm') {
-          event.preventDefault();
-          insertFormulaIntoMixedEditor(editor);
-          return;
-        }
-        if (handleMixedFormulaBoundaryKey(editor, event)) return;
-        if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && typedMathKey(event.key)) {
-          if (trySmartMathTrigger(editor, event.key)) {
-            event.preventDefault();
-            lastSmartMathTrigger = { character: event.key, at: performance.now() };
-          }
-        }
-      });
-      editor.addEventListener('beforeinput', event => {
-        if (eventOriginatesInDirectMathField(event)) return;
-        const textRange = currentMixedTextRange(editor);
-        if (textRange) deactivateMathForMixedTextRange(editor, textRange);
-        if (event.inputType !== 'insertText' || !typedMathKey(event.data)) return;
-        if (lastSmartMathTrigger.character === event.data && performance.now() - lastSmartMathTrigger.at < 120) {
-          event.preventDefault();
-          return;
-        }
-        if (trySmartMathTrigger(editor, event.data)) event.preventDefault();
+      BoardTextEditor.bindEditor(editor, note, {
+        setActiveEditor: setActiveMixedTextEditor,
+        eventOriginatesInMathField: eventOriginatesInDirectMathField,
+        captureTextSelection: captureMixedTextSelection,
+        saveNote: saveMixedNoteFromEditor,
+        markLocalActivity: markSharedNoteLocalActivity,
+        getActiveMathField: () => activeDirectMathField?.isConnected ? activeDirectMathField : null,
+        clearMathSession: clearMathEditSession,
+        currentTextRange: currentMixedTextRange,
+        deactivateMathForTextRange: deactivateMathForMixedTextRange,
+        insertFormula: insertFormulaIntoMixedEditor,
+        handleFormulaBoundaryKey: handleMixedFormulaBoundaryKey,
+        typedMathKey,
+        trySmartMathTrigger
       });
 
       element.append(handle, editor, remove);
