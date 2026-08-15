@@ -460,8 +460,7 @@
   let drawingContext = null;
   let committedCanvas = null;
   let committedContext = null;
-  let drawingActive = false;
-  let activeStroke = null;
+  let boardInput = null;
   let remoteLiveStrokes = [];
   let canvasViewport = null;
   let canvasViewportRaf = 0;
@@ -549,10 +548,12 @@
   if (!BoardGrid) throw new Error('P772BoardGrid modulis neįkeltas');
   const BoardDrawing = window.P772BoardDrawing;
   if (!BoardDrawing) throw new Error('P772BoardDrawing modulis neįkeltas');
+  const BoardInput = window.P772BoardInput;
+  if (!BoardInput) throw new Error('P772BoardInput modulis neįkeltas');
 
-  // P1.7.9.49-M2.3: kameros matematika ir DOM mastelio pritaikymas lieka
-  // board-camera.js. Piešimo / trintuko rasterizavimo branduolys šiame etape
-  // iškeltas į board-drawing.js; app.js palieka pointer, state ir online adapterius.
+  // P1.7.9.49-M2.4: kameros matematika lieka board-camera.js, tinklelio
+  // suderinimas board-grid.js, rasterizavimas board-drawing.js, o pointer
+  // koordinatės ir aktyvaus brūkšnio seansas iškelti į board-input.js.
   const BOARD_FIT_SIDE_MARGIN_SCREEN = 0;
   const BOARD_LEGACY_USER_100_ZOOM = 1 / 3;
   const BOARD_LEGACY_FIT_PADDING_X = 28;
@@ -663,7 +664,7 @@
     const remapStroke = stroke => (stroke?.points || []).forEach(point => remapNormalizedPoint(point, oldWidth, oldHeight, newWidth, newHeight, offsetX, offsetY));
     state.drawing.forEach(remapStroke);
     remoteLiveStrokes.forEach(remapStroke);
-    if (activeStroke) remapStroke(activeStroke);
+    boardInput?.remapActiveStroke(remapStroke);
 
     for (const note of state.notes) {
       note.x = (Number(note.x || 0) * oldWidth + offsetX) / newWidth;
@@ -693,7 +694,7 @@
   }
 
   function expandBoardWorld(request = {}, options = {}) {
-    if (!refs.board || state.practiceOnly?.active || drawingActive) return null;
+    if (!refs.board || state.practiceOnly?.active || boardInput?.isDrawingActive()) return null;
     state.camera = normalizeCamera(state.camera);
     const oldWidth = state.camera.worldWidth;
     const oldHeight = state.camera.worldHeight;
@@ -736,7 +737,7 @@
   }
 
   function expandBoardForScrollIntent(deltaX = 0, deltaY = 0) {
-    if (state.practiceOnly?.active || drawingActive || deltaY <= 0) return null;
+    if (state.practiceOnly?.active || boardInput?.isDrawingActive() || deltaY <= 0) return null;
     const zoom = Math.max(0.001, currentBoardZoom());
     const world = getBoardWorldRect();
     const margin = BOARD_WORLD_EDGE_SCREEN_MARGIN;
@@ -750,7 +751,7 @@
   function scheduleBoardEdgeExpansion() {
     clearTimeout(infiniteBoardEdgeTimer);
     infiniteBoardEdgeTimer = window.setTimeout(() => {
-      if (drawingActive || state.practiceOnly?.active) return;
+      if (boardInput?.isDrawingActive() || state.practiceOnly?.active) return;
       const zoom = Math.max(0.001, currentBoardZoom());
       const world = getBoardWorldRect();
       const maxTop = Math.max(0, world.height * zoom - refs.board.clientHeight);
@@ -9286,58 +9287,9 @@ KOKYBĖS REIKALAVIMAI:
       },
       drawing: {
         strokeCount: Array.isArray(state.drawing) ? state.drawing.length : 0,
-        active: Boolean(drawingActive),
-        activePointCount: activeStroke?.points?.length || 0
+        active: Boolean(boardInput?.isDrawingActive()),
+        activePointCount: boardInput?.getActiveStroke()?.points?.length || 0
       }
-    };
-  }
-
-  // P1.7.9.19: pieštuko koordinatės skaičiuojamos iš pačios lentos kameros,
-  // o ne iš slankiojančio viewport canvas stačiakampio. Viewport canvas gali būti
-  // perstatomas po scroll / resize / split pokyčio; jei tuo pat metu tęsiamas
-  // pointer brūkšnys, jo DOM rect ir canvasViewport akimirkai gali nesutapti.
-  // Kamera + board scroller yra vienintelis stabilus koordinačių šaltinis.
-  function pointFromEvent(event) {
-    if (!refs.board) return null;
-    const world = getBoardWorldRect();
-    const zoom = Math.max(0.001, currentBoardZoom());
-    const boardRect = refs.board.getBoundingClientRect();
-    const viewportWidth = Math.max(1, refs.board.clientWidth);
-    const viewportHeight = Math.max(1, refs.board.clientHeight);
-    if (!(boardRect.width > 1 && boardRect.height > 1 && viewportWidth > 1 && viewportHeight > 1)) {
-      emitBoardDiagnostic('pointer-invalid-board-rect', { viewportWidth, viewportHeight, rectWidth: boardRect.width, rectHeight: boardRect.height }, 1500);
-      return null;
-    }
-
-    const centerOffsetX = boardHorizontalCenterOffsetScreen(zoom, world);
-    const clientX = Number(event?.clientX);
-    const clientY = Number(event?.clientY);
-    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-      emitBoardDiagnostic('pointer-invalid-client-coordinates', { clientX, clientY }, 1500);
-      return null;
-    }
-
-    // clientLeft/clientTop pašalina scrollerio rėmelį; scrollLeft/scrollTop
-    // grąžina ekraninę poziciją į mastelio turinio koordinates.
-    const viewportX = clientX - boardRect.left - (refs.board.clientLeft || 0);
-    const viewportY = clientY - boardRect.top - (refs.board.clientTop || 0);
-    const worldX = (refs.board.scrollLeft + viewportX - centerOffsetX) / zoom;
-    const worldY = (refs.board.scrollTop + viewportY) / zoom;
-
-    const normalizedX = worldX / Math.max(1, world.width);
-    const normalizedY = worldY / Math.max(1, world.height);
-    if (normalizedX < -0.02 || normalizedX > 1.02 || normalizedY < -0.02 || normalizedY > 1.02) {
-      emitBoardDiagnostic('pointer-outside-world', {
-        pointerType: String(event?.pointerType || ''),
-        clientX: Math.round(clientX), clientY: Math.round(clientY),
-        normalizedX: Math.round(normalizedX * 10000) / 10000,
-        normalizedY: Math.round(normalizedY * 10000) / 10000
-      }, 1200);
-    }
-
-    return {
-      x: Math.max(0, Math.min(1, normalizedX)),
-      y: Math.max(0, Math.min(1, normalizedY))
     };
   }
 
@@ -9360,15 +9312,6 @@ KOKYBĖS REIKALAVIMAI:
       showToast('Lenta dar kraunama – pabandyk rašyti dar kartą po akimirkos');
     }
     return ready;
-  }
-
-  function emitLiveStroke(phase, stroke = activeStroke) {
-    if (!stroke) return;
-    // CustomEvent apdorojamas sinchroniškai. Nekopijuojame viso augančio points masyvo
-    // per kiekvieną pointermove; online sluoksnis kopiją pasidaro tik realiai siųsdamas.
-    window.dispatchEvent(new CustomEvent('p772:live-stroke', {
-      detail: { phase, stroke }
-    }));
   }
 
   function boardDrawingRenderOptions() {
@@ -9399,69 +9342,29 @@ KOKYBĖS REIKALAVIMAI:
     );
   }
 
-  function startDrawing(event) {
-    if (!['pen', 'eraser'].includes(state.activeTool)) return;
-    event.preventDefault();
-    if (!ensureCanvasReadyForDrawing()) return;
-    const startPoint = pointFromEvent(event);
-    if (!startPoint) {
-      scheduleCanvasViewportRefresh({ force: true });
-      return;
-    }
-    refs.canvas.setPointerCapture(event.pointerId);
-    drawingActive = true;
-    activeStroke = BoardDrawing.createStroke({
-      tool: state.activeTool,
-      point: startPoint,
-      onlineRole: document.body?.dataset?.onlineRole
-    });
-    // Svarbu našumui: pradėdami naują brūkšnį nebeperpiešiame visų senų taškų.
-    drawStrokePoint(drawingContext, activeStroke, activeStroke.points[0]);
-    emitLiveStroke('start');
-  }
-
-  function continueDrawing(event) {
-    if (!drawingActive || !activeStroke) return;
-    event.preventDefault();
-    const previousPoint = activeStroke.points[activeStroke.points.length - 1];
-    const nextPoint = pointFromEvent(event);
-    if (!nextPoint) return;
-    const pointerJump = BoardDrawing.pointerJump(previousPoint, nextPoint);
-    if (pointerJump > 0.12) {
-      emitBoardDiagnostic('pointer-coordinate-jump', {
-        pointerType: String(event?.pointerType || ''),
-        jump: Math.round(pointerJump * 10000) / 10000,
-        fromX: Math.round(previousPoint.x * 10000) / 10000,
-        fromY: Math.round(previousPoint.y * 10000) / 10000,
-        toX: Math.round(nextPoint.x * 10000) / 10000,
-        toY: Math.round(nextPoint.y * 10000) / 10000
-      }, 1200);
-    }
-    activeStroke.points.push(nextPoint);
-    // Ankstesnė versija čia kiekvienam pointermove išvalydavo canvas ir iš naujo
-    // perpiešdavo visą state.drawing. Ilgesnėje pamokoje tai tapdavo O(visos lentos)
-    // darbu kiekvienam rašiklio judesiui, todėl linija pradėdavo vytis žymeklį.
-    drawStrokeSegment(drawingContext, activeStroke, previousPoint, nextPoint);
-    emitLiveStroke('update');
-  }
-
-  function stopDrawing(event) {
-    if (!drawingActive || !activeStroke) return;
-    const committedStroke = activeStroke;
-    drawingActive = false;
-    activeStroke = null;
-    state.drawing.push(committedStroke);
-    // Pagrindiniame canvas brūkšnys jau nupieštas segmentais. Įdedame jį tik į
-    // statinį cache, kad būsimi nuotoliniai atnaujinimai nereikalautų senų brūkšnių redraw.
-    paintCommittedStroke(committedStroke);
-    emitLiveStroke('end', committedStroke);
-    try { refs.canvas.releasePointerCapture(event.pointerId); } catch (_) { /* nieko */ }
-    scheduleSave({ notifyShared: !window.__p772DirectDrawingSyncReady });
-  }
+  boardInput = BoardInput.createController({
+    refs: { board: refs.board, canvas: refs.canvas },
+    BoardDrawing,
+    getActiveTool: () => state.activeTool,
+    getOnlineRole: () => document.body?.dataset?.onlineRole,
+    getWorldRect: getBoardWorldRect,
+    getZoom: currentBoardZoom,
+    getHorizontalCenterOffsetScreen: boardHorizontalCenterOffsetScreen,
+    ensureCanvasReadyForDrawing,
+    scheduleCanvasViewportRefresh,
+    getDrawingContext: () => drawingContext,
+    drawStrokePoint,
+    drawStrokeSegment,
+    paintCommittedStroke,
+    commitStroke: stroke => state.drawing.push(stroke),
+    emitBoardDiagnostic,
+    scheduleSave,
+    shouldNotifyShared: () => !window.__p772DirectDrawingSyncReady
+  });
 
   function redrawCanvas() {
     BoardDrawing.redrawCanvas(
-      drawingContext, refs.canvas, committedCanvas, remoteLiveStrokes, activeStroke,
+      drawingContext, refs.canvas, committedCanvas, remoteLiveStrokes, boardInput?.getActiveStroke() || null,
       getBoardWorldRect(), boardDrawingRenderOptions()
     );
   }
@@ -12290,10 +12193,10 @@ KOKYBĖS REIKALAVIMAI:
     requestAnimationFrame(() => { centerPracticeWindow(); if (state.mode === 'student') renderTask(); });
     showToast('P7.7.2 būsena, biblioteka, užduotys ir pratybų puslapiai išvalyti');
   });
-  refs.canvas.addEventListener('pointerdown', startDrawing);
-  refs.canvas.addEventListener('pointermove', continueDrawing);
-  refs.canvas.addEventListener('pointerup', stopDrawing);
-  refs.canvas.addEventListener('pointercancel', stopDrawing);
+  refs.canvas.addEventListener('pointerdown', boardInput.startDrawing);
+  refs.canvas.addEventListener('pointermove', boardInput.continueDrawing);
+  refs.canvas.addEventListener('pointerup', boardInput.stopDrawing);
+  refs.canvas.addEventListener('pointercancel', boardInput.stopDrawing);
 
   // P1.7.9.43: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
   // Padalintas/Lenta režimas, naršyklės dydis) išlaikome tą patį vartotojo mastelį.
