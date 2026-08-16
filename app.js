@@ -2924,6 +2924,19 @@
   }
 
   function classifyQuadraticAuxiliaryStepV2(source, context) {
+    // P3.2.6.6: jei kairėje pusėje jau yra aktyvus pakeitimo kintamasis
+    // (pvz. t = 0 po t = x - 3), tai nėra naujas skaitinis pagalbinio simbolio
+    // apibrėžimas. Tokia eilutė turi būti perduota pakeitimo lygties tikrinimui,
+    // kad būtų išskleista atgal į pradinį nežinomąjį.
+    try {
+      const equalityParts = splitTopLevelEqualities(source);
+      const lhs = normalizedSemanticVariableLhs(equalityParts?.[0] || '');
+      if (/^[A-Za-z]$/.test(lhs) && context?.substitutions
+          && Object.prototype.hasOwnProperty.call(context.substitutions, lhs)) {
+        return { recognized: false };
+      }
+    } catch (_) { /* bendras parseris pateiks tikslesnę diagnostiką */ }
+
     // P2-SPLIT-P2.4.7.16.1: keli atskiri simbolių priskyrimai vienoje eilutėje
     // (pvz. c=1; b=12; a=-7) pirmiausia turi būti interpretuojami kaip
     // vietinių simbolių apibrėžimai. Ankstesnėje 7.16 versijoje visa eilutė
@@ -3708,6 +3721,32 @@
     try {
       const equation = parseEquation(expanded.source);
       const descriptor = describePolynomialEquation(equation);
+
+      // P3.2.6.6: iš pakeitimo išplaukianti tapatybė (pvz. iš t=x-3 gauname
+      // x-2=t+1) yra teisingas paaiškinamasis žingsnis, bet ji neturi pakeisti
+      // aktyvios sprendžiamos lygties į „tapatybę su visais x“.
+      if (descriptor.kind === 'all') {
+        return {
+          recognized: true,
+          ok: true,
+          relationOnly: true,
+          equation,
+          descriptor,
+          expandedSource: expanded.source,
+          message: 'Lygybė teisingai išplaukia iš anksčiau apibrėžto pakeitimo.'
+        };
+      }
+
+      // Jei po pakeitimo išskleidimo gaunama prieštara, tai jau tikra
+      // matematinė klaida, o ne parserio nesupratimas.
+      if (descriptor.kind === 'none' && descriptor.degree === 0) {
+        return {
+          recognized: true,
+          ok: false,
+          message: 'Ši lygybė neišplaukia iš anksčiau apibrėžto pakeitimo.'
+        };
+      }
+
       return {
         recognized: true,
         ok: true,
@@ -4128,7 +4167,8 @@
               semanticTransition = {
                 ok: true,
                 semanticType: 'substitution-use',
-                kind: 'substitution-use',
+                kind: substitutionEquation.relationOnly ? 'substitution-derived-relation' : 'substitution-use',
+                relationOnly: Boolean(substitutionEquation.relationOnly),
                 message: substitutionEquation.message
               };
               usedSemanticStep = true;
@@ -4143,6 +4183,16 @@
       } catch (error) {
         stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
         return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio`, message: friendlyParseError(error), stepResults };
+      }
+
+      // P3.2.6.6: iš pakeitimo išplaukianti tapatybė yra teisingas tarpinis
+      // paaiškinimas (pvz. x-2=t+1), tačiau ji nekeičia aktyvios sprendžiamos
+      // lygties ir neturi nutraukti jau pradėto šakų sekimo.
+      if (semanticTransition?.kind === 'substitution-derived-relation') {
+        stepResults[index] = { status: 'correct', message: semanticTransition.message };
+        previousSemanticKind = semanticTransition.kind;
+        usedSemanticStep = true;
+        continue;
       }
 
       // Atskira x₁ / x₂ formulės eilutė sąmoningai aprašo tik vieną pradinės
