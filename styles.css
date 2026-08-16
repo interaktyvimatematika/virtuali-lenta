@@ -8362,3 +8362,29 @@ body.p2-shell .p327-structure-title { color:#404b60; font-size:12px; font-weight
 body.p2-shell .p327-structure-check { display:flex; grid-template-columns:none; align-items:center; gap:8px; font-weight:650; }
 body.p2-shell .p327-structure-check input[type="checkbox"] { width:17px; height:17px; margin:0; padding:0; accent-color:#4d63ba; box-shadow:none; }
 body.p2-shell .p327-structure-requirements > small { color:#7b879a; font-size:11px; }
+
+/* P3.2.7.10.5 — native IR / ARBA task settings in P2 library editor */
+body.p2-shell .p2-library-editor-structure-settings {
+  display:grid;
+  gap:8px;
+  padding:11px 12px;
+  border:1px solid #dfe5ee;
+  border-radius:11px;
+  background:#fbfcfe;
+}
+body.p2-shell .p2-library-editor-structure-check {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#404b60;
+  font-size:12px;
+  font-weight:650;
+}
+body.p2-shell .p2-library-editor-structure-check input[type="checkbox"] {
+  width:17px;
+  height:17px;
+  margin:0;
+  padding:0;
+  accent-color:#4d63ba;
+  box-shadow:none;
+}

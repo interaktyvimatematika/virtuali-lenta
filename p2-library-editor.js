@@ -30,6 +30,8 @@
       ? String(solutionPrompt)
       : String(source.promptDisplay || source.prompt || '');
     const minimumSteps = Math.max(1, Math.min(6, Number(source.minimumSteps ?? source?.response?.options?.minimumSteps) || 2));
+    const requireExplicitAnd = Boolean(source.requireExplicitAnd ?? source?.response?.options?.requireExplicitAnd);
+    const requireExplicitOr = Boolean(source.requireExplicitOr ?? source?.response?.options?.requireExplicitOr);
     return {
       id: String(source.id || makeId('task')),
       type,
@@ -41,6 +43,8 @@
         ? 'Išspręsk lygtį. Sprendimą rašyk nuosekliais žingsniais.'
         : '')),
       minimumSteps,
+      requireExplicitAnd,
+      requireExplicitOr,
       hint: String(source.hint || ''),
       answer: String(source.answer || ''),
       answerType: source.answerType === 'number' ? 'number' : 'text',
@@ -153,6 +157,20 @@
             <label><span>Mažiausiai sprendimo žingsnių</span><select data-task-field="minimumSteps">
               ${[1,2,3,4,5,6].map(value => `<option value="${value}" ${Number(task.minimumSteps) === value ? 'selected' : ''}>${value}</option>`).join('')}
             </select></label>
+            <div class="p2-library-editor-structure-settings is-wide">
+              <div class="p2-library-editor-field-title">
+                <span>Sprendimo struktūros reikalavimai</span>
+                <small>Pagal nutylėjimą išjungti. Tai pateikimo, o ne matematinio teisingumo reikalavimai.</small>
+              </div>
+              <label class="p2-library-editor-structure-check">
+                <input type="checkbox" data-task-field="requireExplicitAnd" ${task.requireExplicitAnd ? 'checked' : ''}>
+                <span>Reikalauti aiškiai naudoti <strong>IR</strong></span>
+              </label>
+              <label class="p2-library-editor-structure-check">
+                <input type="checkbox" data-task-field="requireExplicitOr" ${task.requireExplicitOr ? 'checked' : ''}>
+                <span>Reikalauti aiškiai naudoti <strong>ARBA</strong> (Šakos)</span>
+              </label>
+            </div>
             <div class="p2-library-editor-auto-answer">
               <span>Automatinio tikrintuvo atsakymas</span>
               <strong data-task-equation-answer>—</strong>
@@ -195,7 +213,7 @@
       if (card.__p2EquationEditor) task.prompt = card.__p2EquationEditor.getValue();
       if (card.__p2RichHintEditor) task.hint = card.__p2RichHintEditor.getValue();
       card.querySelectorAll('[data-task-field]').forEach(field => {
-        task[field.dataset.taskField] = field.value;
+        task[field.dataset.taskField] = field.type === 'checkbox' ? Boolean(field.checked) : field.value;
       });
       if (task.type === 'choice') {
         const richChoices = Array.isArray(card.__p2RichChoiceEditors) ? card.__p2RichChoiceEditors : [];
@@ -474,6 +492,8 @@
                 initial: prompt,
                 expectedVariable: analysis.variable || 'x',
                 minimumSteps,
+                requireExplicitAnd: Boolean(task.requireExplicitAnd),
+                requireExplicitOr: Boolean(task.requireExplicitOr),
                 autoDerived: true,
                 stepTransitionValidation: 'semantic-v3'
               }
