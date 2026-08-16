@@ -4718,6 +4718,47 @@
     }
   }
 
+
+  // P3.2.7.1 — vienas semantinis analizės branduolys ir P2 pratybų rengyklei.
+  // Eksportuojamas tik saugus, nekintantis analizės fasadas; pats parseris lieka šiame modulyje.
+  window.P327SemanticEquationAnalyzer = Object.freeze({
+    version: 'P3.2.7.1',
+    analyze(source) {
+      const analysis = analyzeMathContent(String(source ?? ''), 'equation');
+      if (!analysis?.ok) {
+        return Object.freeze({
+          ok: false,
+          status: analysis?.status || 'error',
+          title: analysis?.title || 'Automatinė lygties analizė nepavyko',
+          message: analysis?.message || 'Lygties nepavyko išanalizuoti.'
+        });
+      }
+      const variable = analysis.variable || 'x';
+      const rational = equationHasVariableDenominatorV7(analysis.equation, variable);
+      let excludedValues = [];
+      if (rational) {
+        try {
+          excludedValues = analyzeRationalEquationV7(analysis.equation, variable, null).excludedValues.slice();
+        } catch (_) { excludedValues = []; }
+      }
+      return Object.freeze({
+        ok: true,
+        status: analysis.status,
+        title: analysis.title,
+        message: analysis.message,
+        validator: analysis.validator,
+        variable,
+        display: analysis.display,
+        values: Object.freeze(Array.isArray(analysis.values) ? analysis.values.slice() : []),
+        degree: analysis.degree,
+        solutionKind: analysis.solutionKind,
+        rational,
+        excludedValues: Object.freeze(excludedValues.slice()),
+        domainDisplay: rational ? formatDomainRestrictionsV7(variable, excludedValues) : ''
+      });
+    }
+  });
+
   function qualityCheck(id, status, message) {
     return { id, status, message };
   }
@@ -6067,6 +6108,10 @@
 
   function revealPrimaryPracticeWindow() {
     state.window.shelved = false;
+    if (refs.practiceWindow?.dataset?.legacyCompatOnly === 'true') {
+      refs.practiceWindow.hidden = true;
+      return;
+    }
     refs.practiceWindow.hidden = false;
   }
 

@@ -8297,3 +8297,22 @@ body.p2-shell .p2-preview-hint > p {
   font-size:10px;
   line-height:1.35;
 }
+
+
+/* P3.2.7.1 — legacy į lentą įterptas practiceWindow yra tik suderinamumo DOM, nebe UI. */
+#practiceWindow[data-legacy-compat-only="true"] { display:none !important; }
+
+/* P3.2.7.1 — vieningo semantinio analizatoriaus būsena P2 pratybų rengyklėje. */
+.p327-semantic-analysis {
+  margin-top:8px;
+  padding:9px 11px;
+  border:1px solid #b7e1c2;
+  border-radius:10px;
+  background:#f2fbf5;
+  color:#27623a;
+  font-size:12px;
+  line-height:1.4;
+  font-weight:700;
+}
+.p327-semantic-analysis strong { font-weight:900; }
+[data-p327-superseded-analysis="true"] { display:none !important; }
