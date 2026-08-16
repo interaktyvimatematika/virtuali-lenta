@@ -7685,6 +7685,45 @@ KOKYBĖS REIKALAVIMAI:
     return { ok: false, kind: 'unexplained-rational-transition' };
   }
 
+  // P3.2.7.8.2: ARBA šakos turi naudoti tą patį MathLive -> AST įėjimą kaip
+  // įprastos sprendimo eilutės. Polinominis parseris pats neturi funkcijų mazgo,
+  // todėl skaitines kvadratines šaknis (pvz. sqrt(4), sqrt(9/4)) įvertiname prieš parseEquation.
+  function normalizeBranchEquationSourceV10(source) {
+    let value = normalizePersistedEquationSourceV7(normalizeMathLiveAscii(source));
+    value = String(value || '').replace(/√/g, 'sqrt').trim();
+    let guard = 0;
+    while (/sqrt\s*\(/i.test(value) && guard++ < 24) {
+      const lower = value.toLowerCase();
+      const start = lower.lastIndexOf('sqrt(');
+      const open = start + 4;
+      let depth = 0;
+      let close = -1;
+      for (let index = open; index < value.length; index += 1) {
+        if (value[index] === '(') depth += 1;
+        else if (value[index] === ')') {
+          depth -= 1;
+          if (depth === 0) { close = index; break; }
+        }
+      }
+      if (close < 0) break;
+      const inner = value.slice(open + 1, close);
+      let replacement = null;
+      try {
+        const ast = parseExpression(inner);
+        if (!astVariableNames(ast).size) {
+          const numeric = evaluateAst(ast, {});
+          const tolerance = EPSILON * Math.max(1, Math.abs(numeric));
+          if (Number.isFinite(numeric) && numeric >= -tolerance) {
+            replacement = `(${Math.sqrt(Math.max(0, numeric))})`;
+          }
+        }
+      } catch (_) { /* paliekame bendram parserio diagnostikos keliui */ }
+      if (replacement === null) break;
+      value = `${value.slice(0, start)}${replacement}${value.slice(close + 1)}`;
+    }
+    return value;
+  }
+
   function validateRationalEquationChainV7(task, response) {
     const steps = normalizeStructuredSteps(response?.steps);
     const stepResults = Array(steps.length).fill(null);
@@ -7785,7 +7824,7 @@ KOKYBĖS REIKALAVIMAI:
           try {
             for (const value of step.values) {
               if (!String(value || '').trim()) throw new Error('Užpildyk pirmą kiekvienos ARBA šakos eilutę.');
-              const equation = parseEquation(value);
+              const equation = parseEquation(normalizeBranchEquationSourceV10(value));
               equations.push(equation);
               rawDescriptors.push(analyzeRationalEquationV7(equation, targetVariable, []).descriptor);
             }
@@ -7817,7 +7856,7 @@ KOKYBĖS REIKALAVIMAI:
             const check = classifyDomainCandidateCheckV9(value, initialEquation, targetVariable, pool, excludedValues);
             if (check.recognized) { messages.push(`Šaka ${branchIndex + 1}: ${check.message}`); continue; }
             let equation, rawDescriptor;
-            try { equation = parseEquation(value); rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor; }
+            try { equation = parseEquation(normalizeBranchEquationSourceV10(value)); rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor; }
             catch (error) { stepResults[index] = { status: 'incorrect', message: `Šaka ${branchIndex + 1}: ${friendlyParseError(error)}` }; return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnio ${branchIndex + 1} šaką`, message: stepResults[index].message, stepResults }; }
             if (!samePolynomialSolutionSet(nextDescriptors[branchIndex], rawDescriptor)) {
               stepResults[index] = { status: 'incorrect', message: `Šaka ${branchIndex + 1} nebeišlaiko savo ankstesnės sprendinių aibės.` };
