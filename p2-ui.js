@@ -950,7 +950,13 @@
             <span class="p2-solution-branch-separator" aria-hidden="true">${separatorLabel}</span>
             <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="1"></div>
           </div>`
-        : `<div class="p2-solution-single-field ${step.type === 'solution-set' ? 'is-answer' : ''}">
+        : step.type === 'conjunction'
+          ? `<div class="p2-solution-branches p2-paper-branches p2-paper-conjunction">
+              <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="0"></div>
+              <span class="p2-solution-branch-separator p2-solution-conjunction-separator" aria-hidden="true">IR</span>
+              <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="1"></div>
+            </div>`
+          : `<div class="p2-solution-single-field ${step.type === 'solution-set' ? 'is-answer' : ''}">
             ${step.type === 'solution-set' ? '<span class="p2-solution-answer-prefix">Ats.:</span>' : ''}
             <div class="p2-solution-field-host" data-solution-field="${index}" data-solution-branch="0"></div>
           </div>`;
@@ -972,6 +978,7 @@
         <div class="p2-solution-type-options" role="group" aria-label="Aktyvios sprendimo eilutės tipas">
           <button type="button" class="${activeStep.type === 'equation' ? 'is-active' : ''}" data-solution-toolbar-type="equation" ${locked ? 'disabled' : ''}>Įprasta</button>
           <button type="button" class="${activeStep.type === 'alternatives' ? 'is-active' : ''}" data-solution-toolbar-type="alternatives" ${locked ? 'disabled' : ''}>Šakos</button>
+          <button type="button" class="${activeStep.type === 'conjunction' ? 'is-active' : ''}" data-solution-toolbar-type="conjunction" ${locked ? 'disabled' : ''}>IR</button>
           <button type="button" class="${activeStep.type === 'solution-set' ? 'is-active' : ''}" data-solution-toolbar-type="solution-set" ${locked ? 'disabled' : ''}>Atsakymas</button>
         </div>
       </div>` : '';
@@ -1135,7 +1142,7 @@
     const response = solutionResponseForItem(previous);
     while (response.steps.length <= index) response.steps.push(practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] });
     const current = response.steps[index] || practiceEngine?.createStep?.() || { type: 'equation', values: [''], latexValues: [''] };
-    const type = ['equation', 'alternatives', 'solution-set'].includes(current.type) ? current.type : 'equation';
+    const type = ['equation', 'alternatives', 'conjunction', 'solution-set'].includes(current.type) ? current.type : 'equation';
     const values = Array.isArray(current.values) ? [...current.values] : [''];
     const latexValues = Array.isArray(current.latexValues) ? [...current.latexValues] : [''];
     while (values.length <= branchIndex) values.push('');
@@ -1178,7 +1185,9 @@
       : '';
     response.steps[index] = type === 'alternatives'
       ? (practiceEngine?.createStep?.('alternatives', [firstValue, ''], [firstLatex, ''], { branchGroupId }) || { type: 'alternatives', values: [firstValue, ''], latexValues: [firstLatex, ''], branchGroupId })
-      : (practiceEngine?.createStep?.(type, [firstValue], [firstLatex]) || { type, values: [firstValue], latexValues: [firstLatex] });
+      : type === 'conjunction'
+        ? (practiceEngine?.createStep?.('conjunction', [firstValue, ''], [firstLatex, '']) || { type: 'conjunction', values: [firstValue, ''], latexValues: [firstLatex, ''] })
+        : (practiceEngine?.createStep?.(type, [firstValue], [firstLatex]) || { type, values: [firstValue], latexValues: [firstLatex] });
     const next = normalizedProgress(progress);
     next.status = 'in_progress';
     next.taskStates = {
@@ -1223,11 +1232,15 @@
           ? (response.steps[index - 1]?.type === 'alternatives' && response.steps[index - 1]?.branchGroupId && response.steps[index - 1]?.branchGroupId === step.branchGroupId
               ? '= tęsinys'
               : (branchIndex === 0 ? 'Pirmas atvejis' : 'Antras atvejis'))
+          : step.type === 'conjunction'
+            ? (branchIndex === 0 ? 'Lygtis arba sąlyga' : 'Kartu galiojanti sąlyga')
           : step.type === 'solution-set'
             ? 'Pvz., x = 2; x = 3'
             : (task.response?.placeholder || 'Kita lygtis'),
         contextLabel: step.type === 'alternatives'
           ? `P2 pratybų ${index + 1} eilutės ${branchIndex + 1} sprendimo šaka`
+          : step.type === 'conjunction'
+            ? `P2 pratybų ${index + 1} eilutės ${branchIndex + 1} kartu galiojanti sąlyga`
           : step.type === 'solution-set'
             ? 'P2 pratybų galutinis atsakymas'
             : `P2 pratybų ${index + 1} sprendimo eilutė`,
@@ -1235,6 +1248,10 @@
         onEnter: () => {
           if (step.type === 'alternatives') {
             addBranchSolutionLine(task.id, index, branchIndex);
+            return;
+          }
+          if (step.type === 'conjunction' && branchIndex === 0) {
+            focusStudentSolutionField(index, 1);
             return;
           }
           addSolutionStep(task.id, index + 1);

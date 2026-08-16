@@ -7685,7 +7685,7 @@ KOKYBĖS REIKALAVIMAI:
     return { ok: false, kind: 'unexplained-rational-transition' };
   }
 
-  // P3.2.7.8.2: ARBA šakos turi naudoti tą patį MathLive -> AST įėjimą kaip
+  // P3.2.7.9: ARBA šakos turi naudoti tą patį MathLive -> AST įėjimą kaip
   // įprastos sprendimo eilutės. Polinominis parseris pats neturi funkcijų mazgo,
   // todėl skaitines kvadratines šaknis (pvz. sqrt(4), sqrt(9/4)) įvertiname prieš parseEquation.
   function normalizeBranchEquationSourceV10(source) {
