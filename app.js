@@ -7705,6 +7705,14 @@ KOKYBĖS REIKALAVIMAI:
     let previousDescriptor = targetDescriptor;
     let completed = false;
     let implicitBranchState = null;
+    // P3.2.7.8.1: tęstinio ARBA konteinerio būsena turi priklausyti
+    // trupmeninės lygties validatoriui. P3.2.7.8 blokas ją naudojo, bet
+    // šiame scope kintamieji nebuvo inicializuoti, todėl paspaudus
+    // „Patikrinti sprendimą“ kildavo ReferenceError ir UI tyliai sustodavo.
+    let explicitBranchGroupId = '';
+    let explicitBranchEquations = [];
+    let explicitBranchDescriptors = [];
+    let explicitBranchCandidates = [];
     let pendingExcludedCandidate = null;
     const recentDomainCandidates = [];
 
