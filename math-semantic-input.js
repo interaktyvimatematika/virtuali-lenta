@@ -177,7 +177,13 @@
     if (input.includes('≠')) {
       const restrictionSource = input.replace(/^\s*(?:AD|A\.D\.|apibrėžimo\s+sritis)\s*[:：]?\s*/i, '');
       const restrictionParts = restrictionSource.split(/\s*[;,]\s*/).filter(Boolean);
-      if (restrictionParts.length && restrictionParts.every(part => /^[A-Za-z]\s*≠\s*[^=≠]+$/.test(part))) {
+      // P3.2.7.7: live preflight recognizes both solved restrictions (x≠-2)
+      // and natural denominator conditions (x+2≠0). Mathematical correctness is
+      // still decided by the main rational-equation validator.
+      if (restrictionParts.length && restrictionParts.every(part => {
+        const sides = part.split('≠');
+        return sides.length === 2 && sides.every(side => side.trim().length > 0) && !/[=≠]/.test(sides[0]) && !/[=≠]/.test(sides[1]);
+      })) {
         return { status: 'understood', kind: 'domain-restriction', message: '', declarations: [] };
       }
     }

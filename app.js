@@ -7573,9 +7573,35 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  function classifyExcludedCandidateCheckV8(source, initialEquation, variable, candidate, excludedValues) {
-    if (candidate === null || candidate === undefined) return { recognized: false };
-    if (!excludedValues.some(value => semanticNumberMatches(value, candidate))) return { recognized: false };
+  function denominatorValuesForCandidateV9(equation, variable, candidate) {
+    const values = [];
+    const walk = node => {
+      if (!node) return;
+      if (node.type === 'binary') {
+        if (node.operator === '/' && astVariableNames(node.right).has(variable)) {
+          try { values.push(evaluateAst(node.right, { [variable]: candidate })); } catch (_) {}
+        }
+        if (node.operator === '^') {
+          const exponent = constantInteger(node.right);
+          if (exponent !== null && exponent < 0 && astVariableNames(node.left).has(variable)) {
+            try { values.push(evaluateAst(node.left, { [variable]: candidate })); } catch (_) {}
+          }
+        }
+        walk(node.left); walk(node.right);
+      } else if (node.type === 'unary') walk(node.argument);
+    };
+    walk(equation.left); walk(equation.right);
+    return values.filter(Number.isFinite);
+  }
+
+  // P3.2.7.7: candidate-domain checks work symmetrically. A numeric equality such
+  // as -2+2=0 rejects x=-2, while 2+2=4 confirms x=2. We match the shown numeric
+  // value to the original denominator evaluated at recently obtained candidates.
+  function classifyDomainCandidateCheckV9(source, initialEquation, variable, candidates, excludedValues) {
+    const pool = [...new Set((Array.isArray(candidates) ? candidates : [candidates])
+      .filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)))
+      .map(Number))];
+    if (!pool.length) return { recognized: false };
     let equation;
     try { equation = parseEquation(String(source || '').trim()); }
     catch (_) { return { recognized: false }; }
@@ -7584,13 +7610,21 @@ KOKYBĖS REIKALAVIMAI:
       const left = evaluateAst(equation.left, {});
       const right = evaluateAst(equation.right, {});
       const equal = Math.abs(left - right) <= EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
-      const showsZero = Math.abs(left) <= EPSILON || Math.abs(right) <= EPSILON;
-      if (!equal || !showsZero || !denominatorZeroForCandidateV8(initialEquation, variable, candidate)) return { recognized: false };
-      return {
-        recognized: true,
-        ok: true,
-        message: `Patikrinus kandidatą ${variable} = ${formatSupportedRoot(candidate)}, pradinis vardiklis tampa 0, todėl šis kandidatas netinka pagal AD.`
-      };
+      if (!equal) return { recognized: false };
+      const shown = (left + right) / 2;
+      for (const candidate of pool) {
+        const denominatorValues = denominatorValuesForCandidateV9(initialEquation, variable, candidate);
+        const matchesShown = denominatorValues.some(value => Math.abs(value - shown) <= EPSILON * Math.max(1, Math.abs(value), Math.abs(shown)));
+        if (!matchesShown) continue;
+        const forbidden = excludedValues.some(value => semanticNumberMatches(value, candidate));
+        if (forbidden && Math.abs(shown) <= EPSILON) {
+          return { recognized: true, ok: true, candidate, message: `Patikrinus kandidatą ${variable} = ${formatSupportedRoot(candidate)}, pradinis vardiklis tampa 0, todėl šis kandidatas netinka pagal AD.` };
+        }
+        if (!forbidden && Math.abs(shown) > EPSILON) {
+          return { recognized: true, ok: true, candidate, message: `Patikrinus kandidatą ${variable} = ${formatSupportedRoot(candidate)}, pradinis vardiklis lygus ${formatSupportedRoot(shown)} ≠ 0, todėl kandidatas tenkina AD.` };
+        }
+      }
+      return { recognized: false };
     } catch (_) { return { recognized: false }; }
   }
 
@@ -7635,6 +7669,7 @@ KOKYBĖS REIKALAVIMAI:
     let completed = false;
     let implicitBranchState = null;
     let pendingExcludedCandidate = null;
+    const recentDomainCandidates = [];
 
     const isExcluded = value => excludedValues.some(item => semanticNumberMatches(item, value));
     const branchMessageForRoot = (base, root, isolated) => {
@@ -7718,7 +7753,10 @@ KOKYBĖS REIKALAVIMAI:
           }
           const root = descriptorRoots(rawDescriptor)[0];
           const isolated = isVariableIsolated(equation, targetVariable, root);
-          if (isolated && isExcluded(root)) pendingExcludedCandidate = root;
+          if (isolated) {
+            if (!recentDomainCandidates.some(value => semanticNumberMatches(value, root))) recentDomainCandidates.push(root);
+            if (isExcluded(root)) pendingExcludedCandidate = root;
+          }
           messages.push(branchMessageForRoot(branchResult.message, root, isolated));
         }
         const allIsolated = implicitBranchState.branches.size === implicitBranchState.factors.length
@@ -7773,10 +7811,14 @@ KOKYBĖS REIKALAVIMAI:
       // P3.2.7.6: jei ką tik gautas AD draudžiamas kandidatas, mokinys gali jo
       // atmesti ne tik išspręsdamas nelygybę, bet ir tiesiogiai įstatydamas į pradinį
       // vardiklį, pvz. x=-2, po to -2+2=0.
-      const candidateCheck = classifyExcludedCandidateCheckV8(source, initialEquation, targetVariable, pendingExcludedCandidate, excludedValues);
+      const candidateCheck = classifyDomainCandidateCheckV9(source, initialEquation, targetVariable, recentDomainCandidates.length ? recentDomainCandidates : [pendingExcludedCandidate], excludedValues);
       if (candidateCheck.recognized) {
         stepResults[index] = { status: 'correct', message: structuralPrefix + candidateCheck.message };
-        pendingExcludedCandidate = null;
+        if (candidateCheck.candidate !== undefined) {
+          const pos = recentDomainCandidates.findIndex(value => semanticNumberMatches(value, candidateCheck.candidate));
+          if (pos >= 0) recentDomainCandidates.splice(pos, 1);
+          if (pendingExcludedCandidate !== null && semanticNumberMatches(pendingExcludedCandidate, candidateCheck.candidate)) pendingExcludedCandidate = null;
+        }
         continue;
       }
 
@@ -7804,7 +7846,10 @@ KOKYBĖS REIKALAVIMAI:
         if (branchResult.recognized) {
           const root = descriptorRoots(rawDescriptor)[0];
           const isolated = isVariableIsolated(equation, targetVariable, root);
-          if (isolated && isExcluded(root)) pendingExcludedCandidate = root;
+          if (isolated) {
+            if (!recentDomainCandidates.some(value => semanticNumberMatches(value, root))) recentDomainCandidates.push(root);
+            if (isExcluded(root)) pendingExcludedCandidate = root;
+          }
           const allIsolated = implicitBranchState.branches.size === implicitBranchState.factors.length
             && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
           if (allIsolated) completed = true;
