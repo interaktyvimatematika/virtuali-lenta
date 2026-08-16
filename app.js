@@ -4402,13 +4402,32 @@
   // pradinė lygtis išanalizuojama, o tada automatiškai prijungiamas naujausias
   // semantinis sprendimo modelis. UI, šakos, lygybės tęsiniai ir mokytojo peržiūra
   // išlieka bendri abiem šeimoms.
+  // P3.2.7.5: persisted library equations may be stored as MathLive LaTeX.
+  // Normalize that source before the student runtime sends it to the legacy AST parser.
+  function normalizePersistedEquationSourceV7(source) {
+    let value = String(source || '').trim();
+    if (!value) return '';
+    const fracPattern = /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g;
+    let previous = null;
+    while (value !== previous) {
+      previous = value;
+      value = value.replace(fracPattern, '(($1)/(($2)))');
+    }
+    return value
+      .replace(/\\left|\\right/g, '')
+      .replace(/\\cdot|\\times/g, '*')
+      .replace(/\\,/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function validateSemanticEquationChain(task, response) {
     let descriptor;
     let initialEquation;
     let rationalInitial = false;
     const initial = task?.response?.options?.initial || task?.prompt?.value || task?.prompt;
     try {
-      initialEquation = parseEquation(String(initial || ''));
+      initialEquation = parseEquation(normalizePersistedEquationSourceV7(initial));
       const primary = inferSingleVariableFromEquations(initialEquation, 'x');
       rationalInitial = equationHasVariableDenominatorV7(initialEquation, primary);
       descriptor = rationalInitial
@@ -7502,7 +7521,7 @@ KOKYBĖS REIKALAVIMAI:
     let initialEquation;
     let initialAnalysis;
     try {
-      initialEquation = parseEquation(task.response?.options?.initial || task.prompt?.value);
+      initialEquation = parseEquation(normalizePersistedEquationSourceV7(task.response?.options?.initial || task.prompt?.value));
       const variable = inferSingleVariableFromEquations(initialEquation, 'x');
       initialAnalysis = analyzeRationalEquationV7(initialEquation, variable, null);
     } catch (error) {

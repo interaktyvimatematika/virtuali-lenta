@@ -4,7 +4,7 @@
   const module = window.P772LibraryEditor;
   const analyzer = window.P327SemanticEquationAnalyzer;
   if (!module || typeof module.createLibraryEditor !== 'function') {
-    console.warn('P3.2.7.4: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
+    console.warn('P3.2.7.5: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
     return;
   }
   if (!analyzer || typeof analyzer.analyze !== 'function') {
@@ -60,7 +60,7 @@
     }
   }
 
-  // P3.2.7.4 — one authoritative equation-analysis entry point for the
+  // P3.2.7.5 — one authoritative equation-analysis entry point for the
   // library editor. The editor itself calls window.P772PracticeEngine at
   // input time *and* again while validating before save. Replacing only a
   // visual error message would therefore leave the old parser blocking
@@ -254,6 +254,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.4';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.5';
   window.P772LibraryEditor = bridgedModule;
 })();
