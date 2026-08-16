@@ -190,6 +190,77 @@
       return String(field.dataset.latex || field.value || field.textContent || '');
     }
 
+
+    function mathFieldIsEmpty(field) {
+      const latex = readFieldLatex(field)
+        .replace(/\\placeholder(?:\[[^\]]*\])?\{[^{}]*\}/g, '')
+        .replace(/[{}\s]/g, '');
+      return latex === '';
+    }
+
+    function zeroWidthOnly(node) {
+      return Boolean(node?.nodeType === Node.TEXT_NODE
+        && String(node.nodeValue || '').replace(/\u200B/g, '').length === 0);
+    }
+
+    function adjacentFormulaFromRange(range, direction) {
+      if (!range?.collapsed) return null;
+      const dir = direction < 0 ? -1 : 1;
+      let container = range.startContainer;
+      let offset = range.startOffset;
+
+      if (container?.nodeType === Node.TEXT_NODE) {
+        const text = String(container.nodeValue || '');
+        const side = dir < 0 ? text.slice(0, offset) : text.slice(offset);
+        if (side.replace(/\u200B/g, '').length) return null;
+        const parent = container.parentNode;
+        if (!parent) return null;
+        const index = Array.prototype.indexOf.call(parent.childNodes, container);
+        container = parent;
+        offset = dir < 0 ? index : index + 1;
+      }
+
+      while (container && (container === editor || editor.contains(container))) {
+        if (!(container instanceof Element)) break;
+        const children = container.childNodes;
+        let index = dir < 0 ? offset - 1 : offset;
+        while (index >= 0 && index < children.length) {
+          const candidate = children[index];
+          if (zeroWidthOnly(candidate)) {
+            index += dir;
+            continue;
+          }
+          if (candidate instanceof Element && candidate.matches('.p2-rich-inline-formula')) return candidate;
+          return null;
+        }
+        if (container === editor) break;
+        const parent = container.parentNode;
+        if (!parent) break;
+        const parentIndex = Array.prototype.indexOf.call(parent.childNodes, container);
+        container = parent;
+        offset = dir < 0 ? parentIndex : parentIndex + 1;
+      }
+      return null;
+    }
+
+    function removeFormulaWrapper(wrapper) {
+      if (!wrapper?.isConnected || !editor.contains(wrapper)) return false;
+      const marker = doc.createTextNode('\u200B');
+      wrapper.before(marker);
+      wrapper.remove();
+      const range = doc.createRange();
+      range.setStart(marker, marker.nodeValue?.length || 0);
+      range.collapse(true);
+      const selection = doc.getSelection?.();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      savedTextRange = range.cloneRange();
+      activeField = null;
+      try { editor.focus({ preventScroll: true }); } catch (_) { editor.focus(); }
+      emitChange();
+      return true;
+    }
+
     function serializeNode(node, output) {
       if (node.nodeType === Node.TEXT_NODE) {
         output.push(escapeTextNodeValue(node.nodeValue || ''));
@@ -267,6 +338,13 @@
       });
       field.addEventListener('selection-change', () => captureMathSelection(field));
       field.addEventListener('keydown', event => {
+        if (!event.defaultPrevented && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
+          && (event.key === 'Backspace' || event.key === 'Delete') && mathFieldIsEmpty(field)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          removeFormulaWrapper(wrapper);
+          return;
+        }
         if (event.key === '*' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -448,6 +526,17 @@
       emitChange();
     });
     editor.addEventListener('keydown', event => {
+      if (!event.target?.closest?.('math-field') && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
+        && (event.key === 'Backspace' || event.key === 'Delete')) {
+        const range = captureTextRange();
+        const wrapper = adjacentFormulaFromRange(range, event.key === 'Backspace' ? -1 : 1);
+        if (wrapper) {
+          event.preventDefault();
+          event.stopPropagation();
+          removeFormulaWrapper(wrapper);
+          return;
+        }
+      }
       if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === '=' || event.code === 'Equal')) {
         event.preventDefault();
         event.stopPropagation();
@@ -487,7 +576,7 @@
   }
 
   window.P772RichPromptEditor = Object.freeze({
-    version: 'P3.2.4',
+    version: 'P3.2.4.1',
     createPromptEditor,
     parsePrompt
   });
