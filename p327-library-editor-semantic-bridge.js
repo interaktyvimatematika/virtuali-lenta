@@ -193,8 +193,44 @@
     });
   }
 
+  function findMinimumStepsSelect(scope) {
+    if (!scope?.querySelectorAll) return null;
+    for (const select of scope.querySelectorAll('select')) {
+      const label = select.closest('label');
+      if (/Mažiausiai sprendimo žingsnių/i.test(elementText(label))) return select;
+    }
+    return null;
+  }
+
+  function ensureStructureRequirements(root) {
+    if (!root?.querySelectorAll) return;
+    const equationFields = [...root.querySelectorAll('math-field')].filter(field => {
+      const scope = findTaskScope(field, root);
+      return scope && /Pradinė lygtis/i.test(elementText(scope));
+    });
+    const scopes = [...new Set(equationFields.map(field => findTaskScope(field, root)).filter(Boolean))];
+
+    scopes.forEach(scope => {
+      const minimum = findMinimumStepsSelect(scope);
+      if (!minimum) return;
+      let block = scope.querySelector('.p327-structure-requirements');
+      if (!block) {
+        block = document.createElement('div');
+        block.className = 'p327-structure-requirements is-wide';
+        block.innerHTML = `
+          <div class="p327-structure-title">Sprendimo struktūros reikalavimai</div>
+          <label class="p327-structure-check"><input type="checkbox" data-p327-require="and"> <span>Reikalauti aiškiai naudoti <strong>IR</strong></span></label>
+          <label class="p327-structure-check"><input type="checkbox" data-p327-require="or"> <span>Reikalauti aiškiai naudoti <strong>ARBA</strong> (Šakos)</span></label>
+          <small>Pagal nutylėjimą abu išjungti. Tai pateikimo reikalavimai, o ne matematinės klaidos.</small>`;
+        const anchor = minimum.closest('label') || minimum;
+        anchor.parentElement?.insertBefore(block, anchor.nextSibling);
+      }
+    });
+  }
+
   function scanEditor(root) {
     refreshEditorCopy(root);
+    ensureStructureRequirements(root);
   }
 
   function scheduleScan(root, field = null) {
@@ -232,8 +268,21 @@
       element: root,
       open(...args) {
         const result = originalOpen ? originalOpen(...args) : undefined;
-        queueMicrotask(() => scanEditor(root));
-        requestAnimationFrame(() => scanEditor(root));
+        const lesson = args.find(value => value && typeof value === 'object' && Array.isArray(value.tasks));
+        const hydrate = () => {
+          scanEditor(root);
+          const blocks = root?.querySelectorAll ? [...root.querySelectorAll('.p327-structure-requirements')] : [];
+          const tasks = Array.isArray(lesson?.tasks) ? lesson.tasks : [];
+          blocks.forEach((block, index) => {
+            const options = tasks[index]?.response?.options || {};
+            const andBox = block.querySelector('[data-p327-require="and"]');
+            const orBox = block.querySelector('[data-p327-require="or"]');
+            if (andBox) andBox.checked = Boolean(options.requireExplicitAnd);
+            if (orBox) orBox.checked = Boolean(options.requireExplicitOr);
+          });
+        };
+        queueMicrotask(hydrate);
+        requestAnimationFrame(hydrate);
         return result;
       },
       close(...args) {
@@ -241,7 +290,19 @@
       },
       onSave(handler) {
         if (!originalOnSave) return undefined;
-        return originalOnSave(lesson => handler(patchLessonPayload(lesson)));
+        return originalOnSave(lesson => {
+          const patched = patchLessonPayload(lesson);
+          const blocks = root?.querySelectorAll ? [...root.querySelectorAll('.p327-structure-requirements')] : [];
+          const tasks = Array.isArray(patched?.tasks) ? patched.tasks : [];
+          tasks.forEach((task, index) => {
+            const block = blocks[index];
+            if (!block || !task?.response) return;
+            task.response.options = task.response.options && typeof task.response.options === 'object' ? task.response.options : {};
+            task.response.options.requireExplicitAnd = Boolean(block.querySelector('[data-p327-require="and"]')?.checked);
+            task.response.options.requireExplicitOr = Boolean(block.querySelector('[data-p327-require="or"]')?.checked);
+          });
+          return handler(patched);
+        });
       },
       markSaved(...args) {
         return originalMarkSaved ? originalMarkSaved(...args) : undefined;
@@ -254,6 +315,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.6';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.1';
   window.P772LibraryEditor = bridgedModule;
 })();
