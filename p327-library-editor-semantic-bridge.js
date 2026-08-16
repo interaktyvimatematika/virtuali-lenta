@@ -199,24 +199,18 @@
   }
 
   function patchEditor(editor) {
-    if (!editor || patchedEditors.has(editor)) return editor;
+    if (!editor) return editor;
+    if (patchedEditors.has(editor)) return editor;
     patchedEditors.add(editor);
+
+    // P2LibraryEditor returns a frozen public facade. Do not mutate it in
+    // strict mode (that would throw and make the "Naujos pratybos" button
+    // appear broken). Build a thin wrapper instead.
     const root = editor.element;
-
-    if (typeof editor.onSave === 'function') {
-      const originalOnSave = editor.onSave.bind(editor);
-      editor.onSave = handler => originalOnSave(lesson => handler(patchLessonPayload(lesson)));
-    }
-
-    if (typeof editor.open === 'function') {
-      const originalOpen = editor.open.bind(editor);
-      editor.open = (...args) => {
-        const result = originalOpen(...args);
-        queueMicrotask(() => scanEditor(root));
-        requestAnimationFrame(() => scanEditor(root));
-        return result;
-      };
-    }
+    const originalOpen = typeof editor.open === 'function' ? editor.open.bind(editor) : null;
+    const originalClose = typeof editor.close === 'function' ? editor.close.bind(editor) : null;
+    const originalOnSave = typeof editor.onSave === 'function' ? editor.onSave.bind(editor) : null;
+    const originalMarkSaved = typeof editor.markSaved === 'function' ? editor.markSaved.bind(editor) : null;
 
     if (root?.addEventListener) {
       root.addEventListener('input', event => scheduleScan(root, event.target), true);
@@ -224,12 +218,33 @@
       const observer = new MutationObserver(() => scheduleScan(root));
       observer.observe(root, { childList: true, subtree: true, characterData: true });
     }
+
+    const bridgedEditor = {
+      element: root,
+      open(...args) {
+        const result = originalOpen ? originalOpen(...args) : undefined;
+        queueMicrotask(() => scanEditor(root));
+        requestAnimationFrame(() => scanEditor(root));
+        return result;
+      },
+      close(...args) {
+        return originalClose ? originalClose(...args) : undefined;
+      },
+      onSave(handler) {
+        if (!originalOnSave) return undefined;
+        return originalOnSave(lesson => handler(patchLessonPayload(lesson)));
+      },
+      markSaved(...args) {
+        return originalMarkSaved ? originalMarkSaved(...args) : undefined;
+      }
+    };
+
     queueMicrotask(() => scanEditor(root));
-    return editor;
+    return Object.freeze(bridgedEditor);
   }
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.1';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.2';
   window.P772LibraryEditor = bridgedModule;
 })();
