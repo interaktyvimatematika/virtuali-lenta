@@ -2786,9 +2786,13 @@
   }
 
   function semanticSqrtLocalDiscriminantSymbolsV2(source, context) {
-    // Jei anksčiau apibrėžtas savas simbolis (pvz. K=1), jo vaidmenį galima
-    // patikslinti vėliau panaudojus √K kvadratinės lygties formulėje. Vaidmuo
-    // nustatomas iš konteksto, o ne iš raidės pavadinimo.
+    // P3.2.6.4: grąžiname VISUS anksčiau apibrėžtus vietinius simbolius, kurie
+    // konkrečiame kvadratinės formulės kandidato žingsnyje parašyti po √.
+    // Jų reikšmės čia sąmoningai dar netikriname: pirmiausia struktūriškai
+    // nustatome, ar simbolis tikrai užima diskriminanto vietą. Tik po to jo
+    // faktinę reikšmę lyginame su tikru diskriminantu. Taip D=10 gali ramiai
+    // egzistuoti kaip nenaudojamas dydis, bet √D kvadratinėje formulėje jau
+    // aiškiai suteikia D diskriminanto vaidmenį ir leidžia aptikti klaidą.
     const normalized = normalizeMathLiveAscii(source).replace(/√/g, 'sqrt');
     const result = new Set();
     const re = /sqrt\s*\(\s*([A-Za-z])\s*\)/g;
@@ -2796,10 +2800,23 @@
     while ((match = re.exec(normalized))) {
       const symbol = match[1];
       if (!Object.prototype.hasOwnProperty.call(context.localSymbols, symbol)) continue;
-      if (!semanticNumberMatches(context.localSymbols[symbol], context.discriminant)) continue;
       result.add(symbol);
     }
     return [...result];
+  }
+
+  function semanticDiscriminantRoleConflictV4(symbols, context) {
+    for (const symbol of symbols || []) {
+      if (!Object.prototype.hasOwnProperty.call(context.localSymbols, symbol)) continue;
+      const value = context.localSymbols[symbol];
+      if (semanticNumberMatches(value, context.discriminant)) continue;
+      return {
+        symbol,
+        value,
+        message: `Simbolis ${symbol} šiame žingsnyje panaudotas diskriminanto vietoje, tačiau anksčiau apibrėžta ${symbol} = ${formatSemanticNumber(value)}. Šiai lygčiai diskriminantas yra ${formatSemanticNumber(context.discriminant)}.`
+      };
+    }
+    return null;
   }
 
   function classifyQuadraticDiscriminantV2(source, context) {
@@ -2820,22 +2837,24 @@
       ? rhs.find(part => semanticNumericDiscriminantStructureMatchesV2(part, context)) || null
       : null;
 
-    // Vien tik D=1 tebėra patogus standartinis trumpinys. Mažoji d nėra
-    // automatiškai diskriminantas: d=7 yra paprastas mokinio simbolio apibrėžimas.
+    // P3.2.6.4: vien simbolio vardas jo matematiniu vaidmeniu nepadaro.
+    // D=1, D=10, K=1 ar R=7 šiame taške yra tik vietinio simbolio apibrėžimai,
+    // kol diskriminanto vaidmuo nepaaiškėja iš formulės struktūros arba vėlesnio
+    // prasmingo naudojimo. Jei simbolis jau ANKSČIAU buvo semantiškai susietas su
+    // diskriminantu, pakartotinį jo priskyrimą tikriname pagal tą jau nustatytą vaidmenį.
     if (!formulaPart && !numericFormulaPart) {
-      if (left !== 'D' && !context.discriminantSymbols.has(left)) return { recognized: false };
+      if (!context.discriminantSymbols.has(left)) return { recognized: false };
       try {
         for (const part of rhs) {
           const value = evaluateQuadraticSemanticNumericV2(part, context.localSymbols);
           if (!semanticNumberMatches(value, context.discriminant)) {
-            return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai jo reikšmė yra ${formatSemanticNumber(context.discriminant)}.` };
+            return { recognized: true, ok: false, message: `Simbolis ${left} šiame sprendime jau naudojamas kaip diskriminantas, todėl jo reikšmė turi būti ${formatSemanticNumber(context.discriminant)}.` };
           }
         }
       } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
-      context.discriminantSymbols.add(left);
       context.localSymbols[left] = context.discriminant;
       context.seenDiscriminant = true;
-      return { recognized: true, ok: true, status: 'correct', semanticType: 'derived-value', kind: 'discriminant', message: `Teisingai apskaičiuotas diskriminantas: ${left} = ${formatSemanticNumber(context.discriminant)}.` };
+      return { recognized: true, ok: true, status: 'correct', semanticType: 'derived-value', kind: 'discriminant', message: `Patvirtinta diskriminanto reikšmė: ${left} = ${formatSemanticNumber(context.discriminant)}.` };
     }
 
     // Skaitinis B²−4AC įstatymas pats apibrėžia pasirinkto simbolio vaidmenį.
@@ -2865,12 +2884,13 @@
     const formulaSymbols = semanticIdentifiersV2(formulaPart)
       .filter(symbol => symbol !== left && symbol !== context.variable && !context.discriminantSymbols.has(symbol));
     let candidates = semanticCandidateMappingsV2(context, formulaSymbols);
-    const beforeStructure = candidates.length;
     candidates = candidates.filter(candidate => semanticDiscriminantFormulaMatchesV2(formulaPart, context, candidate));
     if (!candidates.length) {
-      if (left === 'D' || beforeStructure) {
-        return { recognized: true, ok: false, message: 'Užrašyta formulė pagal pasirinktus simbolius neatitinka diskriminanto formulės B² − 4AC.' };
-      }
+      // P3.2.6.4: net ir formulė su jau žinomais koeficientų simboliais nėra
+      // automatiškai „blogas diskriminantas“. Ji gali apibrėžti visiškai kitą
+      // pagalbinį dydį. Diskriminanto klaida tampa vertinama tik tada, kai pats
+      // žingsnis tiksliai atitinka diskriminanto struktūrą arba vėliau šis dydis
+      // panaudojamas diskriminanto vietoje.
       return { recognized: false };
     }
 
@@ -2905,7 +2925,8 @@
     // vietinių simbolių apibrėžimai. Ankstesnėje 7.16 versijoje visa eilutė
     // galėjo būti klaidingai palaikyta diskriminanto formule vien todėl, kad
     // po pirmos lygybės dar buvo raidžių. Vieno priskyrimo atveju diskriminantą
-    // vis dar tikriname pirmą, kad trumpinys D=1 išliktų semantinis D žingsnis.
+    // diskriminanto struktūrą vis dar tikriname pirmą, tačiau P3.2.6.4 vien
+    // raidė D vaidmens nebesuteikia: D=1 be konteksto lieka paprastas apibrėžimas.
     const assignments = splitSemanticAssignmentsV2(source);
     if (assignments.length > 1) {
       const definitions = classifyQuadraticDefinitionsV2(source, context);
@@ -2982,6 +3003,18 @@
     }
 
     if (matched.length) {
+      // P3.2.6.4: simbolio vaidmuo jau paaiškėjo iš FORMULĖS STRUKTŪROS.
+      // Dabar tikriname jo anksčiau suteiktą skaitinę reikšmę. Tai atskiria
+      // nenaudojamą D=10 (neutralu) nuo vėlesnio √D kvadratinėje formulėje
+      // (tikra matematinė klaida, nes D tuo momentu tampa diskriminantu).
+      const discriminantConflict = semanticDiscriminantRoleConflictV4(
+        matched.flatMap(item => item.inferredDiscriminants || []),
+        context
+      );
+      if (discriminantConflict) {
+        return { recognized: true, ok: false, message: discriminantConflict.message };
+      }
+
       if (semanticIdentifiersV2(matchedFormulaPart).some(symbol => context.discriminantSymbols.has(symbol)) && !context.seenDiscriminant) {
         return { recognized: true, ok: false, message: 'Prieš naudodamas diskriminantą kvadratinės lygties formulėje pirmiausia parodyk jo skaičiavimą.' };
       }
