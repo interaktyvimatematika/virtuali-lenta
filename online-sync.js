@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.6-FIREBASE-STRUCTURE-SETTINGS-PERSISTENCE';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2586,6 +2586,8 @@ function sanitizeCustomLesson(raw) {
       const response = task.response && typeof task.response === 'object' && !Array.isArray(task.response) ? task.response : {};
       const options = response.options && typeof response.options === 'object' && !Array.isArray(response.options) ? response.options : {};
       const minimumSteps = Math.max(1, Math.min(6, Math.round(Number(options.minimumSteps) || 2)));
+      const requireExplicitAnd = Boolean(options.requireExplicitAnd);
+      const requireExplicitOr = Boolean(options.requireExplicitOr);
       const answer = String(task.answer || '').trim().slice(0, 1000);
       if (!answer) throw new Error(`${index + 1} lygties sprendimo užduočiai trūksta automatiškai apskaičiuoto atsakymo.`);
       return {
@@ -2600,10 +2602,12 @@ function sanitizeCustomLesson(raw) {
           validator: 'semantic-equation-chain',
           options: {
             initial: prompt,
-            expectedVariable: 'x',
+            expectedVariable: String(options.expectedVariable || 'x').trim().slice(0, 20) || 'x',
             minimumSteps,
+            requireExplicitAnd,
+            requireExplicitOr,
             autoDerived: true,
-            stepTransitionValidation: 'semantic-v3'
+            stepTransitionValidation: String(options.stepTransitionValidation || 'semantic-v3').trim().slice(0, 80) || 'semantic-v3'
           }
         }
       };

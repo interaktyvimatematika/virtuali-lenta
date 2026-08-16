@@ -15,7 +15,7 @@
   const originalCreate = module.createLibraryEditor.bind(module);
   const patchedEditors = new WeakSet();
   const inputTimers = new WeakMap();
-  // P3.2.7.10.5: saugome paskutinį į rengyklę atidarytą užduočių modelį.
+  // P3.2.7.10.6: saugome paskutinį į rengyklę atidarytą užduočių modelį.
   // Nustatymų blokai kuriami asinchroniškai, todėl jų negalima patikimai
   // hidratuoti vien tik open() momentu.
   const openedTasksByRoot = new WeakMap();
@@ -111,7 +111,7 @@
   }
 
 
-  // P3.2.7.10.5 — the public library editor does not guarantee a flat
+  // P3.2.7.10.6 — the public library editor does not guarantee a flat
   // lesson.tasks array. Locate task objects recursively and bind injected
   // structure switches to the actual equation shown in each task card.
   function collectTaskObjects(value, out = [], seen = new WeakSet()) {
@@ -330,7 +330,7 @@
 
   function ensureStructureRequirements(root) {
     if (!root?.querySelectorAll) return;
-    // P3.2.7.10.5: tikrasis p2-library-editor.js dabar turi šiuos laukus savo
+    // P3.2.7.10.6: tikrasis p2-library-editor.js dabar turi šiuos laukus savo
     // užduoties modelyje, todėl bridge nebekuria dubliuojančių DOM valdiklių.
     if (root.querySelector('[data-task-field="requireExplicitAnd"], [data-task-field="requireExplicitOr"]')) return;
     const equationFields = [...root.querySelectorAll('math-field')].filter(field => {
@@ -470,6 +470,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.5';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.6';
   window.P772LibraryEditor = bridgedModule;
 })();
