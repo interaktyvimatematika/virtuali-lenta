@@ -3574,10 +3574,78 @@
   function variableContextMismatchResultV3(source, targetVariable, semanticContext) {
     const symbol = quadraticStepPrimarySymbolV3(source);
     if (!symbol || symbol === targetVariable) return null;
-    if (semanticContext?.localSymbols && Object.prototype.hasOwnProperty.call(semanticContext.localSymbols, symbol)) return null;
+
+    // P3.2.6.3: indeksuotas y₁ / y₂ (ar kitas simbolis) yra sprendinio žymėjimas,
+    // todėl vien ankstesnis pagalbinio y apibrėžimas neturi leisti apeiti pradinio
+    // nežinomojo x kontrolės. Pakaitos kintamųjų sprendinių semantika bus atskira.
+    let left = '';
+    try {
+      const parts = splitTopLevelEqualities(source);
+      left = normalizedSemanticVariableLhs(parts?.[0] || '');
+    } catch (_) { left = ''; }
+    const indexedMatch = left.match(/^([A-Za-z])([12])$/);
+    if (!indexedMatch && semanticContext?.localSymbols && Object.prototype.hasOwnProperty.call(semanticContext.localSymbols, symbol)) return null;
+
     return {
       status: 'incorrect',
-      message: `Pradinės lygties nežinomasis yra ${targetVariable}, todėl sprendinį rašyk su ${targetVariable} (pvz. ${targetVariable}₁, ${targetVariable}₂). Simbolis ${symbol} šiame sprendime nebuvo apibrėžtas.`
+      message: `Pradinės lygties nežinomasis yra ${targetVariable}, todėl sprendinį rašyk su ${targetVariable} (pvz. ${targetVariable}₁, ${targetVariable}₂). Simbolis ${symbol} šiame sprendime nėra susietas su pradiniu nežinomuoju.`
+    };
+  }
+
+  function semanticRootSlotFromLhsV3(lhs, variable = 'x') {
+    const left = normalizedSemanticVariableLhs(lhs);
+    const escaped = String(variable || 'x').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = left.match(new RegExp(`^${escaped}([12])$`));
+    return match ? Number(match[1]) : null;
+  }
+
+  // P3.2.6.3: galutinė šaknies deklaracija x₁ = 2 / x₂ = 3 yra
+  // semantinis pradinės lygties sprendinio žingsnis, o ne naujas bendrojo parserio
+  // kintamasis „x_1“. Taip išvengiame klaidingo „neatpažintas simbolis x1“.
+  function parseQuadraticDirectRootDeclarationV3(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+    if (!Array.isArray(parts) || parts.length < 2) return { recognized: false };
+
+    const slot = semanticRootSlotFromLhsV3(parts[0], context.variable);
+    if (!slot) return { recognized: false };
+
+    const rhs = parts.slice(1);
+    if (rhs.some(part => !String(part || '').trim())) {
+      return { recognized: true, ok: false, message: 'Lygybės grandinėje po kiekvieno = turi būti reiškinys.' };
+    }
+
+    const scope = semanticScopeForCandidateV2(context, context.roleCandidates?.[0] || {});
+    let value = null;
+    try {
+      for (const part of rhs) {
+        const current = evaluateQuadraticSemanticNumericV2(part, scope);
+        if (value !== null && !semanticNumberMatches(current, value)) {
+          return { recognized: true, ok: false, message: 'Toje pačioje šaknies lygybės grandinėje užrašytos reikšmės nėra lygios.' };
+        }
+        value = current;
+      }
+    } catch (error) {
+      return { recognized: true, ok: false, message: friendlyParseError(error) };
+    }
+
+    const expectedRoots = descriptorRoots(context.targetDescriptor);
+    if (!expectedRoots.some(root => semanticNumberMatches(root, value))) {
+      return {
+        recognized: true,
+        ok: false,
+        message: `${context.variable}_${slot} = ${formatSemanticNumber(value)} nėra pradinės lygties sprendinys.`
+      };
+    }
+
+    return {
+      recognized: true,
+      ok: true,
+      value,
+      slot,
+      lhs: normalizedSemanticVariableLhs(parts[0]),
+      message: `${context.variable}_${slot} = ${formatSemanticNumber(value)} yra teisinga pradinės lygties šaknis.`
     };
   }
 
@@ -3625,6 +3693,7 @@
     // x_2 = (...) = -4/2 = -2
     // Tai matematiškai tas pats, kas dvi greta esančios „Šakos“ eilutės.
     const sequentialFormulaRoots = [];
+    const sequentialRootSlots = new Map();
     for (let index = 0; index < steps.length; index += 1) {
       const step = normalizeStructuredStep(steps[index]);
       if (!stepHasContent(step)) {
@@ -3758,7 +3827,29 @@
                 semanticType: 'formula-application',
                 kind: 'quadratic-formula-sequential-root',
                 value: sequentialFormula.value,
+                slot: semanticRootSlotFromLhsV3(sequentialFormula.lhs, targetVariable),
                 message: 'Kvadratinės formulės šaknis apskaičiuota teisingai; lygybių grandinė išlieka teisinga.'
+              };
+              usedSemanticStep = true;
+            }
+          }
+
+          // P3.2.6.3: jei formulės šablono nėra ir mokinys tiesiog užrašo
+          // galutinę šaknį x_1=2 arba x_2=3, tai vis tiek yra pilnavertis
+          // semantinis sprendinio žingsnis. Bendrojo parserio x_1 perduoti nereikia.
+          if (!descriptor && semanticModeV2) {
+            const directRoot = parseQuadraticDirectRootDeclarationV3(source, semanticContext);
+            if (directRoot.recognized) {
+              if (!directRoot.ok) throw new Error(directRoot.message);
+              equation = syntheticRootEquation(directRoot.value, targetVariable);
+              descriptor = descriptorFromRootValues([directRoot.value], targetVariable);
+              semanticTransition = {
+                ok: true,
+                semanticType: 'root-declaration',
+                kind: 'quadratic-root-declaration',
+                value: directRoot.value,
+                slot: directRoot.slot,
+                message: directRoot.message
               };
               usedSemanticStep = true;
             }
@@ -3800,14 +3891,39 @@
       // Atskira x₁ / x₂ formulės eilutė sąmoningai aprašo tik vieną pradinės
       // lygties šaknį, todėl jos negalima lyginti kaip naujos lygiavertės lygties su
       // visa dviejų šaknų sprendinių aibe. Tai semantinis šaknies apskaičiavimo žingsnis.
-      if (semanticTransition?.kind === 'quadratic-formula-sequential-root') {
+      if (semanticTransition?.kind === 'quadratic-formula-sequential-root'
+          || semanticTransition?.kind === 'quadratic-root-declaration') {
         const value = semanticTransition.value;
+        const slot = semanticTransition.slot;
+        const expectedRoots = descriptorRoots(targetDescriptor);
+
+        if (slot) {
+          const previousSlotValue = sequentialRootSlots.get(slot);
+          if (previousSlotValue !== undefined && !semanticNumberMatches(previousSlotValue, value)) {
+            const message = `${targetVariable}_${slot} jau buvo nurodytas kaip ${formatSemanticNumber(previousSlotValue)}; to paties žymens negalima pakeisti į ${formatSemanticNumber(value)}.`;
+            stepResults[index] = { status: 'incorrect', message };
+            return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message, stepResults };
+          }
+          sequentialRootSlots.set(slot, value);
+        }
+
         if (!sequentialFormulaRoots.some(root => semanticNumberMatches(root, value))) {
           sequentialFormulaRoots.push(value);
         }
+
+        // Kai dviejų skirtingų šaknų užduotyje jau užpildyti x₁ ir x₂, jų pora
+        // turi sutapti su visa pradine sprendinių aibe (tvarka nesvarbi).
+        if (expectedRoots.length > 1 && sequentialRootSlots.size >= expectedRoots.length) {
+          const assigned = [...sequentialRootSlots.values()];
+          if (!sameRootValues(assigned, expectedRoots)) {
+            const message = `Užrašytos ${targetVariable}₁ ir ${targetVariable}₂ reikšmės nesudaro teisingos sprendinių aibės ${formatSolutionDescriptor(targetDescriptor, targetVariable)}.`;
+            stepResults[index] = { status: 'incorrect', message };
+            return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message, stepResults };
+          }
+        }
+
         stepResults[index] = { status: 'correct', message: semanticTransition.message };
         previousSemanticKind = semanticTransition.kind;
-        const expectedRoots = descriptorRoots(targetDescriptor);
         if (sameRootValues(sequentialFormulaRoots, expectedRoots)) completed = true;
         continue;
       }

@@ -882,6 +882,13 @@
       const detail = neutralValidation.message ? `<span>${escapeHtml(neutralValidation.message)}</span>` : '';
       return `<div class="p2-practice-feedback is-info${extraClass}"><strong>${title}</strong>${detail}<small>Bandymas nesunaudotas. Pataisyk užrašą ir tikrink dar kartą.</small></div>`;
     }
+    // P3.2.6.3: matematiškai teisingas, bet dar neužbaigtas sprendimas nėra
+    // nesėkmingas bandymas. Išsaugome diagnostiką, bet nemažiname bandymų limito.
+    if (neutralValidation?.status === 'warning' && isSolutionTask(task)) {
+      const title = escapeHtml(neutralValidation.title || 'Sprendimas dar neužbaigtas');
+      const detail = neutralValidation.message ? `<span>${escapeHtml(neutralValidation.message)}</span>` : '';
+      return `<div class="p2-practice-feedback is-warning${extraClass}"><strong>${title}</strong>${detail}<small>Bandymas nesunaudotas. Tęsk sprendimą ir tikrink dar kartą.</small></div>`;
+    }
 
     if (exhausted) {
       return `<div class="p2-practice-feedback is-repeat${extraClass}">Išnaudoti visi ${maxAttempts} ${maxAttempts === 1 ? 'bandymas' : 'bandymai'}. Užduotis pažymėta „Kartoti“.</div>`;
@@ -1562,7 +1569,9 @@
 
       const next = normalizedProgress(progress);
       const nonAttemptValidation = isValidatedMathTask(task)
-        && (validationResult?.status === 'unrecognized' || validationResult?.status === 'incomplete');
+        && (validationResult?.status === 'unrecognized'
+          || validationResult?.status === 'incomplete'
+          || (isSolutionTask(task) && validationResult?.status === 'warning'));
       if (nonAttemptValidation) {
         const state = {
           ...previous,
