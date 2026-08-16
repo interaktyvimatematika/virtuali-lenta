@@ -876,6 +876,13 @@
       return `<div class="p2-practice-feedback is-success${extraClass}">✓ Teisingai. Gali tęsti.</div>`;
     }
 
+    const neutralValidation = isValidatedMathTask(task) ? item.validationResult : null;
+    if (neutralValidation?.status === 'unrecognized' || neutralValidation?.status === 'incomplete') {
+      const title = escapeHtml(neutralValidation.title || (neutralValidation.status === 'incomplete' ? 'Eilutė dar nebaigta' : 'Tikrinimo formatas neaiškus'));
+      const detail = neutralValidation.message ? `<span>${escapeHtml(neutralValidation.message)}</span>` : '';
+      return `<div class="p2-practice-feedback is-info${extraClass}"><strong>${title}</strong>${detail}<small>Bandymas nesunaudotas. Pataisyk užrašą ir tikrink dar kartą.</small></div>`;
+    }
+
     if (exhausted) {
       return `<div class="p2-practice-feedback is-repeat${extraClass}">Išnaudoti visi ${maxAttempts} ${maxAttempts === 1 ? 'bandymas' : 'bandymai'}. Užduotis pažymėta „Kartoti“.</div>`;
     }
@@ -910,8 +917,16 @@
         { branchGroupId: rawStep?.branchGroupId }
       ) || rawStep;
       const result = stepResults[index] || null;
-      const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
-      const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const resultClass = result?.status === 'correct' ? ' is-correct'
+        : result?.status === 'incorrect' ? ' is-error'
+          : result?.status === 'warning' ? ' is-warning'
+            : result?.status === 'unrecognized' ? ' is-input-unrecognized'
+              : result?.status === 'incomplete' ? ' is-input-incomplete' : '';
+      const stateMark = result?.status === 'correct' ? '✓'
+        : result?.status === 'incorrect' ? '×'
+          : result?.status === 'warning' ? '!'
+            : result?.status === 'unrecognized' ? '?'
+              : result?.status === 'incomplete' ? '…' : '';
       const groupId = step.type === 'alternatives' ? String(step.branchGroupId || '') : '';
       const previous = response.steps[index - 1];
       const next = response.steps[index + 1];
@@ -1546,6 +1561,25 @@
       }
 
       const next = normalizedProgress(progress);
+      const nonAttemptValidation = isValidatedMathTask(task)
+        && (validationResult?.status === 'unrecognized' || validationResult?.status === 'incomplete');
+      if (nonAttemptValidation) {
+        const state = {
+          ...previous,
+          lastAnswer: submittedAnswer,
+          lastResult: validationResult.status,
+          solved: false,
+          status: previous.status === 'repeat' ? 'pending' : (previous.status || 'pending'),
+          ...(isSolutionTask(task)
+            ? { liveSolution: submittedSolution, lastSolution: submittedSolution, validationResult }
+            : { liveExpression: expressionResponseForItem(previous), lastExpression: expressionResponseForItem(previous), validationResult })
+        };
+        next.status = 'in_progress';
+        next.taskStates = { ...next.taskStates, [task.id]: state };
+        publishProgress(next);
+        return;
+      }
+
       const attempts = Number(previous.attempts || 0) + 1;
       const wrongAttempts = Number(previous.wrongAttempts || 0) + (correct ? 0 : 1);
       const maxAttempts = attemptLimitForTask(task.id);
@@ -4084,8 +4118,16 @@
     const stepResults = Array.isArray(item.validationResult?.stepResults) ? item.validationResult.stepResults : [];
     const rows = response.steps.map((step, index) => {
       const result = stepResults[index] || null;
-      const resultClass = result?.status === 'correct' ? ' is-correct' : result?.status === 'incorrect' ? ' is-error' : result?.status === 'warning' ? ' is-warning' : '';
-      const stateMark = result?.status === 'correct' ? '✓' : result?.status === 'incorrect' ? '×' : result?.status === 'warning' ? '!' : '';
+      const resultClass = result?.status === 'correct' ? ' is-correct'
+        : result?.status === 'incorrect' ? ' is-error'
+          : result?.status === 'warning' ? ' is-warning'
+            : result?.status === 'unrecognized' ? ' is-input-unrecognized'
+              : result?.status === 'incomplete' ? ' is-input-incomplete' : '';
+      const stateMark = result?.status === 'correct' ? '✓'
+        : result?.status === 'incorrect' ? '×'
+          : result?.status === 'warning' ? '!'
+            : result?.status === 'unrecognized' ? '?'
+              : result?.status === 'incomplete' ? '…' : '';
       const groupId = step?.type === 'alternatives' ? String(step?.branchGroupId || '') : '';
       const previous = response.steps[index - 1];
       const next = response.steps[index + 1];

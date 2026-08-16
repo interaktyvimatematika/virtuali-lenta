@@ -2718,11 +2718,11 @@
     return {
       recognized: true,
       ok: true,
-      status: 'warning',
+      status: 'neutral',
       semanticType: 'symbol-definition',
-      kind: 'local-symbols-pending',
+      kind: 'local-symbols',
       symbols: parsed.map(item => item.symbol),
-      message: 'Žymėjimai užfiksuoti. Jų matematinis vaidmuo bus patikslintas iš tolesnio sprendimo.'
+      message: `Pagalbiniai žymėjimai užfiksuoti: ${parsed.map(item => `${item.symbol} = ${formatSemanticNumber(item.value)}`).join(', ')}.`
     };
   }
 
@@ -3450,6 +3450,26 @@
   }
 
 
+  function quadraticStepPrimarySymbolV3(source) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (_) { return ''; }
+    if (!parts.length) return '';
+    const left = normalizedSemanticVariableLhs(parts[0]);
+    const match = left.match(/^([a-z])(?:[12])?$/);
+    return match ? match[1] : '';
+  }
+
+  function variableContextMismatchResultV3(source, targetVariable, semanticContext) {
+    const symbol = quadraticStepPrimarySymbolV3(source);
+    if (!symbol || symbol === targetVariable) return null;
+    if (semanticContext?.localSymbols && Object.prototype.hasOwnProperty.call(semanticContext.localSymbols, symbol)) return null;
+    return {
+      status: 'incorrect',
+      message: `Pradinės lygties nežinomasis yra ${targetVariable}, todėl sprendinį rašyk su ${targetVariable} (pvz. ${targetVariable}₁, ${targetVariable}₂). Simbolis ${symbol} šiame sprendime nebuvo apibrėžtas.`
+    };
+  }
+
   function validateQuadraticEquationChain(task, response) {
     const steps = resolveStructuredStepContinuations(trimStructuredSteps(response.steps));
     if (!steps.length) {
@@ -3463,7 +3483,9 @@
     // lygtis x atžvilgiu, todėl jis tikrinamas pagal sprendimo kontekstą, o ne pagal sprendinių aibę.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     const semanticModeV1 = transitionValidationSetting === 'semantic-v1';
-    const semanticModeV2 = transitionValidationSetting === 'semantic-v2';
+    // P3.2.6.1: semantic-v3 naudoja tą patį patikrintą kvadratinės semantikos
+    // branduolį kaip v2, bet su nauju simbolių konteksto / įvesties preflight sluoksniu.
+    const semanticModeV2 = transitionValidationSetting === 'semantic-v2' || transitionValidationSetting === 'semantic-v3';
     const semanticMode = semanticModeV1 || semanticModeV2;
     let targetDescriptor;
     let previousDescriptor;
@@ -3548,6 +3570,19 @@
           }
           previousSemanticKind = semanticAuxiliary.kind;
           continue;
+        }
+      }
+
+      if (semanticModeV2 && step.type !== 'alternatives') {
+        const mismatch = variableContextMismatchResultV3(step.values[0], targetVariable, semanticContext);
+        if (mismatch) {
+          stepResults[index] = mismatch;
+          return {
+            status: 'incorrect',
+            title: `Patikrink ${index + 1} žingsnį`,
+            message: mismatch.message,
+            stepResults
+          };
         }
       }
 
@@ -3776,17 +3811,51 @@
   // išlieka bendri abiem šeimoms.
   function validateSemanticEquationChain(task, response) {
     let descriptor;
+    const initial = task?.response?.options?.initial || task?.prompt?.value || task?.prompt;
     try {
-      const initial = task?.response?.options?.initial || task?.prompt?.value || task?.prompt;
       descriptor = describePolynomialEquation(parseEquation(String(initial || '')));
     } catch (error) {
       return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults: [] };
     }
 
+    const primaryVariable = descriptorVariable(descriptor);
+    // Sąlyga yra autoritetinga: pasenęs expectedVariable metaduomuo negali tyliai
+    // pakeisti t į x ar kitą simbolį.
     const options = {
       ...(task?.response?.options || {}),
-      expectedVariable: task?.response?.options?.expectedVariable || descriptorVariable(descriptor)
+      expectedVariable: primaryVariable
     };
+
+    // P3.2.6.1: prieš matematinį vertinimą atskirai tikriname, ar visas įrašas
+    // apskritai perskaitomas. Nebaigta / nepalaikoma eilutė nėra matematinė klaida
+    // ir neturi sunaudoti bandymo. Kito neapibrėžto pagrindinio simbolio atvejį
+    // paliekame pilnam validatoriui – tai jau konteksto klaida, ne parserio ribotumas.
+    try {
+      const inputAnalysis = MathSemanticInput.analyzeSolution(String(initial || ''), normalizeStructuredSteps(response?.steps));
+      const preflightStepResults = (inputAnalysis?.stepResults || []).map(stepResult => {
+        const branches = Array.isArray(stepResult?.branches) ? stepResult.branches : [];
+        const incomplete = branches.find(branch => branch?.status === 'incomplete');
+        const unsupported = branches.find(branch => branch?.status === 'unsupported' && branch?.reason !== 'unexpected-primary-symbol');
+        if (incomplete) return { status: 'incomplete', message: incomplete.message || 'Eilutė dar nebaigta.' };
+        if (unsupported) return { status: 'unrecognized', message: unsupported.message || 'Šios eilutės tikrintuvas kol kas nesupranta.' };
+        return { status: 'neutral', message: '' };
+      });
+      const firstIncomplete = preflightStepResults.findIndex(item => item.status === 'incomplete');
+      const firstUnrecognized = preflightStepResults.findIndex(item => item.status === 'unrecognized');
+      const blockingIndex = firstIncomplete >= 0 ? firstIncomplete : firstUnrecognized;
+      if (blockingIndex >= 0) {
+        const item = preflightStepResults[blockingIndex];
+        return {
+          status: item.status,
+          title: item.status === 'incomplete' ? 'Sprendimo eilutė dar nebaigta' : 'Šios eilutės tikrintuvas dar nesupranta',
+          message: item.message,
+          stepResults: preflightStepResults
+        };
+      }
+    } catch (_) {
+      // Jei neutralus analizatorius pats nepasileido, pilnas validatorius lieka
+      // autoritetingas ir pateiks savo diagnostiką.
+    }
     const nextTask = {
       ...task,
       response: {
@@ -3797,7 +3866,7 @@
 
     if (descriptor.degree === 2) {
       nextTask.response.validator = 'quadratic-equation-chain';
-      nextTask.response.options.stepTransitionValidation = 'semantic-v2';
+      nextTask.response.options.stepTransitionValidation = 'semantic-v3';
       return validateQuadraticEquationChain(nextTask, response);
     }
     if (descriptor.degree <= 1) {

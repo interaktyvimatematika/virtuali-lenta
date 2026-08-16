@@ -3716,6 +3716,7 @@ body.p2-shell .p2-hint-box strong { display:block; margin-bottom:3px; color:#655
 body.p2-shell .p2-practice-feedback { margin-top:13px; padding:10px 12px; border-radius:11px; font-size:11px; font-weight:800; }
 body.p2-shell .p2-practice-feedback.is-success { background:#edf8f1; color:#397451; }
 body.p2-shell .p2-practice-feedback.is-warning { background:#fff7e8; color:#936612; }
+body.p2-shell .p2-practice-feedback.is-info { background:#eef4ff; color:#4f628e; border:1px solid #dbe6fb; }
 body.p2-shell .p2-practice-feedback.is-repeat { background:#fff0f1; color:#9a4b54; }
 body.p2-shell .p2-task-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:16px; }
 body.p2-shell .p2-task-actions-spacer { flex:1 1 auto; }
