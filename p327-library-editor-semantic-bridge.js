@@ -106,6 +106,42 @@
     return '';
   }
 
+
+  // P3.2.7.10.2 — the public library editor does not guarantee a flat
+  // lesson.tasks array. Locate task objects recursively and bind injected
+  // structure switches to the actual equation shown in each task card.
+  function collectTaskObjects(value, out = [], seen = new WeakSet()) {
+    if (!value || typeof value !== 'object') return out;
+    if (seen.has(value)) return out;
+    seen.add(value);
+    const source = promptSourceFromTask(value);
+    if (source && value.response && typeof value.response === 'object') out.push(value);
+    if (Array.isArray(value)) value.forEach(item => collectTaskObjects(item, out, seen));
+    else Object.values(value).forEach(item => collectTaskObjects(item, out, seen));
+    return out;
+  }
+
+  function sourceKey(source) {
+    return normalizeSourceForCore(source)
+      .replace(/\s+/g, '')
+      .replace(/[−–—]/g, '-')
+      .replace(/[×·⋅]/g, '*');
+  }
+
+  function sourceFingerprint(source) {
+    const analysis = analyzeSource(source);
+    if (!analysis?.ok) return '';
+    const excluded = cloneArray(analysis.excludedValues).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+    const values = cloneArray(analysis.values).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+    return JSON.stringify({
+      rational: Boolean(analysis.rational),
+      variable: analysis.variable || 'x',
+      degree: Number(analysis.degree) || 0,
+      excluded,
+      values
+    });
+  }
+
   function applyRationalAnalysisToTask(task, analysis, source) {
     if (!task || typeof task !== 'object' || !analysis?.ok || !analysis.rational) return false;
     if (task.prompt && typeof task.prompt === 'object') task.prompt.kind = 'equation';
@@ -202,6 +238,30 @@
     return null;
   }
 
+
+  function taskSourceFromScope(scope) {
+    if (!scope?.querySelectorAll) return '';
+    const fields = [...scope.querySelectorAll('math-field')];
+    for (const field of fields) {
+      const source = readMathFieldSource(field);
+      if (source && (source.includes('=') || source.includes('\\frac') || source.includes('/'))) return source;
+    }
+    return fields.length ? readMathFieldSource(fields[0]) : '';
+  }
+
+  function taskForBlock(block, tasks, used = new Set()) {
+    if (!block || !Array.isArray(tasks)) return null;
+    const key = String(block.dataset.p327TaskKey || '');
+    const fingerprint = String(block.dataset.p327TaskFingerprint || '');
+    let match = tasks.find(task => !used.has(task) && key && sourceKey(promptSourceFromTask(task)) === key);
+    if (!match && fingerprint) {
+      match = tasks.find(task => !used.has(task) && sourceFingerprint(promptSourceFromTask(task)) === fingerprint);
+    }
+    if (!match) match = tasks.find(task => !used.has(task)) || null;
+    if (match) used.add(match);
+    return match;
+  }
+
   function ensureStructureRequirements(root) {
     if (!root?.querySelectorAll) return;
     const equationFields = [...root.querySelectorAll('math-field')].filter(field => {
@@ -213,6 +273,7 @@
     scopes.forEach(scope => {
       const minimum = findMinimumStepsSelect(scope);
       if (!minimum) return;
+      const taskSource = taskSourceFromScope(scope);
       let block = scope.querySelector('.p327-structure-requirements');
       if (!block) {
         block = document.createElement('div');
@@ -225,6 +286,8 @@
         const anchor = minimum.closest('label') || minimum;
         anchor.parentElement?.insertBefore(block, anchor.nextSibling);
       }
+      block.dataset.p327TaskKey = sourceKey(taskSource);
+      block.dataset.p327TaskFingerprint = sourceFingerprint(taskSource);
     });
   }
 
@@ -268,13 +331,15 @@
       element: root,
       open(...args) {
         const result = originalOpen ? originalOpen(...args) : undefined;
-        const lesson = args.find(value => value && typeof value === 'object' && Array.isArray(value.tasks));
+        const tasks = [];
+        args.forEach(value => collectTaskObjects(value, tasks));
         const hydrate = () => {
           scanEditor(root);
           const blocks = root?.querySelectorAll ? [...root.querySelectorAll('.p327-structure-requirements')] : [];
-          const tasks = Array.isArray(lesson?.tasks) ? lesson.tasks : [];
-          blocks.forEach((block, index) => {
-            const options = tasks[index]?.response?.options || {};
+          const used = new Set();
+          blocks.forEach(block => {
+            const task = taskForBlock(block, tasks, used);
+            const options = task?.response?.options || {};
             const andBox = block.querySelector('[data-p327-require="and"]');
             const orBox = block.querySelector('[data-p327-require="or"]');
             if (andBox) andBox.checked = Boolean(options.requireExplicitAnd);
@@ -283,6 +348,7 @@
         };
         queueMicrotask(hydrate);
         requestAnimationFrame(hydrate);
+        setTimeout(hydrate, 80);
         return result;
       },
       close(...args) {
@@ -293,10 +359,12 @@
         return originalOnSave(lesson => {
           const patched = patchLessonPayload(lesson);
           const blocks = root?.querySelectorAll ? [...root.querySelectorAll('.p327-structure-requirements')] : [];
-          const tasks = Array.isArray(patched?.tasks) ? patched.tasks : [];
-          tasks.forEach((task, index) => {
-            const block = blocks[index];
-            if (!block || !task?.response) return;
+          const tasks = collectTaskObjects(patched);
+          const used = new Set();
+          blocks.forEach(block => {
+            const task = taskForBlock(block, tasks, used);
+            if (!task) return;
+            task.response = task.response && typeof task.response === 'object' ? task.response : {};
             task.response.options = task.response.options && typeof task.response.options === 'object' ? task.response.options : {};
             task.response.options.requireExplicitAnd = Boolean(block.querySelector('[data-p327-require="and"]')?.checked);
             task.response.options.requireExplicitOr = Boolean(block.querySelector('[data-p327-require="or"]')?.checked);
@@ -315,6 +383,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.1';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.2';
   window.P772LibraryEditor = bridgedModule;
 })();

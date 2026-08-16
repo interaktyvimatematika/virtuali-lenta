@@ -8353,7 +8353,7 @@ body.p2-shell .p2-paper-conjunction .p2-solution-conjunction-separator {
 #solutionStructureRequirementsField .authoring-check input { width:auto; margin:0; }
 #solutionStructureRequirementsField small { color:var(--muted, #718096); line-height:1.35; }
 
-/* P3.2.7.10.1 — struktūros reikalavimai tikrojoje bibliotekos pratybų rengyklėje */
+/* P3.2.7.10.2 — struktūros reikalavimai tikrojoje bibliotekos pratybų rengyklėje */
 body.p2-shell .p327-structure-requirements {
   display:grid; gap:8px; padding:11px 12px; border:1px solid #dfe5ee;
   border-radius:11px; background:#fbfcfe;
