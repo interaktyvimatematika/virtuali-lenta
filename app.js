@@ -30,6 +30,10 @@
   const AppBootstrap = window.P772AppBootstrap;
   if (!AppBootstrap) throw new Error('P772AppBootstrap modulis neįkeltas');
   const refs = AppBootstrap.collectRefs(document);
+  // P3.2.7.10: nauji rengyklės laukai nepriklauso nuo senos app-bootstrap refs versijos.
+  refs.solutionStructureRequirementsField = document.getElementById('solutionStructureRequirementsField');
+  refs.editorRequireExplicitAnd = document.getElementById('editorRequireExplicitAnd');
+  refs.editorRequireExplicitOr = document.getElementById('editorRequireExplicitOr');
   const eventComposedPath = AppBootstrap.eventComposedPath;
   const friendlyParseError = AppBootstrap.friendlyParseError;
   const escapeHtml = AppBootstrap.escapeHtml;
@@ -333,11 +337,34 @@
     'math-step-list': renderMathStepList
   };
 
+  function enforceExplicitStructureRequirements(task, response, result) {
+    if (!result || result.status !== 'correct') return result;
+    const options = task?.response?.options || {};
+    const requireAnd = Boolean(options.requireExplicitAnd);
+    const requireOr = Boolean(options.requireExplicitOr);
+    if (!requireAnd && !requireOr) return result;
+    const steps = normalizeStructuredSteps(response?.steps);
+    const hasAnd = steps.some(step => step.type === 'conjunction');
+    const hasOr = steps.some(step => step.type === 'alternatives');
+    const missing = [];
+    if (requireAnd && !hasAnd) missing.push('IR');
+    if (requireOr && !hasOr) missing.push('ARBA');
+    if (!missing.length) return result;
+    const label = missing.join(' ir ');
+    return {
+      ...result,
+      status: 'warning',
+      title: 'Sprendimas matematiškai teisingas, bet trūksta reikalaujamos struktūros',
+      message: `Matematinis sprendimas teisingas. Šioje užduotyje mokytojas reikalauja aiškiai naudoti ${label}. Pataisyk sprendimo struktūrą; tai nėra matematinė klaida.`,
+      presentationRequirement: true
+    };
+  }
+
   const validators = {
     'expression-equivalence': validateExpressionResponse,
-    'linear-equation-chain': validateEquationChain,
-    'quadratic-equation-chain': validateQuadraticEquationChain,
-    'semantic-equation-chain': validateSemanticEquationChain
+    'linear-equation-chain': (task, response) => enforceExplicitStructureRequirements(task, response, validateEquationChain(task, response)),
+    'quadratic-equation-chain': (task, response) => enforceExplicitStructureRequirements(task, response, validateQuadraticEquationChain(task, response)),
+    'semantic-equation-chain': (task, response) => enforceExplicitStructureRequirements(task, response, validateSemanticEquationChain(task, response))
   };
 
   // P2-SPLIT-P2.1: siauras tiltas P2 sluoksniui į tą patį P7.7.2 variklį.
@@ -5049,6 +5076,8 @@
     refs.editorExpectedValue.value = options.expectedValue ?? '';
     refs.editorExpectedValueDisplay.value = options.expectedDisplay ?? '';
     refs.editorMinimumSteps.value = Math.max(1, Number(options.minimumSteps) || 1);
+    refs.editorRequireExplicitAnd.checked = Boolean(options.requireExplicitAnd);
+    refs.editorRequireExplicitOr.checked = Boolean(options.requireExplicitOr);
 
     synchronizeAutomaticAuthoring();
     updateAuthoringPreview();
@@ -5078,6 +5107,7 @@
     refs.expressionValidatorPanel.hidden = equationMode;
     refs.equationValidatorPanel.hidden = !equationMode;
     refs.minimumStepsField.hidden = !equationMode;
+    if (refs.solutionStructureRequirementsField) refs.solutionStructureRequirementsField.hidden = !equationMode;
     refs.equationTechnicalFields.hidden = !equationMode;
   }
 
@@ -5142,6 +5172,8 @@
         expectedDisplay: analysis.display,
         solutionKind: analysis.solutionKind,
         minimumSteps: Math.max(1, Math.min(20, Number(refs.editorMinimumSteps.value) || 1)),
+        requireExplicitAnd: Boolean(refs.editorRequireExplicitAnd?.checked),
+        requireExplicitOr: Boolean(refs.editorRequireExplicitOr?.checked),
         autoDerived: true
       };
       if (analysis.values.length === 1) task.response.options.expectedValue = analysis.values[0];
@@ -5155,6 +5187,8 @@
         expectedVariable: 'x',
         expectedValue: '',
         minimumSteps: Math.max(1, Math.min(20, Number(refs.editorMinimumSteps.value) || 1)),
+        requireExplicitAnd: Boolean(refs.editorRequireExplicitAnd?.checked),
+        requireExplicitOr: Boolean(refs.editorRequireExplicitOr?.checked),
         autoDerived: true
       };
       task.analysis.message = analysis.message;

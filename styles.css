@@ -8346,3 +8346,9 @@ body.p2-shell .p2-paper-conjunction .p2-solution-conjunction-separator {
   font-size: 9px;
   font-weight: 850;
 }
+
+/* P3.2.7.10 — pasirenkami IR / ARBA pateikimo reikalavimai rengyklėje */
+#solutionStructureRequirementsField { gap: 7px; }
+#solutionStructureRequirementsField .authoring-check { display:flex; align-items:center; gap:8px; font-weight:600; }
+#solutionStructureRequirementsField .authoring-check input { width:auto; margin:0; }
+#solutionStructureRequirementsField small { color:var(--muted, #718096); line-height:1.35; }
