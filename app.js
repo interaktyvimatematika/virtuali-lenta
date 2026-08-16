@@ -4404,9 +4404,16 @@
   // išlieka bendri abiem šeimoms.
   function validateSemanticEquationChain(task, response) {
     let descriptor;
+    let initialEquation;
+    let rationalInitial = false;
     const initial = task?.response?.options?.initial || task?.prompt?.value || task?.prompt;
     try {
-      descriptor = describePolynomialEquation(parseEquation(String(initial || '')));
+      initialEquation = parseEquation(String(initial || ''));
+      const primary = inferSingleVariableFromEquations(initialEquation, 'x');
+      rationalInitial = equationHasVariableDenominatorV7(initialEquation, primary);
+      descriptor = rationalInitial
+        ? analyzeRationalEquationV7(initialEquation, primary, null).descriptor
+        : describePolynomialEquation(initialEquation, primary);
     } catch (error) {
       return { status: 'incorrect', title: 'Netinkama pradinė lygtis', message: friendlyParseError(error), stepResults: [] };
     }
@@ -4457,6 +4464,11 @@
       }
     };
 
+    if (rationalInitial) {
+      nextTask.response.validator = 'semantic-equation-chain';
+      nextTask.response.options.stepTransitionValidation = 'domain-v1';
+      return validateRationalEquationChainV7(nextTask, response);
+    }
     if (descriptor.degree === 2) {
       nextTask.response.validator = 'quadratic-equation-chain';
       nextTask.response.options.stepTransitionValidation = 'semantic-v3';
@@ -4662,24 +4674,31 @@
 
     try {
       const equation = parseEquation(value);
-      const descriptor = describePolynomialEquation(equation);
-      if (descriptor.kind === 'all') {
+      const variable = inferSingleVariableFromEquations(equation, 'x');
+      const rationalEquation = equationHasVariableDenominatorV7(equation, variable);
+      const rationalAnalysis = rationalEquation ? analyzeRationalEquationV7(equation, variable, null) : null;
+      const descriptor = rationalAnalysis ? rationalAnalysis.descriptor : describePolynomialEquation(equation, variable);
+      if (descriptor.kind === 'all' || descriptor.kind === 'all-except') {
+        if (descriptor.kind === 'all-except') {
+          return { ok: false, kind, status: 'unsupported', title: 'Trupmeninė tapatybė su AD atpažinta', message: `Atpažinta ${formatSolutionDescriptor(descriptor)}. Šio begalinio sprendinių rinkinio galutinio įvedimo UI prijungsime kitame etape.` };
+        }
         return { ok: false, kind, status: 'unsupported', title: 'Lygtis yra tapatybė', message: 'Šiai lygčiai tinka visi realieji skaičiai. Tapatybių sprendimo baigties modulis dar neprijungtas.' };
       }
       if (descriptor.degree === 2 && !descriptor.rootsSupported) {
         return { ok: false, kind, status: 'unsupported', title: 'Reikalinga tiksli šaknies išraiška', message: 'Lygtis turi iracionaliųjų sprendinių. P7.7.2 dar nepalaiko šaknies ženklo galutiniame atsakyme, todėl ši užduotis saugiai paliekama juodraščiu.' };
       }
-      const validator = descriptor.degree === 2 ? 'quadratic-equation-chain' : 'linear-equation-chain';
-      const variable = descriptorVariable(descriptor);
+      const validator = rationalEquation ? 'semantic-equation-chain' : (descriptor.degree === 2 ? 'quadratic-equation-chain' : 'linear-equation-chain');
       const display = formatSolutionDescriptor(descriptor, variable);
       return {
         ok: true,
         kind,
         status: 'ready',
-        title: descriptor.degree === 2 ? 'Kvadratinė lygtis išanalizuota automatiškai' : 'Tiesinė lygtis išanalizuota automatiškai',
-        message: descriptor.degree === 2
-          ? `Atpažinta kvadratinė lygtis su kintamuoju ${variable}. Sprendinių aibė: ${display}. Mokytojui atsakymo įrašyti nereikia.`
-          : `Atpažinta lygtis su kintamuoju ${variable}. Ji susiveda į tiesinę lygtį, o sprendinys ${display}. Mokytojui atsakymo įrašyti nereikia.`,
+        title: rationalEquation ? 'Trupmeninė lygtis ir AD išanalizuotos automatiškai' : (descriptor.degree === 2 ? 'Kvadratinė lygtis išanalizuota automatiškai' : 'Tiesinė lygtis išanalizuota automatiškai'),
+        message: rationalEquation
+          ? `Atpažinta trupmeninė lygtis su kintamuoju ${variable}. Pradinė AD: ${formatDomainRestrictionsV7(variable, rationalAnalysis.excludedValues)}. Sprendinių aibė: ${display}.`
+          : descriptor.degree === 2
+            ? `Atpažinta kvadratinė lygtis su kintamuoju ${variable}. Sprendinių aibė: ${display}. Mokytojui atsakymo įrašyti nereikia.`
+            : `Atpažinta lygtis su kintamuoju ${variable}. Ji susiveda į tiesinę lygtį, o sprendinys ${display}. Mokytojui atsakymo įrašyti nereikia.`,
         validator,
         variable,
         value: descriptor.kind === 'single' ? descriptor.value : null,
@@ -4769,7 +4788,7 @@
         } else {
           add('validator-match', 'pass', `Automatiškai parinktas tinkamas modulis „${validatorDefinitions[validator].label}“.`);
         }
-        add('solver', 'pass', `${analysis.degree === 2 ? 'Kvadratinė' : 'Tiesinė'} lygtis palaikoma. Sprendinių aibė: ${analysis.display}.`);
+        add('solver', 'pass', `${analysis.validator === 'semantic-equation-chain' ? 'Trupmeninė' : (analysis.degree === 2 ? 'Kvadratinė' : 'Tiesinė')} lygtis palaikoma. Sprendinių aibė: ${analysis.display}.`);
         if (analysis.descriptor.kind === 'none') {
           add('solution-substitution', 'pass', 'Diskriminantas neigiamas, todėl realiųjų sprendinių nėra.');
         } else {
@@ -7217,6 +7236,340 @@ KOKYBĖS REIKALAVIMAI:
     return { kind: 'two', degree: 2, values, discriminant, rootsSupported: values.every(value => Boolean(fractionIfExact(value))), variable: targetVariable };
   }
 
+
+  // P3.2.7.0: bendras apibrėžimo srities (AD) sluoksnis trupmeninėms lygtims.
+  // Pradinio vardiklio nuliai išlieka aktyvūs per visą sprendimą net tada, kai
+  // vardikliai vėlesnėse eilutėse jau panaikinti.
+  function polynomialZeroRootsV7(polynomial) {
+    const poly = cleanPolynomial(polynomial);
+    const degree = poly.length - 1;
+    if (degree <= 0) return [];
+    if (degree === 1) {
+      const b = Number(poly[1] || 0);
+      if (Math.abs(b) <= EPSILON) return [];
+      return [-Number(poly[0] || 0) / b];
+    }
+    if (degree === 2) {
+      const a = Number(poly[2] || 0);
+      const b = Number(poly[1] || 0);
+      const c = Number(poly[0] || 0);
+      if (Math.abs(a) <= EPSILON) return polynomialZeroRootsV7([c, b]);
+      const d = b * b - 4 * a * c;
+      const tolerance = EPSILON * Math.max(1, Math.abs(b * b), Math.abs(4 * a * c));
+      if (d < -tolerance) return [];
+      if (Math.abs(d) <= tolerance) return [-b / (2 * a)];
+      const root = Math.sqrt(d);
+      return [(-b - root) / (2 * a), (-b + root) / (2 * a)].sort((x, y) => x - y);
+    }
+    throw new Error('Apibrėžimo srities tikrintuvas kol kas palaiko ne aukštesnio kaip antrojo laipsnio vardiklius');
+  }
+
+  function uniqueSemanticNumbersV7(values) {
+    const result = [];
+    (values || []).filter(Number.isFinite).sort((a, b) => a - b).forEach(value => {
+      if (!result.some(item => semanticNumberMatches(item, value))) result.push(value);
+    });
+    return result;
+  }
+
+  function collectDomainExcludedValuesFromAstV7(node, variable, out = []) {
+    if (!node) return out;
+    if (node.type === 'unary') {
+      collectDomainExcludedValuesFromAstV7(node.value, variable, out);
+      return out;
+    }
+    if (node.type !== 'binary') return out;
+    collectDomainExcludedValuesFromAstV7(node.left, variable, out);
+    collectDomainExcludedValuesFromAstV7(node.right, variable, out);
+    if (node.operator === '/') {
+      const divisor = astToRationalPolynomialForVariable(node.right, variable);
+      if (isZeroPolynomial(divisor.numerator)) throw new Error('Pradinėje lygtyje yra dalyba iš nulio');
+      polynomialZeroRootsV7(divisor.numerator).forEach(value => out.push(value));
+    }
+    if (node.operator === '^') {
+      const exponent = constantInteger(node.right);
+      if (exponent !== null && exponent < 0) {
+        const base = astToRationalPolynomialForVariable(node.left, variable);
+        if (isZeroPolynomial(base.numerator)) throw new Error('Pradinėje lygtyje yra neigiamas nulio laipsnis');
+        polynomialZeroRootsV7(base.numerator).forEach(value => out.push(value));
+      }
+    }
+    return out;
+  }
+
+  function equationDomainExcludedValuesV7(equation, variable) {
+    const values = [];
+    collectDomainExcludedValuesFromAstV7(equation.left, variable, values);
+    collectDomainExcludedValuesFromAstV7(equation.right, variable, values);
+    return uniqueSemanticNumbersV7(values);
+  }
+
+  function equationClearedPolynomialV7(equation, variable) {
+    const left = astToRationalPolynomialForVariable(equation.left, variable);
+    const right = astToRationalPolynomialForVariable(equation.right, variable);
+    const polynomial = cleanPolynomial(addPolynomials(
+      multiplyPolynomials(left.numerator, right.denominator),
+      multiplyPolynomials(right.numerator, left.denominator),
+      -1
+    ));
+    if (polynomial.length > 3) throw new Error('Dabartinis trupmeninių lygčių tikrintuvas dar nepalaiko lygties, kuri panaikinus vardiklius tampa aukštesnio nei antrojo laipsnio');
+    return polynomial;
+  }
+
+  function descriptorFromPolynomialV7(polynomial, variable = 'x') {
+    const poly = cleanPolynomial(polynomial);
+    const degree = poly.length - 1;
+    const c = Number(poly[0] || 0);
+    const b = Number(poly[1] || 0);
+    const a = Number(poly[2] || 0);
+    if (degree <= 0 || (Math.abs(a) < EPSILON && Math.abs(b) < EPSILON)) {
+      return Math.abs(c) < EPSILON
+        ? { kind: 'all', degree: 0, rootsSupported: true, variable }
+        : { kind: 'none', degree: 0, rootsSupported: true, variable };
+    }
+    if (degree === 1 || Math.abs(a) < EPSILON) {
+      return { kind: 'single', degree: 1, value: -c / b, rootsSupported: true, variable };
+    }
+    const discriminant = b * b - 4 * a * c;
+    const tolerance = EPSILON * Math.max(1, Math.abs(b * b), Math.abs(4 * a * c));
+    if (discriminant < -tolerance) return { kind: 'none', degree: 2, discriminant, rootsSupported: true, variable };
+    if (Math.abs(discriminant) <= tolerance) {
+      const value = -b / (2 * a);
+      return { kind: 'single', degree: 2, value, multiplicity: 2, discriminant: 0, rootsSupported: Boolean(fractionIfExact(value)), variable };
+    }
+    const sqrtDiscriminant = Math.sqrt(discriminant);
+    const values = [(-b - sqrtDiscriminant) / (2 * a), (-b + sqrtDiscriminant) / (2 * a)].sort((x, y) => x - y);
+    return { kind: 'two', degree: 2, values, discriminant, rootsSupported: values.every(value => Boolean(fractionIfExact(value))), variable };
+  }
+
+  function applyDomainExclusionsToDescriptorV7(descriptor, excludedValues = []) {
+    const excluded = uniqueSemanticNumbersV7(excludedValues);
+    if (!excluded.length) return { ...descriptor, domainExcludedValues: [] };
+    if (descriptor.kind === 'all') {
+      return { kind: 'all-except', degree: descriptor.degree || 0, variable: descriptorVariable(descriptor), rootsSupported: true, excludedValues: excluded, domainExcludedValues: excluded };
+    }
+    if (descriptor.kind === 'none') return { ...descriptor, domainExcludedValues: excluded };
+    const roots = descriptorRoots(descriptor).filter(root => !excluded.some(value => semanticNumberMatches(root, value)));
+    if (!roots.length) return { kind: 'none', degree: descriptor.degree, rootsSupported: true, variable: descriptorVariable(descriptor), domainExcludedValues: excluded };
+    if (roots.length === 1) return { kind: 'single', degree: descriptor.degree, value: roots[0], rootsSupported: Boolean(fractionIfExact(roots[0])), variable: descriptorVariable(descriptor), domainExcludedValues: excluded };
+    return { kind: 'two', degree: descriptor.degree, values: roots, rootsSupported: roots.every(value => Boolean(fractionIfExact(value))), variable: descriptorVariable(descriptor), domainExcludedValues: excluded };
+  }
+
+  function analyzeRationalEquationV7(equation, variable = null, inheritedExcludedValues = null) {
+    const targetVariable = variable || inferSingleVariableFromEquations(equation, 'x');
+    const ownExcluded = equationDomainExcludedValuesV7(equation, targetVariable);
+    const excludedValues = uniqueSemanticNumbersV7(inheritedExcludedValues === null ? ownExcluded : inheritedExcludedValues);
+    const clearedPolynomial = equationClearedPolynomialV7(equation, targetVariable);
+    const rawDescriptor = descriptorFromPolynomialV7(clearedPolynomial, targetVariable);
+    const descriptor = applyDomainExclusionsToDescriptorV7(rawDescriptor, excludedValues);
+    return { variable: targetVariable, ownExcludedValues: ownExcluded, excludedValues, clearedPolynomial, rawDescriptor, descriptor };
+  }
+
+  function astHasVariableDenominatorV7(node, variable) {
+    if (!node) return false;
+    if (node.type === 'unary') return astHasVariableDenominatorV7(node.value, variable);
+    if (node.type !== 'binary') return false;
+    if (node.operator === '/' && astVariableNames(node.right).has(variable)) return true;
+    if (node.operator === '^') {
+      const exponent = constantInteger(node.right);
+      if (exponent !== null && exponent < 0 && astVariableNames(node.left).has(variable)) return true;
+    }
+    return astHasVariableDenominatorV7(node.left, variable) || astHasVariableDenominatorV7(node.right, variable);
+  }
+
+  function equationHasVariableDenominatorV7(equation, variable = null) {
+    try {
+      const targetVariable = variable || inferSingleVariableFromEquations(equation, 'x');
+      return astHasVariableDenominatorV7(equation.left, targetVariable) || astHasVariableDenominatorV7(equation.right, targetVariable);
+    } catch (_) { return false; }
+  }
+
+  function formatDomainRestrictionsV7(variable, excludedValues = []) {
+    const values = uniqueSemanticNumbersV7(excludedValues);
+    if (!values.length) return '';
+    return values.map(value => `${variable} ≠ ${formatSupportedRoot(value)}`).join('; ');
+  }
+
+  function classifyDomainRestrictionStepV7(source, variable, requiredExcludedValues = []) {
+    let input = String(source || '').trim()
+      .replace(/\\(?:ne|neq)\b/gi, '≠')
+      .replace(/!=/g, '≠')
+      .replace(/^\s*(?:AD|A\.D\.|apibrėžimo\s+sritis)\s*[:：]?\s*/i, '');
+    if (!input.includes('≠')) return { recognized: false };
+    const parts = input.split(/\s*[;,]\s*/).filter(Boolean);
+    const supplied = [];
+    for (const part of parts) {
+      const match = part.match(/^\s*([A-Za-z])\s*≠\s*(.+?)\s*$/);
+      if (!match || match[1].toLowerCase() !== String(variable).toLowerCase()) {
+        return { recognized: true, ok: false, message: `Apibrėžimo srities sąlygą rašyk ${variable} ≠ … pavidalu.` };
+      }
+      try {
+        const ast = parseExpression(match[2]);
+        if (astVariableNames(ast).size) throw new Error('apribojimo reikšmė turi būti skaičius');
+        const value = evaluateAst(ast, {});
+        if (!Number.isFinite(value)) throw new Error('apribojimo reikšmė nėra baigtinė');
+        supplied.push(value);
+      } catch (error) {
+        return { recognized: true, ok: false, message: friendlyParseError(error) };
+      }
+    }
+    const required = uniqueSemanticNumbersV7(requiredExcludedValues);
+    const wrong = supplied.find(value => !required.some(item => semanticNumberMatches(item, value)));
+    if (wrong !== undefined) {
+      return { recognized: true, ok: false, message: `${variable} ≠ ${formatSupportedRoot(wrong)} nėra šios pradinės lygties apibrėžimo srities apribojimas.` };
+    }
+    const uniqueSupplied = uniqueSemanticNumbersV7(supplied);
+    const remaining = required.filter(value => !uniqueSupplied.some(item => semanticNumberMatches(item, value)));
+    return {
+      recognized: true,
+      ok: true,
+      status: 'correct',
+      supplied: uniqueSupplied,
+      message: remaining.length
+        ? `Teisinga AD dalis: ${formatDomainRestrictionsV7(variable, uniqueSupplied)}. Pradinė lygtis dar turi apribojimą(-ų): ${formatDomainRestrictionsV7(variable, remaining)}.`
+        : `Apibrėžimo sritis užrašyta teisingai: ${formatDomainRestrictionsV7(variable, required)}.`
+    };
+  }
+
+  function classifyRationalEquationTransitionV7(previousEquation, nextEquation, variable) {
+    try {
+      const previousPolynomial = equationClearedPolynomialV7(previousEquation, variable);
+      const nextPolynomial = equationClearedPolynomialV7(nextEquation, variable);
+      const factor = polynomialProportionalFactor(previousPolynomial, nextPolynomial);
+      if (factor !== null) {
+        const previousHasDenominator = equationHasVariableDenominatorV7(previousEquation, variable);
+        const nextHasDenominator = equationHasVariableDenominatorV7(nextEquation, variable);
+        return {
+          ok: true,
+          kind: previousHasDenominator && !nextHasDenominator ? 'clear-denominators' : 'rational-equivalent',
+          message: previousHasDenominator && !nextHasDenominator
+            ? 'Atpažintas vardiklių panaikinimas. Pradinės lygties apibrėžimo srities apribojimai išsaugoti.'
+            : 'Atpažintas lygiavertis trupmeninės lygties pertvarkymas, išsaugant pradinę apibrėžimo sritį.'
+        };
+      }
+    } catch (_) { /* pilnas validatorius pateiks tikslesnę klaidą */ }
+    return { ok: false, kind: 'unexplained-rational-transition' };
+  }
+
+  function validateRationalEquationChainV7(task, response) {
+    const steps = normalizeStructuredSteps(response?.steps);
+    const stepResults = Array(steps.length).fill(null);
+    let initialEquation;
+    let initialAnalysis;
+    try {
+      initialEquation = parseEquation(task.response?.options?.initial || task.prompt?.value);
+      const variable = inferSingleVariableFromEquations(initialEquation, 'x');
+      initialAnalysis = analyzeRationalEquationV7(initialEquation, variable, null);
+    } catch (error) {
+      return { status: 'incorrect', title: 'Netinkama pradinė trupmeninė lygtis', message: friendlyParseError(error), stepResults };
+    }
+    const targetDescriptor = initialAnalysis.descriptor;
+    const targetVariable = initialAnalysis.variable;
+    const excludedValues = initialAnalysis.excludedValues;
+    let previousEquation = initialEquation;
+    let previousDescriptor = targetDescriptor;
+    let completed = false;
+
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = normalizeStructuredStep(steps[index]);
+      if (!stepHasContent(step)) {
+        stepResults[index] = { status: 'incorrect', message: 'Tarp sprendimo žingsnių liko tuščia eilutė.' };
+        return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: 'Sprendimo eigoje negali būti tuščios eilutės tarp užpildytų žingsnių.', stepResults };
+      }
+      if (step.type === 'solution-set') {
+        if (index !== steps.length - 1) {
+          stepResults[index] = { status: 'incorrect', message: 'Sprendinių aibę rašyk tik paskutiniame žingsnyje.' };
+          return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: 'Po galutinės sprendinių aibės nebegali būti kitų žingsnių.', stepResults };
+        }
+        try {
+          const supplied = parseSolutionSetInput(step.values[0], targetVariable);
+          if (!solutionSetMatchesDescriptor(supplied, targetDescriptor)) throw new Error(`Gauta sprendinių aibė nesutampa su ${formatSolutionDescriptor(targetDescriptor)}.`);
+          stepResults[index] = { status: 'correct', message: `Sprendinių aibė teisinga ir atitinka pradinę AD (${formatDomainRestrictionsV7(targetVariable, excludedValues)}).` };
+          completed = true;
+          continue;
+        } catch (error) {
+          stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
+          return { status: 'incorrect', title: 'Nepavyko patikrinti galutinio atsakymo', message: friendlyParseError(error), stepResults };
+        }
+      }
+      if (step.type === 'alternatives') {
+        stepResults[index] = { status: 'unrecognized', message: 'Trupmeninių lygčių automatinės šakos bus prijungtos kitame etape; kol kas šakas rašyk nuosekliomis eilutėmis arba pateik sprendinių aibę.' };
+        return { status: 'unrecognized', title: 'Šiam žingsniui dar reikia paprastesnio užrašo', message: stepResults[index].message, stepResults };
+      }
+
+      const restriction = classifyDomainRestrictionStepV7(step.values[0], targetVariable, excludedValues);
+      if (restriction.recognized) {
+        if (!restriction.ok) {
+          stepResults[index] = { status: 'incorrect', message: restriction.message };
+          return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: restriction.message, stepResults };
+        }
+        stepResults[index] = { status: 'correct', message: restriction.message };
+        continue;
+      }
+
+      let equation;
+      let descriptor;
+      try {
+        equation = parseEquation(step.values[0]);
+        descriptor = analyzeRationalEquationV7(equation, targetVariable, excludedValues).descriptor;
+      } catch (error) {
+        stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
+        return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio`, message: friendlyParseError(error), stepResults };
+      }
+
+      if (!samePolynomialSolutionSet(targetDescriptor, descriptor)) {
+        stepResults[index] = { status: 'incorrect', message: 'Šis žingsnis, įvertinus pradinę apibrėžimo sritį, nebeturi tos pačios sprendinių aibės.' };
+        return {
+          status: 'incorrect',
+          title: `Pirmoji klaida – ${index + 1} žingsnyje`,
+          message: `Pradinė AD lieka galioti per visą sprendimą: ${formatDomainRestrictionsV7(targetVariable, excludedValues)}. Patikrink, ar nepridėjai arba nepraradai leistino sprendinio.`,
+          stepResults
+        };
+      }
+
+      let transition = null;
+      if (equationHasVariableDenominatorV7(previousEquation, targetVariable) || equationHasVariableDenominatorV7(equation, targetVariable)) {
+        transition = classifyRationalEquationTransitionV7(previousEquation, equation, targetVariable);
+      } else {
+        try { transition = classifyQuadraticEquationTransition(previousEquation, equation); }
+        catch (_) { transition = null; }
+      }
+      if (!transition?.ok) {
+        // Kai sprendinių aibė jau sutampa ir mokinys po vardiklių panaikinimo iškart
+        // užrašo vienintelį pagal AD likusį sprendinį, laikome tai suprantamu
+        // sutrumpintu žingsniu, bet informuojame, kad tarpinį pagrindimą verta rodyti.
+        if (descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, targetVariable, descriptorRoots(targetDescriptor)[0])) {
+          transition = { ok: true, kind: 'domain-filtered-root', message: `Gautas leistinas sprendinys ${formatSolutionDescriptor(targetDescriptor)}; uždraustos AD reikšmės automatiškai neįtraukiamos.` };
+        } else {
+          stepResults[index] = { status: 'incorrect', message: 'Per didelis šuolis. Parodyk tarpinį lygties pertvarkymą.' };
+          return { status: 'incorrect', title: `Per didelis šuolis – ${index + 1} žingsnyje`, message: 'Sprendinių aibė išliko ta pati, tačiau perėjimo negalima patikimai pagrįsti vienu tiesioginiu veiksmu.', stepResults };
+        }
+      }
+
+      stepResults[index] = { status: 'correct', message: transition.message || 'Žingsnis teisingas, pradinė AD išsaugota.' };
+      previousEquation = equation;
+      previousDescriptor = descriptor;
+      if (descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, targetVariable, descriptorRoots(targetDescriptor)[0])) completed = true;
+    }
+
+    if (!completed) {
+      return {
+        status: 'warning',
+        title: 'Žingsniai teisingi, bet sprendimas dar neužbaigtas',
+        message: `Pradinė AD: ${formatDomainRestrictionsV7(targetVariable, excludedValues)}. Užbaik sprendimą arba pridėk „Sprendinių aibės“ žingsnį: ${formatSolutionDescriptor(targetDescriptor)}.`,
+        stepResults
+      };
+    }
+    const minimumSteps = Math.max(1, Number(task.response?.options?.minimumSteps) || 1);
+    if (steps.length < minimumSteps) return { status: 'warning', title: 'Atsakymas teisingas, bet trūksta sprendimo eigos', message: `Šiai užduočiai reikia parodyti bent ${minimumSteps} sprendimo žingsnius.`, stepResults };
+    return {
+      status: 'correct',
+      title: 'Sprendimas teisingas',
+      message: `Trupmeninės lygties pertvarkymai teisingi. Pradinė AD (${formatDomainRestrictionsV7(targetVariable, excludedValues)}) išsaugota, galutinis rezultatas: ${formatSolutionDescriptor(targetDescriptor)}.`,
+      stepResults
+    };
+  }
+
   function describeLinearEquation(equation, variable = null) {
     const descriptor = describePolynomialEquation(equation, variable);
     if (descriptor.degree > 1) throw new Error('Dabartinis tiesinių lygčių tikrintuvas priima tik lygtis, kurios susiveda į tiesinę lygtį');
@@ -7242,6 +7595,9 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   function samePolynomialSolutionSet(first, second) {
+    if (first.kind === 'all-except' || second.kind === 'all-except') {
+      return first.kind === second.kind && sameRootValues(first.excludedValues || [], second.excludedValues || []);
+    }
     if (first.kind === 'all' || second.kind === 'all') return first.kind === second.kind;
     if (first.kind === 'none' || second.kind === 'none') return first.kind === second.kind;
     return sameRootValues(descriptorRoots(first), descriptorRoots(second));
@@ -7728,6 +8084,7 @@ KOKYBĖS REIKALAVIMAI:
   function formatSolutionDescriptor(descriptor, variable = null) {
     const symbol = variable || descriptorVariable(descriptor);
     if (descriptor.kind === 'all') return `${symbol} ∈ ℝ`;
+    if (descriptor.kind === 'all-except') return `${symbol} ∈ ℝ \ {${(descriptor.excludedValues || []).map(formatSupportedRoot).join('; ')}}`;
     if (descriptor.kind === 'none') return 'sprendinių nėra';
     const roots = descriptorRoots(descriptor);
     if (roots.length === 1) return `${symbol} = ${formatSupportedRoot(roots[0])}`;

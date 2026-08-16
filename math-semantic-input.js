@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'P1.7.9.49-P3.2.6.7.1';
+  const VERSION = 'P1.7.9.49-P3.2.7.0';
   const KNOWN_FUNCTIONS = new Set(['sqrt']);
 
   function normalizeSource(value) {
@@ -10,6 +10,8 @@
       .replace(/[×·⋅]/g, '*')
       .replace(/÷/g, '/')
       .replace(/[＝]/g, '=')
+      .replace(/\\(?:ne|neq)\b/gi, '≠')
+      .replace(/!=/g, '≠')
       .replace(/₀/g, '_0')
       .replace(/₁/g, '_1')
       .replace(/₂/g, '_2')
@@ -170,6 +172,16 @@
     if (badCharacter) {
       return { status: 'unsupported', reason: 'syntax-unsupported', kind: 'syntax', message: `Šio simbolio „${badCharacter}“ tikrintuvas kol kas nesupranta.`, declarations: [] };
     }
+    // P3.2.7.0: apibrėžimo srities sąlyga (pvz. x≠2) yra pilnavertis
+    // sprendimo žingsnis. Jos matematinį teisingumą tikrina pagrindinis validatorius.
+    if (input.includes('≠')) {
+      const restrictionSource = input.replace(/^\s*(?:AD|A\.D\.|apibrėžimo\s+sritis)\s*[:：]?\s*/i, '');
+      const restrictionParts = restrictionSource.split(/\s*[;,]\s*/).filter(Boolean);
+      if (restrictionParts.length && restrictionParts.every(part => /^[A-Za-z]\s*≠\s*[^=≠]+$/.test(part))) {
+        return { status: 'understood', kind: 'domain-restriction', message: '', declarations: [] };
+      }
+    }
+
     const lexical = lexicalIdentifiers(input);
     if (lexical.unknownWords.length) {
       return { status: 'unsupported', reason: 'syntax-unsupported', kind: 'syntax', message: `Šio užrašo „${lexical.unknownWords[0]}“ tikrintuvas kol kas nesupranta.`, declarations: [] };
