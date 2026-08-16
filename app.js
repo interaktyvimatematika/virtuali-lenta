@@ -71,12 +71,12 @@
   };
 
   function createStructuredStep(type = 'equation', values = [''], latexValues = [], meta = {}) {
-    const safeType = ['equation', 'alternatives', 'solution-set'].includes(type) ? type : 'equation';
+    const safeType = ['equation', 'alternatives', 'conjunction', 'solution-set'].includes(type) ? type : 'equation';
     const sourceValues = Array.isArray(values) ? values.map(value => String(value ?? '')) : [String(values ?? '')];
     const sourceLatexValues = Array.isArray(latexValues)
       ? latexValues.map(value => String(value ?? ''))
       : [String(latexValues ?? '')];
-    if (safeType === 'alternatives') {
+    if (safeType === 'alternatives' || safeType === 'conjunction') {
       while (sourceValues.length < 2) sourceValues.push('');
       while (sourceLatexValues.length < sourceValues.length) sourceLatexValues.push('');
       const result = {
@@ -99,6 +99,8 @@
     const source = String(value ?? '');
     const trimmed = source.trim();
     if (!trimmed) return createStructuredStep();
+    const conjunctions = trimmed.split(/\s+\bIR\b\s+/i).map(part => part.trim()).filter(Boolean);
+    if (conjunctions.length > 1) return createStructuredStep('conjunction', conjunctions);
     const alternatives = trimmed.split(/\s+\b(?:arba|ar)\b\s+/i).map(part => part.trim()).filter(Boolean);
     if (alternatives.length > 1 && alternatives.every(part => part.includes('='))) {
       return createStructuredStep('alternatives', alternatives);
@@ -1628,6 +1630,7 @@
         <div class="step-context-actions" role="toolbar" aria-label="${index + 1} sprendimo eilutės veiksmai">
           <button class="step-context-button make-equation-button" type="button" title="Viena sprendimo eilutė" aria-label="Viena sprendimo eilutė" data-label="Viena eilutė">=</button>
           <button class="step-context-button make-branches-button" type="button" title="Išskaidyti į sprendimo šakas" aria-label="Išskaidyti į sprendimo šakas" data-label="Šakos">⑂</button>
+          <button class="step-context-button make-conjunction-button" type="button" title="Sujungti vienu metu galiojančias sąlygas" aria-label="Sujungti sąlygas žodžiu IR" data-label="IR">IR</button>
           <button class="step-context-button make-answer-button" type="button" title="Rašyti galutinį atsakymą" aria-label="Rašyti galutinį atsakymą" data-label="Atsakymas">∈</button>
           <button class="step-context-button remove-step-button" type="button" title="Pašalinti eilutę" aria-label="Pašalinti ${index + 1} sprendimo eilutę" data-label="Pašalinti">×</button>
         </div>
@@ -1639,6 +1642,7 @@
     const remove = row.querySelector('.remove-step-button');
     const equationButton = row.querySelector('.make-equation-button');
     const branchesButton = row.querySelector('.make-branches-button');
+    const conjunctionButton = row.querySelector('.make-conjunction-button');
     const answerButton = row.querySelector('.make-answer-button');
     remove.disabled = response.steps.length === 1;
 
@@ -1661,10 +1665,10 @@
       const previousValues = [...step.values];
       const previousLatexValues = [...(step.latexValues || [])];
       step.type = type;
-      step.values = type === 'alternatives'
+      step.values = (type === 'alternatives' || type === 'conjunction')
         ? [previousValues[0] || '', previousValues[1] || '']
         : [previousValues[0] || ''];
-      step.latexValues = type === 'alternatives'
+      step.latexValues = (type === 'alternatives' || type === 'conjunction')
         ? [previousLatexValues[0] || '', previousLatexValues[1] || '']
         : [previousLatexValues[0] || ''];
       commit();
@@ -1677,6 +1681,7 @@
       row.className = `solution-step workbook-step step-type-${step.type}`;
       equationButton.hidden = step.type === 'equation';
       branchesButton.hidden = step.type === 'alternatives';
+      conjunctionButton.hidden = step.type === 'conjunction';
       answerButton.hidden = step.type === 'solution-set';
       const commitValue = (branchIndex, plain, latex) => {
         step.values[branchIndex] = plain;
@@ -1688,14 +1693,14 @@
         scheduleSave();
       };
 
-      if (step.type === 'alternatives') {
+      if (step.type === 'alternatives' || step.type === 'conjunction') {
         const branches = document.createElement('div');
         branches.className = 'branch-fields workbook-branch-fields';
         step.values.forEach((value, branchIndex) => {
           if (branchIndex) {
             const separator = document.createElement('span');
             separator.className = 'branch-separator';
-            separator.textContent = 'arba';
+            separator.textContent = step.type === 'conjunction' ? 'IR' : 'arba';
             branches.appendChild(separator);
           }
           const branch = document.createElement('div');
@@ -1706,8 +1711,8 @@
             kind: 'equation',
             fieldKey: `main:${task.id}:step:${index}:branch:${branchIndex}`,
             testid: branchIndex === 0 ? `step-input-${index}` : `step-input-${index}-${branchIndex}`,
-            placeholder: branchIndex === 0 ? 'Pirmas atvejis' : 'Kitas atvejis',
-            contextLabel: `Pratybų ${index + 1} eilutės ${branchIndex + 1} sprendimo šaka`,
+            placeholder: step.type === 'conjunction' ? (branchIndex === 0 ? 'Pirma sąlyga' : 'Kita sąlyga') : (branchIndex === 0 ? 'Pirmas atvejis' : 'Kitas atvejis'),
+            contextLabel: step.type === 'conjunction' ? `Pratybų ${index + 1} eilutės ${branchIndex + 1} kartu galiojanti sąlyga` : `Pratybų ${index + 1} eilutės ${branchIndex + 1} sprendimo šaka`,
             onCommit: (plain, latex) => commitValue(branchIndex, plain, latex),
             onEnter: () => {
               const next = branches.querySelector(`[data-testid="step-input-${index}-${branchIndex + 1}"]`);
@@ -1737,7 +1742,7 @@
         const addBranch = document.createElement('button');
         addBranch.type = 'button';
         addBranch.className = 'add-branch-button workbook-add-branch';
-        addBranch.textContent = '＋ Dar viena šaka';
+        addBranch.textContent = step.type === 'conjunction' ? '＋ Dar viena sąlyga' : '＋ Dar viena šaka';
         addBranch.addEventListener('click', () => {
           step.values.push('');
           if (!Array.isArray(step.latexValues)) step.latexValues = [];
@@ -1774,6 +1779,7 @@
 
     equationButton.addEventListener('click', () => setStepType('equation'));
     branchesButton.addEventListener('click', () => setStepType('alternatives'));
+    conjunctionButton.addEventListener('click', () => setStepType('conjunction'));
     answerButton.addEventListener('click', () => setStepType('solution-set'));
     remove.addEventListener('click', () => {
       if (response.steps.length <= 1) return;
@@ -4451,11 +4457,18 @@
     // paliekame pilnam validatoriui – tai jau konteksto klaida, ne parserio ribotumas.
     try {
       const inputAnalysis = MathSemanticInput.analyzeSolution(String(initial || ''), normalizeStructuredSteps(response?.steps));
-      const preflightStepResults = (inputAnalysis?.stepResults || []).map(stepResult => {
+      const normalizedPreflightSteps = normalizeStructuredSteps(response?.steps);
+      const preflightStepResults = (inputAnalysis?.stepResults || []).map((stepResult, stepIndex) => {
         const branches = Array.isArray(stepResult?.branches) ? stepResult.branches : [];
         const incomplete = branches.find(branch => branch?.status === 'incomplete');
         const unsupported = branches.find(branch => branch?.status === 'unsupported' && branch?.reason !== 'unexpected-primary-symbol');
         if (incomplete) return { status: 'incomplete', message: incomplete.message || 'Eilutė dar nebaigta.' };
+        // P3.2.7.6: racionalių lygčių struktūriniai žingsniai (AD, IR, ARBA)
+        // turi savo semantinį parserį. Neutralus preflight neturi jų atmesti vien
+        // todėl, kad bendras eilučių parseris dar nežino ≠ / IR sintaksės.
+        if (unsupported && rationalInitial && rationalStructuralStepV8(normalizedPreflightSteps[stepIndex])) {
+          return { status: 'neutral', message: '' };
+        }
         if (unsupported) return { status: 'unrecognized', message: unsupported.message || 'Šios eilutės tikrintuvas kol kas nesupranta.' };
         return { status: 'neutral', message: '' };
       });
@@ -7454,6 +7467,34 @@ KOKYBĖS REIKALAVIMAI:
     return values.map(value => `${variable} ≠ ${formatSupportedRoot(value)}`).join('; ');
   }
 
+  function splitLogicalAndClausesV8(source) {
+    let value = String(source || '').trim();
+    if (!value) return [];
+    value = value
+      .replace(/\\text\s*\{\s*IR\s*\}/gi, ' IR ')
+      .replace(/\\(?:land|wedge)\b/gi, ' IR ')
+      .replace(/∧/g, ' IR ')
+      .replace(/&&/g, ' IR ');
+    return value.split(/\s+\bIR\b\s+/i).map(part => part.trim()).filter(Boolean);
+  }
+
+  function rationalStructuralStepV8(step) {
+    const normalized = normalizeStructuredStep(step);
+    if (normalized.type === 'alternatives' || normalized.type === 'conjunction' || normalized.type === 'solution-set') return true;
+    const source = String(normalized.values?.[0] || '');
+    return /≠|!=|\\(?:ne|neq)\b/i.test(source) || splitLogicalAndClausesV8(source).length > 1;
+  }
+
+  function zeroRootsOfRestrictionExpressionV8(source, variable) {
+    const expression = String(source || '').trim();
+    if (!expression) throw new Error('Trūksta apibrėžimo srities išraiškos.');
+    const equation = parseEquation(`${expression}=0`);
+    const descriptor = describePolynomialEquation(equation, variable);
+    if (descriptor.kind === 'all') throw new Error('Ši sąlyga būtų neteisinga visiems x.');
+    if (descriptor.kind === 'none') return [];
+    return descriptorRoots(descriptor);
+  }
+
   function classifyDomainRestrictionStepV7(source, variable, requiredExcludedValues = []) {
     let input = String(source || '').trim()
       .replace(/\\(?:ne|neq)\b/gi, '≠')
@@ -7463,26 +7504,41 @@ KOKYBĖS REIKALAVIMAI:
     const parts = input.split(/\s*[;,]\s*/).filter(Boolean);
     const supplied = [];
     for (const part of parts) {
-      const match = part.match(/^\s*([A-Za-z])\s*≠\s*(.+?)\s*$/);
-      if (!match || match[1].toLowerCase() !== String(variable).toLowerCase()) {
-        return { recognized: true, ok: false, message: `Apibrėžimo srities sąlygą rašyk ${variable} ≠ … pavidalu.` };
-      }
+      const sides = part.split('≠');
+      if (sides.length !== 2) return { recognized: true, ok: false, message: 'Apibrėžimo srities sąlygoje turi būti vienas ≠ ženklas.' };
+      const left = sides[0].trim();
+      const right = sides[1].trim();
       try {
-        const ast = parseExpression(match[2]);
-        if (astVariableNames(ast).size) throw new Error('apribojimo reikšmė turi būti skaičius');
-        const value = evaluateAst(ast, {});
-        if (!Number.isFinite(value)) throw new Error('apribojimo reikšmė nėra baigtinė');
-        supplied.push(value);
+        const leftAst = parseExpression(left);
+        const rightAst = parseExpression(right);
+        const leftVars = astVariableNames(leftAst);
+        const rightVars = astVariableNames(rightAst);
+        const leftNumeric = leftVars.size ? null : evaluateAst(leftAst, {});
+        const rightNumeric = rightVars.size ? null : evaluateAst(rightAst, {});
+        let values = null;
+
+        // Įprastas išspręstas pavidalas x ≠ a (arba a ≠ x).
+        if (left === variable && rightNumeric !== null && Number.isFinite(rightNumeric)) values = [rightNumeric];
+        else if (right === variable && leftNumeric !== null && Number.isFinite(leftNumeric)) values = [leftNumeric];
+        // Natūralus vardiklio pavidalas f(x) ≠ 0 (arba 0 ≠ f(x)).
+        else if (rightNumeric !== null && Math.abs(rightNumeric) <= EPSILON && leftVars.has(variable)) {
+          values = zeroRootsOfRestrictionExpressionV8(left, variable);
+        } else if (leftNumeric !== null && Math.abs(leftNumeric) <= EPSILON && rightVars.has(variable)) {
+          values = zeroRootsOfRestrictionExpressionV8(right, variable);
+        } else {
+          return { recognized: true, ok: false, message: `Apibrėžimo srities sąlygą rašyk ${variable} ≠ … arba vardiklis ≠ 0 pavidalu.` };
+        }
+        supplied.push(...values);
       } catch (error) {
         return { recognized: true, ok: false, message: friendlyParseError(error) };
       }
     }
     const required = uniqueSemanticNumbersV7(requiredExcludedValues);
-    const wrong = supplied.find(value => !required.some(item => semanticNumberMatches(item, value)));
+    const uniqueSupplied = uniqueSemanticNumbersV7(supplied);
+    const wrong = uniqueSupplied.find(value => !required.some(item => semanticNumberMatches(item, value)));
     if (wrong !== undefined) {
       return { recognized: true, ok: false, message: `${variable} ≠ ${formatSupportedRoot(wrong)} nėra šios pradinės lygties apibrėžimo srities apribojimas.` };
     }
-    const uniqueSupplied = uniqueSemanticNumbersV7(supplied);
     const remaining = required.filter(value => !uniqueSupplied.some(item => semanticNumberMatches(item, value)));
     return {
       recognized: true,
@@ -7493,6 +7549,49 @@ KOKYBĖS REIKALAVIMAI:
         ? `Teisinga AD dalis: ${formatDomainRestrictionsV7(variable, uniqueSupplied)}. Pradinė lygtis dar turi apribojimą(-ų): ${formatDomainRestrictionsV7(variable, remaining)}.`
         : `Apibrėžimo sritis užrašyta teisingai: ${formatDomainRestrictionsV7(variable, required)}.`
     };
+  }
+
+  function denominatorZeroForCandidateV8(equation, variable, candidate) {
+    const denominators = [];
+    const walk = node => {
+      if (!node) return;
+      if (node.type === 'unary') return walk(node.value);
+      if (node.type !== 'binary') return;
+      if (node.operator === '/' && astVariableNames(node.right).has(variable)) denominators.push(node.right);
+      if (node.operator === '^') {
+        const exponent = constantInteger(node.right);
+        if (exponent !== null && exponent < 0 && astVariableNames(node.left).has(variable)) denominators.push(node.left);
+      }
+      walk(node.left); walk(node.right);
+    };
+    walk(equation.left); walk(equation.right);
+    return denominators.some(node => {
+      try {
+        const value = evaluateAst(node, { [variable]: candidate });
+        return Number.isFinite(value) && Math.abs(value) <= EPSILON * Math.max(1, Math.abs(candidate));
+      } catch (_) { return false; }
+    });
+  }
+
+  function classifyExcludedCandidateCheckV8(source, initialEquation, variable, candidate, excludedValues) {
+    if (candidate === null || candidate === undefined) return { recognized: false };
+    if (!excludedValues.some(value => semanticNumberMatches(value, candidate))) return { recognized: false };
+    let equation;
+    try { equation = parseEquation(String(source || '').trim()); }
+    catch (_) { return { recognized: false }; }
+    if (astVariableNames(equation.left).size || astVariableNames(equation.right).size) return { recognized: false };
+    try {
+      const left = evaluateAst(equation.left, {});
+      const right = evaluateAst(equation.right, {});
+      const equal = Math.abs(left - right) <= EPSILON * Math.max(1, Math.abs(left), Math.abs(right));
+      const showsZero = Math.abs(left) <= EPSILON || Math.abs(right) <= EPSILON;
+      if (!equal || !showsZero || !denominatorZeroForCandidateV8(initialEquation, variable, candidate)) return { recognized: false };
+      return {
+        recognized: true,
+        ok: true,
+        message: `Patikrinus kandidatą ${variable} = ${formatSupportedRoot(candidate)}, pradinis vardiklis tampa 0, todėl šis kandidatas netinka pagal AD.`
+      };
+    } catch (_) { return { recognized: false }; }
   }
 
   function classifyRationalEquationTransitionV7(previousEquation, nextEquation, variable) {
@@ -7528,11 +7627,20 @@ KOKYBĖS REIKALAVIMAI:
       return { status: 'incorrect', title: 'Netinkama pradinė trupmeninė lygtis', message: friendlyParseError(error), stepResults };
     }
     const targetDescriptor = initialAnalysis.descriptor;
+    const rawTargetDescriptor = initialAnalysis.rawDescriptor;
     const targetVariable = initialAnalysis.variable;
     const excludedValues = initialAnalysis.excludedValues;
     let previousEquation = initialEquation;
     let previousDescriptor = targetDescriptor;
     let completed = false;
+    let implicitBranchState = null;
+    let pendingExcludedCandidate = null;
+
+    const isExcluded = value => excludedValues.some(item => semanticNumberMatches(item, value));
+    const branchMessageForRoot = (base, root, isolated) => {
+      if (!isolated || !isExcluded(root)) return base;
+      return `${base} Kandidatas ${targetVariable} = ${formatSupportedRoot(root)} algebriškai gautas teisingai, tačiau pagal pradinę AD jis yra neleistinas.`;
+    };
 
     for (let index = 0; index < steps.length; index += 1) {
       const step = normalizeStructuredStep(steps[index]);
@@ -7556,29 +7664,153 @@ KOKYBĖS REIKALAVIMAI:
           return { status: 'incorrect', title: 'Nepavyko patikrinti galutinio atsakymo', message: friendlyParseError(error), stepResults };
         }
       }
-      if (step.type === 'alternatives') {
-        stepResults[index] = { status: 'unrecognized', message: 'Trupmeninių lygčių automatinės šakos bus prijungtos kitame etape; kol kas šakas rašyk nuosekliomis eilutėmis arba pateik sprendinių aibę.' };
-        return { status: 'unrecognized', title: 'Šiam žingsniui dar reikia paprastesnio užrašo', message: stepResults[index].message, stepResults };
+
+      let structuredConjunctionSource = null;
+      let structuredConjunctionPrefix = '';
+      if (step.type === 'conjunction') {
+        const equationClauses = [];
+        const messages = [];
+        for (const clause of step.values) {
+          const restriction = classifyDomainRestrictionStepV7(clause, targetVariable, excludedValues);
+          if (restriction.recognized) {
+            if (!restriction.ok) {
+              stepResults[index] = { status: 'incorrect', message: restriction.message };
+              return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: restriction.message, stepResults };
+            }
+            messages.push(restriction.message);
+          } else equationClauses.push(String(clause || '').trim());
+        }
+        if (equationClauses.length > 1) {
+          stepResults[index] = { status: 'unrecognized', message: '„IR“ grupėje kol kas rašyk vieną lygtį ir jos AD sąlygą(-as).' };
+          return { status: 'unrecognized', title: 'Per sudėtinga IR grupė', message: stepResults[index].message, stepResults };
+        }
+        if (!equationClauses.length) {
+          stepResults[index] = { status: 'correct', message: messages.join(' ') || 'AD sąlygos teisingos.' };
+          continue;
+        }
+        structuredConjunctionSource = equationClauses[0];
+        structuredConjunctionPrefix = messages.length ? `${messages.join(' ')} ` : '';
       }
 
-      const restriction = classifyDomainRestrictionStepV7(step.values[0], targetVariable, excludedValues);
-      if (restriction.recognized) {
-        if (!restriction.ok) {
-          stepResults[index] = { status: 'incorrect', message: restriction.message };
-          return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: restriction.message, stepResults };
+      // P3.2.7.6: „ARBA“ / Šakos UI veikia ir trupmeninėje lygtyje, kai ankstesnė
+      // lygtis aiškiai yra nulinė sandauga. Šakos pirmiausia tikrinamos algebriškai
+      // be AD filtro; AD filtras pritaikomas kandidatams, o ne pačiam šakojimo veiksmui.
+      if (step.type === 'alternatives') {
+        if (!implicitBranchState) implicitBranchState = implicitZeroProductBranchStateV5(previousEquation, rawTargetDescriptor);
+        if (!implicitBranchState) {
+          stepResults[index] = { status: 'unrecognized', message: '„ARBA“ šakas galiu automatiškai susieti tada, kai ankstesnis žingsnis aiškiai yra nulinė sandauga.' };
+          return { status: 'unrecognized', title: 'Neaiški šakų kilmė', message: stepResults[index].message, stepResults };
         }
-        stepResults[index] = { status: 'correct', message: restriction.message };
+        const messages = [];
+        for (const value of step.values) {
+          let equation, rawDescriptor;
+          try {
+            equation = parseEquation(value);
+            rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor;
+          } catch (error) {
+            stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
+            return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio šakos`, message: friendlyParseError(error), stepResults };
+          }
+          const branchResult = registerImplicitSequentialBranchV5(implicitBranchState, equation, rawDescriptor, rawTargetDescriptor, targetVariable);
+          if (!branchResult.recognized) {
+            stepResults[index] = { status: 'incorrect', message: 'Viena iš „ARBA“ šakų neišplaukia iš ankstesnės nulinės sandaugos.' };
+            return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: stepResults[index].message, stepResults };
+          }
+          const root = descriptorRoots(rawDescriptor)[0];
+          const isolated = isVariableIsolated(equation, targetVariable, root);
+          if (isolated && isExcluded(root)) pendingExcludedCandidate = root;
+          messages.push(branchMessageForRoot(branchResult.message, root, isolated));
+        }
+        const allIsolated = implicitBranchState.branches.size === implicitBranchState.factors.length
+          && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
+        if (allIsolated) completed = true;
+        stepResults[index] = { status: 'correct', message: messages.join(' ') };
+        continue;
+      }
+
+      let source = structuredConjunctionSource !== null ? structuredConjunctionSource : String(step.values[0] || '').trim();
+      let structuralPrefix = structuredConjunctionPrefix;
+
+      // P3.2.7.6: viename žingsnyje galima sujungti tuo pat metu galiojančią AD
+      // ir lygtį žodžiu IR, pvz. x+2≠0 IR x²-4=0. Tai nėra šakos – abi sąlygos
+      // lieka aktyvios kartu.
+      const andClauses = splitLogicalAndClausesV8(source);
+      if (andClauses.length > 1) {
+        const equationClauses = [];
+        const messages = [];
+        for (const clause of andClauses) {
+          const restriction = classifyDomainRestrictionStepV7(clause, targetVariable, excludedValues);
+          if (restriction.recognized) {
+            if (!restriction.ok) {
+              stepResults[index] = { status: 'incorrect', message: restriction.message };
+              return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: restriction.message, stepResults };
+            }
+            messages.push(restriction.message);
+          } else equationClauses.push(clause);
+        }
+        if (equationClauses.length > 1) {
+          stepResults[index] = { status: 'unrecognized', message: 'Viename „IR“ žingsnyje kol kas rašyk vieną lygtį ir jos AD sąlygą(-as).' };
+          return { status: 'unrecognized', title: 'Per sudėtinga IR grupė', message: stepResults[index].message, stepResults };
+        }
+        if (!equationClauses.length) {
+          stepResults[index] = { status: 'correct', message: messages.join(' ') || 'AD sąlygos teisingos.' };
+          continue;
+        }
+        source = equationClauses[0];
+        structuralPrefix = messages.length ? `${messages.join(' ')} ` : '';
+      } else {
+        const restriction = classifyDomainRestrictionStepV7(source, targetVariable, excludedValues);
+        if (restriction.recognized) {
+          if (!restriction.ok) {
+            stepResults[index] = { status: 'incorrect', message: restriction.message };
+            return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: restriction.message, stepResults };
+          }
+          stepResults[index] = { status: 'correct', message: restriction.message };
+          continue;
+        }
+      }
+
+      // P3.2.7.6: jei ką tik gautas AD draudžiamas kandidatas, mokinys gali jo
+      // atmesti ne tik išspręsdamas nelygybę, bet ir tiesiogiai įstatydamas į pradinį
+      // vardiklį, pvz. x=-2, po to -2+2=0.
+      const candidateCheck = classifyExcludedCandidateCheckV8(source, initialEquation, targetVariable, pendingExcludedCandidate, excludedValues);
+      if (candidateCheck.recognized) {
+        stepResults[index] = { status: 'correct', message: structuralPrefix + candidateCheck.message };
+        pendingExcludedCandidate = null;
         continue;
       }
 
       let equation;
       let descriptor;
+      let rawDescriptor;
       try {
-        equation = parseEquation(step.values[0]);
-        descriptor = analyzeRationalEquationV7(equation, targetVariable, excludedValues).descriptor;
+        equation = parseEquation(source);
+        const analysis = analyzeRationalEquationV7(equation, targetVariable, excludedValues);
+        descriptor = analysis.descriptor;
+        rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor;
       } catch (error) {
         stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
         return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio`, message: friendlyParseError(error), stepResults };
+      }
+
+      // Automatinės nuoseklios šakos paprastose eilutėse: x-2=0 / x+2=0 / x=2 / x=-2.
+      // Draudžiamas x=-2 čia yra teisėtai gautas kandidatas, o ne algebrinė klaida.
+      if (!implicitBranchState) {
+        const candidateState = implicitZeroProductBranchStateV5(previousEquation, rawTargetDescriptor);
+        if (candidateState && implicitBranchMatchIndexV5(candidateState, equation) >= 0) implicitBranchState = candidateState;
+      }
+      if (implicitBranchState) {
+        const branchResult = registerImplicitSequentialBranchV5(implicitBranchState, equation, rawDescriptor, rawTargetDescriptor, targetVariable);
+        if (branchResult.recognized) {
+          const root = descriptorRoots(rawDescriptor)[0];
+          const isolated = isVariableIsolated(equation, targetVariable, root);
+          if (isolated && isExcluded(root)) pendingExcludedCandidate = root;
+          const allIsolated = implicitBranchState.branches.size === implicitBranchState.factors.length
+            && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
+          if (allIsolated) completed = true;
+          stepResults[index] = { status: 'correct', message: structuralPrefix + branchMessageForRoot(branchResult.message, root, isolated) };
+          continue;
+        }
       }
 
       if (!samePolynomialSolutionSet(targetDescriptor, descriptor)) {
@@ -7599,9 +7831,6 @@ KOKYBĖS REIKALAVIMAI:
         catch (_) { transition = null; }
       }
       if (!transition?.ok) {
-        // Kai sprendinių aibė jau sutampa ir mokinys po vardiklių panaikinimo iškart
-        // užrašo vienintelį pagal AD likusį sprendinį, laikome tai suprantamu
-        // sutrumpintu žingsniu, bet informuojame, kad tarpinį pagrindimą verta rodyti.
         if (descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, targetVariable, descriptorRoots(targetDescriptor)[0])) {
           transition = { ok: true, kind: 'domain-filtered-root', message: `Gautas leistinas sprendinys ${formatSolutionDescriptor(targetDescriptor)}; uždraustos AD reikšmės automatiškai neįtraukiamos.` };
         } else {
@@ -7610,10 +7839,27 @@ KOKYBĖS REIKALAVIMAI:
         }
       }
 
-      stepResults[index] = { status: 'correct', message: transition.message || 'Žingsnis teisingas, pradinė AD išsaugota.' };
+      stepResults[index] = { status: 'correct', message: structuralPrefix + (transition.message || 'Žingsnis teisingas, pradinė AD išsaugota.') };
       previousEquation = equation;
       previousDescriptor = descriptor;
       if (descriptorIsSingleRoot(targetDescriptor) && isVariableIsolated(equation, targetVariable, descriptorRoots(targetDescriptor)[0])) completed = true;
+    }
+
+    if (!completed && implicitBranchState) {
+      const seen = implicitBranchState.branches.size;
+      const total = implicitBranchState.factors.length;
+      const allSeen = seen === total;
+      const allIsolated = allSeen && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
+      return {
+        status: 'warning',
+        title: 'Šakojimas suprastas, bet sprendimas dar neužbaigtas',
+        message: !allSeen
+          ? `Atpažinau ${seen} iš ${total} nulinės sandaugos šakų. Užrašyk ir likusį atvejį.`
+          : !allIsolated
+            ? `Atpažinau abi algebrines šakas. Užbaik jų kandidatų skaičiavimą; AD (${formatDomainRestrictionsV7(targetVariable, excludedValues)}) bus pritaikyta gautoms reikšmėms.`
+            : 'Šakos atpažintos, tačiau galutinis rezultatas dar neužfiksuotas.',
+        stepResults
+      };
     }
 
     if (!completed) {
@@ -9848,6 +10094,7 @@ KOKYBĖS REIKALAVIMAI:
         <div class="step-context-actions" role="toolbar" aria-label="${index + 1} sprendimo eilutės veiksmai">
           <button class="step-context-button make-equation-button" type="button" title="Viena sprendimo eilutė">=</button>
           <button class="step-context-button make-branches-button" type="button" title="Išskaidyti į sprendimo šakas">⑂</button>
+          <button class="step-context-button make-conjunction-button" type="button" title="Sujungti vienu metu galiojančias sąlygas">IR</button>
           <button class="step-context-button make-answer-button" type="button" title="Rašyti galutinį atsakymą">∈</button>
           <button class="step-context-button remove-step-button" type="button" title="Pašalinti eilutę">×</button>
         </div>
@@ -9859,6 +10106,7 @@ KOKYBĖS REIKALAVIMAI:
     const remove = row.querySelector('.remove-step-button');
     const equationButton = row.querySelector('.make-equation-button');
     const branchesButton = row.querySelector('.make-branches-button');
+    const conjunctionButton = row.querySelector('.make-conjunction-button');
     const answerButton = row.querySelector('.make-answer-button');
     remove.disabled = response.steps.length === 1;
 
@@ -9893,6 +10141,7 @@ KOKYBĖS REIKALAVIMAI:
       fields.replaceChildren();
       equationButton.hidden = step.type === 'equation';
       branchesButton.hidden = step.type === 'alternatives';
+      conjunctionButton.hidden = step.type === 'conjunction';
       answerButton.hidden = step.type === 'solution-set';
       const commitValue = (branchIndex, plain, latex) => {
         step.values[branchIndex] = plain;
@@ -9902,12 +10151,12 @@ KOKYBĖS REIKALAVIMAI:
         clearBoardTaskResultVisual(instance, row.closest('.board-solver-task'));
         scheduleSave();
       };
-      if (step.type === 'alternatives') {
+      if (step.type === 'alternatives' || step.type === 'conjunction') {
         const branches = document.createElement('div');
         branches.className = 'branch-fields workbook-branch-fields';
         step.values.forEach((value, branchIndex) => {
           if (branchIndex) {
-            const separator = document.createElement('span'); separator.className = 'branch-separator'; separator.textContent = 'arba'; branches.appendChild(separator);
+            const separator = document.createElement('span'); separator.className = 'branch-separator'; separator.textContent = step.type === 'conjunction' ? 'IR' : 'arba'; branches.appendChild(separator);
           }
           const branch = document.createElement('div'); branch.className = 'branch-field';
           const field = createDirectMathField({
@@ -9916,7 +10165,7 @@ KOKYBĖS REIKALAVIMAI:
             kind: 'equation',
             fieldKey: `board-task:${instance.id}:step:${index}:branch:${branchIndex}`,
             testid: boardTaskFieldId(instance, index, branchIndex),
-            placeholder: branchIndex === 0 ? 'Pirmas atvejis' : 'Kitas atvejis',
+            placeholder: step.type === 'conjunction' ? (branchIndex === 0 ? 'Pirma sąlyga' : 'Kita sąlyga') : (branchIndex === 0 ? 'Pirmas atvejis' : 'Kitas atvejis'),
             contextLabel: `Lentos užduoties ${index + 1} eilutės ${branchIndex + 1} šaka`,
             onCommit: (plain, latex) => commitValue(branchIndex, plain, latex),
             onEnter: () => {
@@ -9939,7 +10188,7 @@ KOKYBĖS REIKALAVIMAI:
         });
         fields.appendChild(branches);
         const addBranch = document.createElement('button');
-        addBranch.type = 'button'; addBranch.className = 'add-branch-button workbook-add-branch'; addBranch.textContent = '＋ Dar viena šaka';
+        addBranch.type = 'button'; addBranch.className = 'add-branch-button workbook-add-branch'; addBranch.textContent = step.type === 'conjunction' ? '＋ Dar viena sąlyga' : '＋ Dar viena šaka';
         addBranch.addEventListener('click', () => {
           step.values.push('');
           if (!Array.isArray(step.latexValues)) step.latexValues = [];
@@ -9968,6 +10217,7 @@ KOKYBĖS REIKALAVIMAI:
     };
     equationButton.addEventListener('click', () => setStepType('equation'));
     branchesButton.addEventListener('click', () => setStepType('alternatives'));
+    conjunctionButton.addEventListener('click', () => setStepType('conjunction'));
     answerButton.addEventListener('click', () => setStepType('solution-set'));
     remove.addEventListener('click', () => {
       if (response.steps.length <= 1) return;
