@@ -4,7 +4,7 @@
   const module = window.P772LibraryEditor;
   const analyzer = window.P327SemanticEquationAnalyzer;
   if (!module || typeof module.createLibraryEditor !== 'function') {
-    console.warn('P3.2.7.1: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
+    console.warn('P3.2.7.3: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
     return;
   }
   if (!analyzer || typeof analyzer.analyze !== 'function') {
@@ -145,14 +145,18 @@
 
   function hideSupersededOldAnalysis(scope) {
     if (!scope?.querySelectorAll) return;
-    const nodes = scope.querySelectorAll('div,p,small,section,aside');
+    // IMPORTANT: never replace textContent on structural containers. The
+    // library editor can keep the MathLive input in the same div/section;
+    // replacing a container's textContent would delete the live math-field.
+    const nodes = scope.querySelectorAll('p,small,span,label');
     nodes.forEach(node => {
+      if (node.children && node.children.length) return;
       const text = elementText(node);
       if (!text || text.length > 520) return;
       if (/Automatinė lygties analizė nepavyko/i.test(text) || /neatpažintas simbolis\s*[„“"']?\/[„“"']?/i.test(text)) {
         node.dataset.p327SupersededAnalysis = 'true';
       }
-      if (/Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su vienu nežinomuoju/i.test(text)) {
+      if (/^Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su vienu nežinomuoju\.?$/i.test(text)) {
         node.textContent = 'Automatiškai tikrinamos tiesinės, kvadratinės ir palaikomos trupmeninės lygtys su vienu nežinomuoju. Trupmeninėms lygtims pradinė AD sekama automatiškai.';
       }
     });
@@ -245,6 +249,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.2';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.3';
   window.P772LibraryEditor = bridgedModule;
 })();
