@@ -15,7 +15,7 @@
   const originalCreate = module.createLibraryEditor.bind(module);
   const patchedEditors = new WeakSet();
   const inputTimers = new WeakMap();
-  // P3.2.7.10.3: saugome paskutinį į rengyklę atidarytą užduočių modelį.
+  // P3.2.7.10.3.1: saugome paskutinį į rengyklę atidarytą užduočių modelį.
   // Nustatymų blokai kuriami asinchroniškai, todėl jų negalima patikimai
   // hidratuoti vien tik open() momentu.
   const openedTasksByRoot = new WeakMap();
@@ -111,7 +111,7 @@
   }
 
 
-  // P3.2.7.10.3 — the public library editor does not guarantee a flat
+  // P3.2.7.10.3.1 — the public library editor does not guarantee a flat
   // lesson.tasks array. Locate task objects recursively and bind injected
   // structure switches to the actual equation shown in each task card.
   function collectTaskObjects(value, out = [], seen = new WeakSet()) {
@@ -404,6 +404,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.3';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.3.1';
   window.P772LibraryEditor = bridgedModule;
 })();
