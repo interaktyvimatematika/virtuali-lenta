@@ -2565,19 +2565,49 @@ function sanitizeCustomLesson(raw) {
     const task = rawTask && typeof rawTask === 'object' && !Array.isArray(rawTask) ? rawTask : {};
     const taskId = String(task.id || '').trim();
     if (!/^[A-Za-z0-9_-]{4,100}$/.test(taskId)) throw new Error(`${index + 1} užduoties identifikatorius netinkamas.`);
-    const type = task.type === 'choice' ? 'choice' : 'input';
-    const prompt = String(task.promptDisplay || task.prompt || '').trim().slice(0, 4000);
+    const type = task.type === 'choice'
+      ? 'choice'
+      : (task.type === 'solution' || task?.response?.renderer === 'math-step-list' ? 'solution' : 'input');
+    // Lygties sprendimo užduotyje prompt yra grynas MathLive LaTeX, todėl
+    // promptDisplay (skirtas mišriam statiniam tekstui) negali jo perrašyti.
+    const prompt = String(type === 'solution' ? task.prompt : (task.promptDisplay || task.prompt || '')).trim().slice(0, 4000);
     if (!prompt) throw new Error(`${index + 1} užduočiai trūksta sąlygos.`);
     const base = {
       id: taskId,
       type,
       section: task.section === 'self' ? 'self' : 'class',
-      label: String(task.label || (type === 'choice' ? 'Pasirinkimas' : 'Trumpas atsakymas')).trim().slice(0, 60),
+      label: String(task.label || (type === 'choice' ? 'Pasirinkimas' : type === 'solution' ? 'Lygtis' : 'Trumpas atsakymas')).trim().slice(0, 60),
       title: String(task.title || `Užduotis ${index + 1}`).trim().slice(0, 120),
       prompt,
-      promptDisplay: prompt,
+      ...(type === 'solution' ? {} : { promptDisplay: prompt }),
       hint: String(task.hint || '').trim().slice(0, 1500)
     };
+    if (type === 'solution') {
+      const response = task.response && typeof task.response === 'object' && !Array.isArray(task.response) ? task.response : {};
+      const options = response.options && typeof response.options === 'object' && !Array.isArray(response.options) ? response.options : {};
+      const minimumSteps = Math.max(1, Math.min(6, Math.round(Number(options.minimumSteps) || 2)));
+      const answer = String(task.answer || '').trim().slice(0, 1000);
+      if (!answer) throw new Error(`${index + 1} lygties sprendimo užduočiai trūksta automatiškai apskaičiuoto atsakymo.`);
+      return {
+        ...base,
+        instruction: String(task.instruction || 'Išspręsk lygtį. Sprendimą rašyk nuosekliais žingsniais.').trim().slice(0, 500),
+        answer,
+        response: {
+          renderer: 'math-step-list',
+          valueType: 'equation',
+          label: String(response.label || 'Sprendimo eiga').trim().slice(0, 80) || 'Sprendimo eiga',
+          placeholder: String(response.placeholder || 'Įrašyk kitą lygties žingsnį').trim().slice(0, 160) || 'Įrašyk kitą lygties žingsnį',
+          validator: 'semantic-equation-chain',
+          options: {
+            initial: prompt,
+            expectedVariable: 'x',
+            minimumSteps,
+            autoDerived: true,
+            stepTransitionValidation: 'semantic-v3'
+          }
+        }
+      };
+    }
     if (type === 'choice') {
       const choices = (Array.isArray(task.choices) ? task.choices : []).map(value => String(value || '').trim().slice(0, 1000)).filter(Boolean).slice(0, 8);
       const answer = String(task.answer || '').trim().slice(0, 1000);
