@@ -2368,12 +2368,14 @@
   }
 
   function normalizedSemanticVariableLhs(source) {
-    return String(source || '').replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '').toLowerCase();
+    // P3.2.6.2: matematiniai simboliai yra case-sensitive. X ir x, D ir d, R ir r
+    // yra skirtingi simboliai; normalizuojame tik indeksų / skliaustų geometriją.
+    return String(source || '').replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '');
   }
 
   function semanticVariableLhsMatches(source, variable = 'x') {
     const left = normalizedSemanticVariableLhs(source);
-    const symbol = String(variable || 'x').toLowerCase();
+    const symbol = String(variable || 'x');
     return left === symbol || left === `${symbol}1` || left === `${symbol}2`;
   }
 
@@ -2388,7 +2390,7 @@
     try { parts = splitTopLevelEqualities(source); }
     catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
     if (parts.length < 2) return { recognized: false };
-    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '').toLowerCase();
+    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '');
     if (!semanticVariableLhsMatches(left, context.variable)) return { recognized: false };
     if (!parts.slice(1).some(looksLikeQuadraticFormulaExpression)) return { recognized: false };
 
@@ -2484,7 +2486,7 @@
 
   function semanticAstVariablesV2(node, out = new Set()) {
     if (!node) return out;
-    if (node.type === 'variable') out.add(String(node.name || '').toLowerCase());
+    if (node.type === 'variable') out.add(String(node.name || ''));
     else if (node.type === 'unary') semanticAstVariablesV2(node.value, out);
     else if (node.type === 'binary') {
       semanticAstVariablesV2(node.left, out);
@@ -2494,10 +2496,10 @@
   }
 
   function expandCompactSemanticSymbolsV2(source, symbolNames) {
-    const symbols = new Set([...symbolNames].map(item => String(item).toLowerCase()));
-    let result = String(source || '').toLowerCase().replace(/√/g, 'sqrt');
-    result = result.replace(/[a-z]{2,}/g, match => {
-      if (match === 'sqrt') return match;
+    const symbols = new Set([...symbolNames].map(item => String(item)));
+    let result = String(source || '').replace(/√/g, 'sqrt');
+    result = result.replace(/[A-Za-z]{2,}/g, match => {
+      if (match.toLowerCase() === 'sqrt') return match;
       const chars = [...match];
       return chars.every(char => symbols.has(char)) ? chars.join('*') : match;
     });
@@ -2534,14 +2536,16 @@
   }
 
   function evaluateQuadraticSemanticNumericV2(source, symbols = {}, depth = 0) {
-    const normalizedSymbols = Object.fromEntries(Object.entries(symbols).map(([key, value]) => [String(key).toLowerCase(), value]));
+    // P3.2.6.2: vietinių simbolių raktų nebelankstome į mažąsias raides.
+    // Taip d ir D, r ir R gali vienu metu turėti skirtingas reikšmes.
+    const normalizedSymbols = Object.fromEntries(Object.entries(symbols).map(([key, value]) => [String(key), value]));
     let expression = expandCompactSemanticSymbolsV2(normalizeMathLiveAscii(source), Object.keys(normalizedSymbols)).replace(/\s+/g, '');
     expression = replaceSemanticSqrtCallsV2(expression, normalizedSymbols, depth);
     // Bendras P2 reiškinių parseris sąmoningai palaiko tik x. Semantiniame sluoksnyje
     // vietinius mokinio simbolius pirmiausia pakeičiame jų skaitinėmis reikšmėmis,
     // todėl nereikia plėsti viso lygties parserio ir rizikuoti regresijomis.
-    expression = expression.replace(/[a-z]/gi, symbol => {
-      const key = symbol.toLowerCase();
+    expression = expression.replace(/[A-Za-z]/g, symbol => {
+      const key = symbol;
       if (!Object.prototype.hasOwnProperty.call(normalizedSymbols, key) || !Number.isFinite(normalizedSymbols[key])) {
         throw new Error(`Parse error: dar nežinoma ${symbol} reikšmė`);
       }
@@ -2554,10 +2558,11 @@
   }
 
   function semanticIdentifiersV2(source) {
-    const normalized = normalizeMathLiveAscii(source).toLowerCase().replace(/sqrt/g, '');
-    const found = normalized.match(/[a-z]+/g) || [];
+    const normalized = normalizeMathLiveAscii(source);
+    const found = normalized.match(/[A-Za-z]+/g) || [];
     const result = new Set();
     for (const token of found) {
+      if (token.toLowerCase() === 'sqrt') continue;
       for (const char of token) result.add(char);
     }
     return [...result];
@@ -2595,8 +2600,8 @@
 
   function semanticCandidateMappingsV2(context, requestedSymbols) {
     const roles = ['A', 'B', 'C'];
-    const symbols = [...new Set(requestedSymbols.map(item => String(item).toLowerCase()))]
-      .filter(symbol => /^[a-z]$/.test(symbol) && symbol !== context.variable && !context.discriminantSymbols.has(symbol));
+    const symbols = [...new Set(requestedSymbols.map(item => String(item)))]
+      .filter(symbol => /^[A-Za-z]$/.test(symbol) && symbol !== context.variable && !context.discriminantSymbols.has(symbol));
     let candidates = context.roleCandidates?.length ? context.roleCandidates.map(item => ({ ...item })) : [{}];
 
     for (const symbol of symbols) {
@@ -2621,7 +2626,7 @@
     return candidates;
   }
 
-  function semanticScopeForCandidateV2(context, candidate, probe = null) {
+  function semanticScopeForCandidateV2(context, candidate, probe = null, extraDiscriminantSymbols = []) {
     const scope = { ...context.localSymbols };
     for (const [symbol, role] of Object.entries(candidate)) {
       scope[symbol] = probe ? probe[role] : context.canonicalCoefficients[role];
@@ -2630,6 +2635,7 @@
       ? probe.B * probe.B - 4 * probe.A * probe.C
       : context.discriminant;
     for (const symbol of context.discriminantSymbols) scope[symbol] = discriminant;
+    for (const symbol of extraDiscriminantSymbols) scope[symbol] = discriminant;
     return scope;
   }
 
@@ -2649,7 +2655,7 @@
     } catch (_) { return false; }
   }
 
-  function semanticQuadraticRootFormulaBranchV2(source, context, candidate) {
+  function semanticQuadraticRootFormulaBranchV2(source, context, candidate, extraDiscriminantSymbols = []) {
     const probes = [
       { A: 1, B: -5, C: 6 },
       { A: 2, B: -7, C: 3 },
@@ -2661,7 +2667,7 @@
         return probes.every(probe => {
           const D = probe.B * probe.B - 4 * probe.A * probe.C;
           if (D < 0) return true;
-          const actual = evaluateQuadraticSemanticNumericV2(source, semanticScopeForCandidateV2(context, candidate, probe));
+          const actual = evaluateQuadraticSemanticNumericV2(source, semanticScopeForCandidateV2(context, candidate, probe, extraDiscriminantSymbols));
           const expected = (-probe.B + sign * Math.sqrt(D)) / (2 * probe.A);
           return semanticNumberMatches(actual, expected);
         });
@@ -2682,8 +2688,8 @@
       try { parts = splitTopLevelEqualities(assignment); }
       catch (_) { return { recognized: false }; }
       if (parts.length !== 2) return { recognized: false };
-      const symbol = parts[0].replace(/\s+/g, '').toLowerCase();
-      if (!/^[a-z]$/.test(symbol) || symbol === context.variable) return { recognized: false };
+      const symbol = parts[0].replace(/\s+/g, '');
+      if (!/^[A-Za-z]$/.test(symbol) || symbol === context.variable) return { recognized: false };
       let value;
       try { value = evaluateQuadraticSemanticNumericV2(parts[1], workingSymbols); }
       catch (_) { return { recognized: false }; }
@@ -2695,12 +2701,16 @@
     // Standartinis a,b,c žymėjimas, kai reikšmės sutampa su įprastais vaidmenimis,
     // yra pakankamai aiškus jau pats savaime.
     const standard = parsed.length >= 1 && parsed.every(({ symbol, value }) => {
-      const role = symbol === 'a' ? 'A' : symbol === 'b' ? 'B' : symbol === 'c' ? 'C' : null;
+      const folded = symbol.toLowerCase();
+      const role = folded === 'a' ? 'A' : folded === 'b' ? 'B' : folded === 'c' ? 'C' : null;
       return role && semanticNumberMatches(value, context.canonicalCoefficients[role]);
     });
     if (standard) {
       const mapping = {};
-      for (const { symbol } of parsed) mapping[symbol] = symbol === 'a' ? 'A' : symbol === 'b' ? 'B' : 'C';
+      for (const { symbol } of parsed) {
+        const folded = symbol.toLowerCase();
+        mapping[symbol] = folded === 'a' ? 'A' : folded === 'b' ? 'B' : 'C';
+      }
       const candidates = semanticCandidateMappingsV2(context, Object.keys(mapping)).filter(candidate =>
         Object.entries(mapping).every(([symbol, role]) => candidate[symbol] === role));
       if (candidates.length) context.roleCandidates = candidates;
@@ -2726,13 +2736,79 @@
     };
   }
 
+  function semanticAstConstantValueV2(node) {
+    try {
+      const variables = semanticAstVariablesV2(node);
+      if (variables.size) return null;
+      const value = evaluateAst(node, {});
+      return Number.isFinite(value) ? value : null;
+    } catch (_) { return null; }
+  }
+
+  function semanticFlattenProductV2(node, out = []) {
+    if (node?.type === 'binary' && node.operator === '*') {
+      semanticFlattenProductV2(node.left, out);
+      semanticFlattenProductV2(node.right, out);
+    } else if (node) out.push(node);
+    return out;
+  }
+
+  function semanticNumericDiscriminantStructureMatchesV2(source, context) {
+    // Atpažįstame skaitinį B²−4AC įstatymą net tada, kai mokinys diskriminantą
+    // pavadino R, K ar kita raide: R=(-5)²−4·1·6=25−24=1.
+    try {
+      const expression = normalizeMathLiveAscii(source).replace(/\s+/g, '');
+      const ast = parseExpression(expression);
+      if (!ast || ast.type !== 'binary' || ast.operator !== '-') return false;
+
+      const left = ast.left;
+      let squareBase = null;
+      if (left?.type === 'binary' && left.operator === '^' && semanticNumberMatches(semanticAstConstantValueV2(left.right), 2)) {
+        squareBase = semanticAstConstantValueV2(left.left);
+      } else if (left?.type === 'binary' && left.operator === '*') {
+        const lv = semanticAstConstantValueV2(left.left);
+        const rv = semanticAstConstantValueV2(left.right);
+        if (lv !== null && rv !== null && semanticNumberMatches(lv, rv)) squareBase = lv;
+      }
+      if (squareBase === null || !semanticNumberMatches(squareBase, context.canonicalCoefficients.B)) return false;
+
+      const factors = semanticFlattenProductV2(ast.right).map(semanticAstConstantValueV2);
+      if (factors.some(value => value === null) || factors.length !== 3) return false;
+      const expected = [4, context.canonicalCoefficients.A, context.canonicalCoefficients.C];
+      const used = new Array(factors.length).fill(false);
+      return expected.every(expectedValue => {
+        const index = factors.findIndex((value, i) => !used[i] && semanticNumberMatches(value, expectedValue));
+        if (index < 0) return false;
+        used[index] = true;
+        return true;
+      });
+    } catch (_) { return false; }
+  }
+
+  function semanticSqrtLocalDiscriminantSymbolsV2(source, context) {
+    // Jei anksčiau apibrėžtas savas simbolis (pvz. K=1), jo vaidmenį galima
+    // patikslinti vėliau panaudojus √K kvadratinės lygties formulėje. Vaidmuo
+    // nustatomas iš konteksto, o ne iš raidės pavadinimo.
+    const normalized = normalizeMathLiveAscii(source).replace(/√/g, 'sqrt');
+    const result = new Set();
+    const re = /sqrt\s*\(\s*([A-Za-z])\s*\)/g;
+    let match;
+    while ((match = re.exec(normalized))) {
+      const symbol = match[1];
+      if (!Object.prototype.hasOwnProperty.call(context.localSymbols, symbol)) continue;
+      if (!semanticNumberMatches(context.localSymbols[symbol], context.discriminant)) continue;
+      result.add(symbol);
+    }
+    return [...result];
+  }
+
   function classifyQuadraticDiscriminantV2(source, context) {
     let parts;
     try { parts = splitTopLevelEqualities(source); }
     catch (error) { return { recognized: false, parseError: error }; }
     if (parts.length < 2) return { recognized: false };
-    const left = parts[0].replace(/\s+/g, '').toLowerCase();
-    if (!/^[a-z]$/.test(left) || left === context.variable) return { recognized: false };
+    const left = parts[0].replace(/\s+/g, '');
+    if (!/^[A-Za-z]$/.test(left) || left === context.variable) return { recognized: false };
 
     const rhs = parts.slice(1);
     let formulaPart = null;
@@ -2740,22 +2816,50 @@
       const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== left && symbol !== context.variable);
       if (ids.length || /sqrt|√/i.test(part)) { formulaPart = part; break; }
     }
+    const numericFormulaPart = !formulaPart
+      ? rhs.find(part => semanticNumericDiscriminantStructureMatchesV2(part, context)) || null
+      : null;
 
-    // Grynas D=1 tebėra leidžiamas kaip įprastas trumpinys.
-    if (!formulaPart) {
-      if (left !== 'd' && !context.discriminantSymbols.has(left)) return { recognized: false };
+    // Vien tik D=1 tebėra patogus standartinis trumpinys. Mažoji d nėra
+    // automatiškai diskriminantas: d=7 yra paprastas mokinio simbolio apibrėžimas.
+    if (!formulaPart && !numericFormulaPart) {
+      if (left !== 'D' && !context.discriminantSymbols.has(left)) return { recognized: false };
       try {
         for (const part of rhs) {
           const value = evaluateQuadraticSemanticNumericV2(part, context.localSymbols);
           if (!semanticNumberMatches(value, context.discriminant)) {
-            return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai D = ${formatSemanticNumber(context.discriminant)}.` };
+            return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai jo reikšmė yra ${formatSemanticNumber(context.discriminant)}.` };
           }
         }
       } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
       context.discriminantSymbols.add(left);
       context.localSymbols[left] = context.discriminant;
       context.seenDiscriminant = true;
-      return { recognized: true, ok: true, status: 'correct', semanticType: 'derived-value', kind: 'discriminant', message: `Teisingai apskaičiuotas diskriminantas: ${left.toUpperCase()} = ${formatSemanticNumber(context.discriminant)}.` };
+      return { recognized: true, ok: true, status: 'correct', semanticType: 'derived-value', kind: 'discriminant', message: `Teisingai apskaičiuotas diskriminantas: ${left} = ${formatSemanticNumber(context.discriminant)}.` };
+    }
+
+    // Skaitinis B²−4AC įstatymas pats apibrėžia pasirinkto simbolio vaidmenį.
+    if (numericFormulaPart) {
+      try {
+        for (const part of rhs) {
+          const value = evaluateQuadraticSemanticNumericV2(part, context.localSymbols);
+          if (!semanticNumberMatches(value, context.discriminant)) {
+            return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai jo reikšmė yra ${formatSemanticNumber(context.discriminant)}.` };
+          }
+        }
+      } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
+      context.discriminantSymbols.add(left);
+      context.localSymbols[left] = context.discriminant;
+      context.seenDiscriminant = true;
+      context.semanticSteps.push({ semanticType: 'derived-value', kind: 'discriminant', value: context.discriminant });
+      return {
+        recognized: true,
+        ok: true,
+        status: 'correct',
+        semanticType: 'derived-value',
+        kind: 'discriminant',
+        message: `Atpažintas skaitinis diskriminanto formulės įstatymas; teisingai gauta ${left} = ${formatSemanticNumber(context.discriminant)}.`
+      };
     }
 
     const formulaSymbols = semanticIdentifiersV2(formulaPart)
@@ -2764,8 +2868,8 @@
     const beforeStructure = candidates.length;
     candidates = candidates.filter(candidate => semanticDiscriminantFormulaMatchesV2(formulaPart, context, candidate));
     if (!candidates.length) {
-      if (left === 'd' || beforeStructure) {
-        return { recognized: true, ok: false, message: 'Užrašyta formulė pagal pasirinktus simbolius neatitinka diskriminanto D = B² − 4AC.' };
+      if (left === 'D' || beforeStructure) {
+        return { recognized: true, ok: false, message: 'Užrašyta formulė pagal pasirinktus simbolius neatitinka diskriminanto formulės B² − 4AC.' };
       }
       return { recognized: false };
     }
@@ -2775,7 +2879,7 @@
       for (const part of rhs) {
         const value = evaluateQuadraticSemanticNumericV2(part, scope);
         if (!semanticNumberMatches(value, context.discriminant)) {
-          return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai D = ${formatSemanticNumber(context.discriminant)}.` };
+          return { recognized: true, ok: false, message: `Diskriminantas apskaičiuotas neteisingai. Šiai lygčiai jo reikšmė yra ${formatSemanticNumber(context.discriminant)}.` };
         }
       }
     } catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
@@ -2791,7 +2895,7 @@
       status: 'correct',
       semanticType: 'derived-value',
       kind: 'discriminant',
-      message: `Pritaikyta diskriminanto formulė pagal pasirinktus žymėjimus; teisingai gauta ${left.toUpperCase()} = ${formatSemanticNumber(context.discriminant)}.`
+      message: `Pritaikyta diskriminanto formulė pagal pasirinktus žymėjimus; teisingai gauta ${left} = ${formatSemanticNumber(context.discriminant)}.`
     };
   }
 
@@ -2845,7 +2949,7 @@
     try { parts = splitTopLevelEqualities(source); }
     catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
     if (parts.length < 2) return { recognized: false };
-    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '').toLowerCase();
+    const left = parts[0].replace(/\s+/g, '').replace(/_/g, '').replace(/[()]/g, '');
     if (!semanticVariableLhsMatches(left, context.variable)) return { recognized: false };
 
     const rhs = parts.slice(1);
@@ -2860,13 +2964,15 @@
     let matched = [];
     let matchedFormulaPart = null;
     for (const part of rhs) {
-      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== context.variable && !context.discriminantSymbols.has(symbol));
-      if (!ids.length) continue;
+      const inferredDiscriminants = semanticSqrtLocalDiscriminantSymbolsV2(part, context);
+      const inferredSet = new Set(inferredDiscriminants);
+      const ids = semanticIdentifiersV2(part).filter(symbol => symbol !== context.variable && !context.discriminantSymbols.has(symbol) && !inferredSet.has(symbol));
+      if (!ids.length && !inferredDiscriminants.length) continue;
       const candidates = semanticCandidateMappingsV2(context, ids);
       const localMatches = [];
       for (const candidate of candidates) {
-        const branch = semanticQuadraticRootFormulaBranchV2(part, context, candidate);
-        if (branch) localMatches.push({ candidate, branch });
+        const branch = semanticQuadraticRootFormulaBranchV2(part, context, candidate, inferredDiscriminants);
+        if (branch) localMatches.push({ candidate, branch, inferredDiscriminants });
       }
       if (localMatches.length) {
         matched = localMatches;
@@ -2882,7 +2988,7 @@
 
       let successful = null;
       for (const item of matched) {
-        const scope = semanticScopeForCandidateV2(context, item.candidate);
+        const scope = semanticScopeForCandidateV2(context, item.candidate, null, item.inferredDiscriminants || []);
         let value = null;
         let ok = true;
         try {
@@ -2895,6 +3001,11 @@
         if (ok) { successful = { ...item, value }; break; }
       }
       if (!successful) return { recognized: true, ok: false, message: 'Toje pačioje formulės eilutėje užrašytos reikšmės nėra lygios.' };
+      for (const symbol of successful.inferredDiscriminants || []) {
+        context.discriminantSymbols.add(symbol);
+        context.localSymbols[symbol] = context.discriminant;
+        context.seenDiscriminant = true;
+      }
       return {
         recognized: true,
         ok: true,
@@ -2982,7 +3093,7 @@
     catch (error) { return { recognized: true, ok: false, message: friendlyParseError(error) }; }
     if (parts.length < 2) return { recognized: false };
 
-    const left = String(parts[0] || '').replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '').toLowerCase();
+    const left = String(parts[0] || '').replace(/\s+/g, '').replace(/_/g, '').replace(/[(){}]/g, '');
     if (!semanticVariableLhsMatches(left, context.variable)) return { recognized: false };
 
     const rhs = parts.slice(1);
@@ -3456,7 +3567,7 @@
     catch (_) { return ''; }
     if (!parts.length) return '';
     const left = normalizedSemanticVariableLhs(parts[0]);
-    const match = left.match(/^([a-z])(?:[12])?$/);
+    const match = left.match(/^([A-Za-z])(?:[12])?$/);
     return match ? match[1] : '';
   }
 
@@ -3483,7 +3594,7 @@
     // lygtis x atžvilgiu, todėl jis tikrinamas pagal sprendimo kontekstą, o ne pagal sprendinių aibę.
     const localTransitionMode = transitionValidationSetting !== 'off' && transitionValidationSetting !== false;
     const semanticModeV1 = transitionValidationSetting === 'semantic-v1';
-    // P3.2.6.1: semantic-v3 naudoja tą patį patikrintą kvadratinės semantikos
+    // P3.2.6.2: semantic-v3 naudoja tą patį patikrintą kvadratinės semantikos
     // branduolį kaip v2, bet su nauju simbolių konteksto / įvesties preflight sluoksniu.
     const semanticModeV2 = transitionValidationSetting === 'semantic-v2' || transitionValidationSetting === 'semantic-v3';
     const semanticMode = semanticModeV1 || semanticModeV2;
@@ -3826,7 +3937,7 @@
       expectedVariable: primaryVariable
     };
 
-    // P3.2.6.1: prieš matematinį vertinimą atskirai tikriname, ar visas įrašas
+    // P3.2.6.2: prieš matematinį vertinimą atskirai tikriname, ar visas įrašas
     // apskritai perskaitomas. Nebaigta / nepalaikoma eilutė nėra matematinė klaida
     // ir neturi sunaudoti bandymo. Kito neapibrėžto pagrindinio simbolio atvejį
     // paliekame pilnam validatoriui – tai jau konteksto klaida, ne parserio ribotumas.

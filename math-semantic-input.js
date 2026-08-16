@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'P1.7.9.49-P3.2.6.1';
+  const VERSION = 'P1.7.9.49-P3.2.6.2';
   const KNOWN_FUNCTIONS = new Set(['sqrt']);
 
   function normalizeSource(value) {
@@ -24,18 +24,18 @@
   }
 
   function baseIdentifier(value) {
-    const source = String(value || '').trim().toLowerCase();
-    const match = source.match(/^([a-z])(?:_?\d+)?$/);
+    const source = String(value || '').trim();
+    const match = source.match(/^([A-Za-z])(?:_?\d+)?$/);
     return match ? match[1] : '';
   }
 
   function lexicalIdentifiers(source) {
-    const input = normalizeSource(source).toLowerCase();
-    const matches = input.match(/[a-z][a-z0-9_]*/g) || [];
+    const input = normalizeSource(source);
+    const matches = input.match(/[A-Za-z][A-Za-z0-9_]*/g) || [];
     const variables = new Set();
     const unknownWords = new Set();
     for (const token of matches) {
-      if (KNOWN_FUNCTIONS.has(token)) continue;
+      if (KNOWN_FUNCTIONS.has(token.toLowerCase())) continue;
       const base = baseIdentifier(token);
       if (base) variables.add(base);
       else unknownWords.add(token);
@@ -161,7 +161,7 @@
 
   function analyzeLine(source, context = {}) {
     const input = normalizeSource(source);
-    const primaryVariable = baseIdentifier(context.primaryVariable) || String(context.primaryVariable || '').toLowerCase();
+    const primaryVariable = baseIdentifier(context.primaryVariable) || String(context.primaryVariable || '');
     if (!input) return { status: 'empty', kind: 'empty', message: '', declarations: [] };
 
     const bracket = scanBrackets(input);
@@ -182,7 +182,7 @@
       return { status: 'incomplete', kind: 'syntax', message: 'Eilutė dar nebaigta.', declarations: [] };
     }
 
-    // P3.2.6.1: keli aiškūs simbolių priskyrimai vienoje eilutėje
+    // P3.2.6.2: keli aiškūs simbolių priskyrimai vienoje eilutėje
     // (pvz. p=1; q=5; r=6) yra normalios deklaracijos, o ne lygybių grandinė.
     let statements = null;
     try { statements = splitTopLevelStatements(input); }
@@ -231,8 +231,8 @@
     // (x₁=...=...), jos bazinis simbolis turi sutapti su sąlygos nežinomuoju,
     // nebent toks simbolis anksčiau aiškiai apibrėžtas. Tai dar nėra teisingumo
     // vertinimas – tik semantinio konteksto perspėjimas.
-    const rawLeftIdentifier = normalizeSource(parts[0]).replace(/[{}()\s]/g, '').toLowerCase();
-    const indexedSolutionSymbol = /^[a-z](?:_?[12])$/.test(rawLeftIdentifier);
+    const rawLeftIdentifier = normalizeSource(parts[0]).replace(/[{}()\s]/g, '');
+    const indexedSolutionSymbol = /^[A-Za-z](?:_?[12])$/.test(rawLeftIdentifier);
     if (parts.length > 2 && indexedSolutionSymbol && first && first !== primaryVariable && !knownSymbols.has(first)) {
       return {
         status: 'unsupported',
