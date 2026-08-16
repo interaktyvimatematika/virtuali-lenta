@@ -3646,9 +3646,26 @@
     catch (error) { return { recognized: false, parseError: error }; }
     if (!Array.isArray(parts) || parts.length !== 2) return { recognized: false };
 
-    const symbol = normalizedSemanticVariableLhs(parts[0]);
-    if (!/^[A-Za-z]$/.test(symbol) || symbol === context.variable) return { recognized: false };
-    const rhs = String(parts[1] || '').trim();
+    // P3.2.6.7: pakeitimo ryšys yra simetriška lygybė. Todėl vienodai
+    // atpažįstame tiek t = x - 3, tiek x - 3 = t. Nauju pakeitimo simboliu
+    // laikome tą lygybės pusę, kuri yra vienas naujas simbolis, o kitą pusę
+    // tikriname kaip su pradiniu nežinomuoju (ar jau žinomu pakeitimu)
+    // susietą išraišką.
+    const leftSymbol = normalizedSemanticVariableLhs(parts[0]);
+    const rightSymbol = normalizedSemanticVariableLhs(parts[1]);
+    const isCandidate = symbol => /^[A-Za-z]$/.test(symbol) && symbol !== context.variable;
+
+    let symbol = '';
+    let rhs = '';
+    if (isCandidate(leftSymbol)) {
+      symbol = leftSymbol;
+      rhs = String(parts[1] || '').trim();
+    } else if (isCandidate(rightSymbol)) {
+      symbol = rightSymbol;
+      rhs = String(parts[0] || '').trim();
+    } else {
+      return { recognized: false };
+    }
     if (!rhs) return { recognized: false };
 
     const rawIds = semanticSubstitutionIdentifiersV5(rhs);

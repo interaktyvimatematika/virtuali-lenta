@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'P1.7.9.49-P3.2.6.6';
+  const VERSION = 'P1.7.9.49-P3.2.6.7';
   const KNOWN_FUNCTIONS = new Set(['sqrt']);
 
   function normalizeSource(value) {
