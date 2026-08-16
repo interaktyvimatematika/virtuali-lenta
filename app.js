@@ -1665,6 +1665,9 @@
       const previousValues = [...step.values];
       const previousLatexValues = [...(step.latexValues || [])];
       step.type = type;
+      // P3.2.7.8: ARBA tampa tęstiniu šakų konteineriu.
+      if (type === 'alternatives' && !step.branchGroupId) step.branchGroupId = `branch-${task.id}-${Date.now()}-${index}`;
+      else if (type !== 'alternatives') delete step.branchGroupId;
       step.values = (type === 'alternatives' || type === 'conjunction')
         ? [previousValues[0] || '', previousValues[1] || '']
         : [previousValues[0] || ''];
@@ -1715,8 +1718,21 @@
             contextLabel: step.type === 'conjunction' ? `Pratybų ${index + 1} eilutės ${branchIndex + 1} kartu galiojanti sąlyga` : `Pratybų ${index + 1} eilutės ${branchIndex + 1} sprendimo šaka`,
             onCommit: (plain, latex) => commitValue(branchIndex, plain, latex),
             onEnter: () => {
-              const next = branches.querySelector(`[data-testid="step-input-${index}-${branchIndex + 1}"]`);
-              if (next) next.focus(); else focusNextStep();
+              if (step.type !== 'alternatives') {
+                const next = branches.querySelector(`[data-testid="step-input-${index}-${branchIndex + 1}"]`);
+                if (next) next.focus(); else focusNextStep();
+                return;
+              }
+              const groupId = step.branchGroupId || `branch-${task.id}-${Date.now()}-${index}`;
+              step.branchGroupId = groupId;
+              response.steps[index] = normalizeStructuredStep(step);
+              const rawNext = response.steps[index + 1];
+              const nextStep = rawNext ? normalizeStructuredStep(rawNext) : null;
+              if (!nextStep || nextStep.type !== 'alternatives' || String(nextStep.branchGroupId || '') !== groupId) {
+                response.steps.splice(index + 1, 0, createStructuredStep('alternatives', Array(step.values.length).fill(''), Array(step.values.length).fill(''), { branchGroupId: groupId }));
+              }
+              invalidateTaskResult(task.id); scheduleSave(); renderTask();
+              requestAnimationFrame(() => refs.responseHost.querySelector(branchIndex === 0 ? `[data-testid="step-input-${index + 1}"]` : `[data-testid="step-input-${index + 1}-${branchIndex}"]`)?.focus());
             }
           });
           field.classList.add('step-input', 'branch-input');
@@ -1754,6 +1770,23 @@
           requestAnimationFrame(() => fields.querySelector(`[data-testid="step-input-${index}-${step.values.length - 1}"]`)?.focus());
         });
         fields.appendChild(addBranch);
+        if (step.type === 'alternatives') {
+          const rawNext = response.steps[index + 1];
+          const nextStep = rawNext ? normalizeStructuredStep(rawNext) : null;
+          const isLastInGroup = !nextStep || nextStep.type !== 'alternatives' || String(nextStep.branchGroupId || '') !== String(step.branchGroupId || '');
+          if (isLastInGroup) {
+            const exitBranches = document.createElement('button');
+            exitBranches.type = 'button';
+            exitBranches.className = 'exit-branch-group-button';
+            exitBranches.textContent = '↓ Tęsti bendrą sprendimą';
+            exitBranches.addEventListener('click', () => {
+              response.steps.splice(index + 1, 0, createStructuredStep());
+              invalidateTaskResult(task.id); scheduleSave(); renderTask();
+              requestAnimationFrame(() => refs.responseHost.querySelector(`[data-testid="step-input-${index + 1}"]`)?.focus());
+            });
+            fields.appendChild(exitBranches);
+          }
+        }
       } else {
         if (step.type === 'solution-set') {
           const prefix = document.createElement('span');
@@ -3985,6 +4018,10 @@
     // nulinė sandauga, paprastose eilutėse užrašytas jos atvejų sprendimas
     // sekamas pagal matematinį faktorių ryšį, o ne pagal fizinę eilučių vietą.
     let implicitBranchState = null;
+    let explicitBranchGroupId = '';
+    let explicitBranchEquations = [];
+    let explicitBranchDescriptors = [];
+    let explicitBranchCandidates = [];
     for (let index = 0; index < steps.length; index += 1) {
       const step = normalizeStructuredStep(steps[index]);
       if (!stepHasContent(step)) {
@@ -7594,7 +7631,7 @@ KOKYBĖS REIKALAVIMAI:
     return values.filter(Number.isFinite);
   }
 
-  // P3.2.7.7: candidate-domain checks work symmetrically. A numeric equality such
+  // P3.2.7.8: candidate-domain checks work symmetrically. A numeric equality such
   // as -2+2=0 rejects x=-2, while 2+2=4 confirms x=2. We match the shown numeric
   // value to the original denominator evaluated at recently obtained candidates.
   function classifyDomainCandidateCheckV9(source, initialEquation, variable, candidates, excludedValues) {
@@ -7727,44 +7764,72 @@ KOKYBĖS REIKALAVIMAI:
         structuredConjunctionPrefix = messages.length ? `${messages.join(' ')} ` : '';
       }
 
-      // P3.2.7.6: „ARBA“ / Šakos UI veikia ir trupmeninėje lygtyje, kai ankstesnė
-      // lygtis aiškiai yra nulinė sandauga. Šakos pirmiausia tikrinamos algebriškai
-      // be AD filtro; AD filtras pritaikomas kandidatams, o ne pačiam šakojimo veiksmui.
+      // P3.2.7.8: tęstinis ARBA konteineris. Pirmoji eilutė tikrinama pagal bendrą
+      // sprendinių aibę, todėl veikia ir AB=0, ir x²=a -> ±√a. Tolesnės eilutės
+      // priklauso konkrečiam stulpeliui / šakai.
       if (step.type === 'alternatives') {
-        if (!implicitBranchState) implicitBranchState = implicitZeroProductBranchStateV5(previousEquation, rawTargetDescriptor);
-        if (!implicitBranchState) {
-          stepResults[index] = { status: 'unrecognized', message: '„ARBA“ šakas galiu automatiškai susieti tada, kai ankstesnis žingsnis aiškiai yra nulinė sandauga.' };
-          return { status: 'unrecognized', title: 'Neaiški šakų kilmė', message: stepResults[index].message, stepResults };
-        }
+        const groupId = String(step.branchGroupId || `explicit-${index}`);
+        const continuing = Boolean(explicitBranchGroupId && groupId === explicitBranchGroupId);
         const messages = [];
-        for (const value of step.values) {
-          let equation, rawDescriptor;
+        if (!continuing) {
+          const equations = [];
+          const rawDescriptors = [];
           try {
-            equation = parseEquation(value);
-            rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor;
+            for (const value of step.values) {
+              if (!String(value || '').trim()) throw new Error('Užpildyk pirmą kiekvienos ARBA šakos eilutę.');
+              const equation = parseEquation(value);
+              equations.push(equation);
+              rawDescriptors.push(analyzeRationalEquationV7(equation, targetVariable, []).descriptor);
+            }
           } catch (error) {
             stepResults[index] = { status: 'incorrect', message: friendlyParseError(error) };
-            return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio šakos`, message: friendlyParseError(error), stepResults };
+            return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio šakų`, message: friendlyParseError(error), stepResults };
           }
-          const branchResult = registerImplicitSequentialBranchV5(implicitBranchState, equation, rawDescriptor, rawTargetDescriptor, targetVariable);
-          if (!branchResult.recognized) {
-            stepResults[index] = { status: 'incorrect', message: 'Viena iš „ARBA“ šakų neišplaukia iš ankstesnės nulinės sandaugos.' };
+          const union = unionEquationDescriptors(rawDescriptors);
+          const previousRaw = analyzeRationalEquationV7(previousEquation, targetVariable, []).descriptor;
+          if (!samePolynomialSolutionSet(previousRaw, union)) {
+            stepResults[index] = { status: 'incorrect', message: 'Šios ARBA šakos kartu nesudaro ankstesnės lygties sprendinių aibės.' };
             return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: stepResults[index].message, stepResults };
           }
-          const root = descriptorRoots(rawDescriptor)[0];
-          const isolated = isVariableIsolated(equation, targetVariable, root);
-          if (isolated) {
-            if (!recentDomainCandidates.some(value => semanticNumberMatches(value, root))) recentDomainCandidates.push(root);
-            if (isExcluded(root)) pendingExcludedCandidate = root;
+          explicitBranchGroupId = groupId; explicitBranchEquations = equations; explicitBranchDescriptors = rawDescriptors;
+          explicitBranchCandidates = rawDescriptors.map((descriptor, branchIndex) => {
+            const roots = descriptorRoots(descriptor);
+            const root = roots.length === 1 && isVariableIsolated(equations[branchIndex], targetVariable, roots[0]) ? roots[0] : null;
+            if (root !== null && !recentDomainCandidates.some(value => semanticNumberMatches(value, root))) recentDomainCandidates.push(root);
+            if (root !== null && isExcluded(root)) pendingExcludedCandidate = root;
+            return root;
+          });
+          messages.push('ARBA šakos teisingai išskaido ankstesnį žingsnį.');
+        } else {
+          const nextEquations = [...explicitBranchEquations], nextDescriptors = [...explicitBranchDescriptors], nextCandidates = [...explicitBranchCandidates];
+          for (let branchIndex = 0; branchIndex < step.values.length; branchIndex += 1) {
+            const value = String(step.values[branchIndex] || '').trim();
+            if (!value) continue;
+            const pool = nextCandidates[branchIndex] !== null && nextCandidates[branchIndex] !== undefined ? [nextCandidates[branchIndex]] : recentDomainCandidates;
+            const check = classifyDomainCandidateCheckV9(value, initialEquation, targetVariable, pool, excludedValues);
+            if (check.recognized) { messages.push(`Šaka ${branchIndex + 1}: ${check.message}`); continue; }
+            let equation, rawDescriptor;
+            try { equation = parseEquation(value); rawDescriptor = analyzeRationalEquationV7(equation, targetVariable, []).descriptor; }
+            catch (error) { stepResults[index] = { status: 'incorrect', message: `Šaka ${branchIndex + 1}: ${friendlyParseError(error)}` }; return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnio ${branchIndex + 1} šaką`, message: stepResults[index].message, stepResults }; }
+            if (!samePolynomialSolutionSet(nextDescriptors[branchIndex], rawDescriptor)) {
+              stepResults[index] = { status: 'incorrect', message: `Šaka ${branchIndex + 1} nebeišlaiko savo ankstesnės sprendinių aibės.` };
+              return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnio ${branchIndex + 1} šaką`, message: stepResults[index].message, stepResults };
+            }
+            nextEquations[branchIndex] = equation; nextDescriptors[branchIndex] = rawDescriptor;
+            const roots = descriptorRoots(rawDescriptor);
+            if (roots.length === 1 && isVariableIsolated(equation, targetVariable, roots[0])) {
+              nextCandidates[branchIndex] = roots[0];
+              if (!recentDomainCandidates.some(candidate => semanticNumberMatches(candidate, roots[0]))) recentDomainCandidates.push(roots[0]);
+              if (isExcluded(roots[0])) pendingExcludedCandidate = roots[0];
+              messages.push(`Šaka ${branchIndex + 1}: gautas kandidatas ${targetVariable}=${formatSemanticNumber(roots[0])}.`);
+            } else messages.push(`Šaka ${branchIndex + 1}: žingsnis lygiavertis ankstesniam šios šakos žingsniui.`);
           }
-          messages.push(branchMessageForRoot(branchResult.message, root, isolated));
+          explicitBranchEquations = nextEquations; explicitBranchDescriptors = nextDescriptors; explicitBranchCandidates = nextCandidates;
         }
-        const allIsolated = implicitBranchState.branches.size === implicitBranchState.factors.length
-          && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
-        if (allIsolated) completed = true;
         stepResults[index] = { status: 'correct', message: messages.join(' ') };
         continue;
       }
+      if (explicitBranchGroupId) { explicitBranchGroupId = ''; explicitBranchEquations = []; explicitBranchDescriptors = []; explicitBranchCandidates = []; }
 
       let source = structuredConjunctionSource !== null ? structuredConjunctionSource : String(step.values[0] || '').trim();
       let structuralPrefix = structuredConjunctionPrefix;

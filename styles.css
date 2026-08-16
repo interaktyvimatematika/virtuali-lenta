@@ -8316,3 +8316,26 @@ body.p2-shell .p2-preview-hint > p {
 }
 .p327-semantic-analysis strong { font-weight:900; }
 [data-p327-superseded-analysis="true"] { display:none !important; }
+
+/* P3.2.7.8 — tęstinis ARBA šakų konteineris */
+.step-type-alternatives .step-entry {
+  border-left: 2px solid rgba(91, 105, 135, .18);
+  padding-left: 8px;
+}
+.exit-branch-group-button {
+  margin-top: 7px;
+  border: 1px dashed rgba(91, 105, 135, .38);
+  border-radius: 8px;
+  background: transparent;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12px;
+  color: #5f697c;
+  cursor: pointer;
+}
+.exit-branch-group-button:hover { background: rgba(91, 105, 135, .06); }
+
+/* P3.2.7.8 — tęstinis ARBA šakų konteineris */
+.step-type-alternatives .step-entry { border-left: 2px solid rgba(91,105,135,.18); padding-left: 8px; }
+.exit-branch-group-button { margin-top:7px; border:1px dashed rgba(91,105,135,.38); border-radius:8px; background:transparent; padding:5px 9px; font:inherit; font-size:12px; color:#5f697c; cursor:pointer; }
+.exit-branch-group-button:hover { background:rgba(91,105,135,.06); }
