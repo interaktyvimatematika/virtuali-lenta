@@ -3850,67 +3850,91 @@
     }
   }
 
+  // P3.2.7.10.7: bendras implicitinių ARBA šakų modelis.
+  // „Šakos“ UI nėra matematinės prasmės šaltinis. Jei ankstesnė lygtis turi
+  // baigtinę kelių sprendinių aibę, viena paprasta eilutė gali pradėti vieną
+  // tos aibės šaką, o kita eilutė – kitą. Šakos atpažįstamos pagal sprendinių
+  // aibes, ne pagal konkrečią lygties formą (todėl veikia ne tik AB=0).
+  //
+  // Seną funkcijos pavadinimą paliekame dėl minimalaus regresijų paviršiaus:
+  // nuo šios versijos ji kuria bendrą finite-root branch state.
   function implicitZeroProductBranchStateV5(anchorEquation, targetDescriptor) {
-    if (!anchorEquation) return null;
-    let factors;
-    try { factors = nonzeroVariableFactorsFromZeroProduct(anchorEquation); }
-    catch (_) { return null; }
-    if (!Array.isArray(factors) || factors.length < 2) return null;
+    if (!anchorEquation || !targetDescriptor) return null;
     const targetRoots = descriptorRoots(targetDescriptor);
-    if (targetRoots.length && factors.length !== targetRoots.length) return null;
+    if (targetRoots.length < 2) return null;
+
+    let anchorDescriptor;
+    try {
+      const variable = descriptorVariable(targetDescriptor);
+      anchorDescriptor = describePolynomialEquation(anchorEquation, variable);
+    } catch (_) {
+      return null;
+    }
+    const anchorRoots = descriptorRoots(anchorDescriptor);
+    if (anchorRoots.length < 2 || !sameRootValues(anchorRoots, targetRoots)) return null;
+
     return {
-      kind: 'implicit-zero-product',
+      kind: 'implicit-finite-root-branches',
       anchorEquation,
-      factors,
+      variable: descriptorVariable(targetDescriptor),
+      branchRoots: [...anchorRoots],
+      // Compatibility alias: senesni warning blokai naudoja .factors.length.
+      factors: [...anchorRoots],
       branches: new Map()
     };
   }
 
   function implicitBranchMatchIndexV5(state, equation) {
     if (!state || !equation) return -1;
-    let polynomial;
-    try { polynomial = equationPolynomial(equation); }
-    catch (_) { return -1; }
-    for (let index = 0; index < state.factors.length; index += 1) {
-      if (polynomialProportionalFactor(state.factors[index], polynomial) !== null) return index;
+    let descriptor;
+    try {
+      descriptor = describePolynomialEquation(equation, state.variable || null);
+    } catch (_) {
+      return -1;
     }
-    return -1;
+    const roots = descriptorRoots(descriptor);
+    if (roots.length !== 1) return -1;
+    const branchRoots = Array.isArray(state.branchRoots) ? state.branchRoots : [];
+    return branchRoots.findIndex(root => semanticNumberMatches(root, roots[0]));
   }
 
   function registerImplicitSequentialBranchV5(state, equation, descriptor, targetDescriptor, targetVariable) {
     if (!state || !equation || !descriptor) return { recognized: false };
     const roots = descriptorRoots(descriptor);
     if (roots.length !== 1) return { recognized: false };
-    const expectedRoots = descriptorRoots(targetDescriptor);
-    if (expectedRoots.length && !expectedRoots.some(root => semanticNumberMatches(root, roots[0]))) return { recognized: false };
 
-    const factorIndex = implicitBranchMatchIndexV5(state, equation);
-    if (factorIndex < 0) return { recognized: false };
+    const expectedRoots = Array.isArray(state.branchRoots) && state.branchRoots.length
+      ? state.branchRoots
+      : descriptorRoots(targetDescriptor);
+    const branchIndex = expectedRoots.findIndex(root => semanticNumberMatches(root, roots[0]));
+    if (branchIndex < 0) return { recognized: false };
 
-    const previous = state.branches.get(factorIndex);
+    const previous = state.branches.get(branchIndex);
     const isolated = isVariableIsolated(equation, targetVariable, roots[0]);
-    state.branches.set(factorIndex, {
+    state.branches.set(branchIndex, {
       equation,
       descriptor,
       root: roots[0],
       isolated: Boolean(previous?.isolated || isolated)
     });
 
-    const allSeen = state.branches.size === state.factors.length;
+    const allSeen = state.branches.size === expectedRoots.length;
     const allIsolated = allSeen && [...state.branches.values()].every(branch => branch.isolated);
     const foundRoots = [...state.branches.values()].map(branch => branch.root);
     const complete = allIsolated && sameRootValues(foundRoots, expectedRoots);
+
     return {
       recognized: true,
       ok: true,
-      factorIndex,
+      factorIndex: branchIndex,
+      branchIndex,
       isNew: !previous,
       allSeen,
       allIsolated,
       complete,
       message: !previous
-        ? `Atpažinta ${factorIndex + 1}-oji nulinės sandaugos sprendimo šaka.`
-        : `Tęsiama ${factorIndex + 1}-oji sprendimo šaka; jos sprendinių aibė išlieka ta pati.`
+        ? `Atpažinta ${branchIndex + 1}-oji alternatyvi sprendimo šaka.`
+        : `Tęsiama ${branchIndex + 1}-oji alternatyvi sprendimo šaka; jos sprendinių aibė išlieka ta pati.`
     };
   }
 
@@ -4329,10 +4353,10 @@
         continue;
       }
 
-      // P3.2.6.5: automatinis nuoseklių šakų sekimas paprastose eilutėse.
-      // Naują šakų kontekstą leidžiame pradėti tik iš aiškios nulinės sandaugos,
-      // todėl dvi atsitiktinės viena po kitos parašytos lygtys nėra savavališkai
-      // paverčiamos „šakomis“.
+      // P3.2.7.10.7: automatinis nuoseklių alternatyvių šakų sekimas
+      // paprastose eilutėse. Šaką leidžiame pradėti tik tada, kai ankstesnė
+      // lygtis turi aiškią baigtinę kelių sprendinių aibę, o nauja eilutė
+      // atitinka vieną iš tų sprendinių. Taip šakojimas nėra pririštas prie AB=0.
       if (semanticModeV2 && step.type !== 'alternatives' && equation) {
         if (!implicitBranchState) {
           const candidateState = implicitZeroProductBranchStateV5(previousEquation, previousDescriptor);
@@ -4346,7 +4370,7 @@
           );
           if (branchResult.recognized) {
             stepResults[index] = { status: 'correct', message: branchResult.message };
-            previousSemanticKind = 'implicit-zero-product-branch';
+            previousSemanticKind = 'implicit-alternative-branch';
             usedSemanticStep = true;
             if (branchResult.complete) completed = true;
             continue;
@@ -4430,7 +4454,7 @@
         status: 'warning',
         title: 'Šakojimas suprastas, bet sprendimas dar neužbaigtas',
         message: !allSeen
-          ? `Atpažinau ${seen} iš ${total} nulinės sandaugos šakų. Užrašyk ir likusį atvejį.`
+          ? `Atpažinau ${seen} iš ${total} alternatyvių sprendimo šakų. Užrašyk ir likusį atvejį.`
           : !allReturned
             ? `Atpažinau abi sprendimo šakas. Užbaik jas grįždamas prie pradinio nežinomojo ${targetVariable} arba pateik galutinę sprendinių aibę.`
             : 'Šakos atpažintos, tačiau galutinis rezultatas dar neužfiksuotas.',
@@ -7988,8 +8012,10 @@ KOKYBĖS REIKALAVIMAI:
         return { status: 'incorrect', title: `Nepavyko perskaityti ${index + 1} žingsnio`, message: friendlyParseError(error), stepResults };
       }
 
-      // Automatinės nuoseklios šakos paprastose eilutėse: x-2=0 / x+2=0 / x=2 / x=-2.
-      // Draudžiamas x=-2 čia yra teisėtai gautas kandidatas, o ne algebrinė klaida.
+      // P3.2.7.10.7: bendros implicitinės ARBA šakos paprastose eilutėse.
+      // Veikia tiek po nulinės sandaugos, tiek po bet kurios ankstesnės lygties,
+      // kurios baigtinė sprendinių aibė turi kelias alternatyvas (pvz. x²=4).
+      // AD draudžiamas kandidatas vis tiek gali būti teisėtai gauta algebrinė šaka.
       if (!implicitBranchState) {
         const candidateState = implicitZeroProductBranchStateV5(previousEquation, rawTargetDescriptor);
         if (candidateState && implicitBranchMatchIndexV5(candidateState, equation) >= 0) implicitBranchState = candidateState;
@@ -8052,7 +8078,7 @@ KOKYBĖS REIKALAVIMAI:
         status: 'warning',
         title: 'Šakojimas suprastas, bet sprendimas dar neužbaigtas',
         message: !allSeen
-          ? `Atpažinau ${seen} iš ${total} nulinės sandaugos šakų. Užrašyk ir likusį atvejį.`
+          ? `Atpažinau ${seen} iš ${total} alternatyvių sprendimo šakų. Užrašyk ir likusį atvejį.`
           : !allIsolated
             ? `Atpažinau abi algebrines šakas. Užbaik jų kandidatų skaičiavimą; AD (${formatDomainRestrictionsV7(targetVariable, excludedValues)}) bus pritaikyta gautoms reikšmėms.`
             : 'Šakos atpažintos, tačiau galutinis rezultatas dar neužfiksuotas.',
