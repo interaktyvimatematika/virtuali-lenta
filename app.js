@@ -2472,7 +2472,11 @@
       localSymbols: {},
       discriminantSymbols: new Set(),
       roleCandidates: null,
-      pendingDefinitions: []
+      pendingDefinitions: [],
+      // P3.2.6.5: pagalbiniai pakeitimo kintamieji saugomi atskirai nuo
+      // skaitinių žymėjimų. Pvz. t = x - 3 nėra skaitinė konstanta – tai
+      // ryšys su pradiniu nežinomuoju, kurį vėliau galima saugiai išskleisti.
+      substitutions: {}
     };
   }
 
@@ -3594,6 +3598,193 @@
   }
 
 
+  // P3.2.6.5: pakeitimo kintamasis nėra „kitas lygties nežinomasis“.
+  // Jei mokinys aiškiai apibrėžia t = f(x), tolesnes lygtis su t tikriname
+  // išskleidę t atgal į f(x). Taip matematinė prasmė išlieka susieta su
+  // pradine x lygtimi, o vien atsitiktinis y = 7 tokios teisės nesuteikia.
+  function semanticSubstitutionIdentifiersV5(source) {
+    return semanticIdentifiersV2(source).filter(Boolean);
+  }
+
+  function semanticExpandSubstitutionsV5(source, context, excludedSymbol = '') {
+    const substitutions = context?.substitutions || {};
+    let result = normalizeMathLiveAscii(source);
+    let used = false;
+    let guard = 0;
+    while (guard++ < 12) {
+      let changed = false;
+      result = result.replace(/[A-Za-z]+/g, token => {
+        if (token.toLowerCase() === 'sqrt') return token;
+        if (token.length !== 1 || token === excludedSymbol) return token;
+        const entry = substitutions[token];
+        if (!entry?.expanded) return token;
+        changed = true;
+        used = true;
+        return `(${entry.expanded})`;
+      });
+      if (!changed) break;
+    }
+    return { source: result, used };
+  }
+
+  function classifyQuadraticSubstitutionDefinitionV5(source, context) {
+    let parts;
+    try { parts = splitTopLevelEqualities(source); }
+    catch (error) { return { recognized: false, parseError: error }; }
+    if (!Array.isArray(parts) || parts.length !== 2) return { recognized: false };
+
+    const symbol = normalizedSemanticVariableLhs(parts[0]);
+    if (!/^[A-Za-z]$/.test(symbol) || symbol === context.variable) return { recognized: false };
+    const rhs = String(parts[1] || '').trim();
+    if (!rhs) return { recognized: false };
+
+    const rawIds = semanticSubstitutionIdentifiersV5(rhs);
+    const knownSubstitutions = new Set(Object.keys(context.substitutions || {}));
+    const referencesVariable = rawIds.includes(context.variable)
+      || rawIds.some(id => knownSubstitutions.has(id));
+    if (!referencesVariable) return { recognized: false };
+
+    if (rawIds.includes(symbol)) {
+      return { recognized: true, ok: false, message: `Pakeitimo ${symbol} apibrėžimas negali remtis pačiu ${symbol}.` };
+    }
+    if (Object.prototype.hasOwnProperty.call(context.localSymbols || {}, symbol) || context.discriminantSymbols?.has(symbol)) {
+      return { recognized: true, ok: false, message: `Simbolis ${symbol} šiame sprendime jau turi kitą apibrėžimą. Pakeitimui pasirink kitą žymenį.` };
+    }
+
+    const expanded = semanticExpandSubstitutionsV5(rhs, context, symbol).source;
+    const expandedIds = semanticSubstitutionIdentifiersV5(expanded);
+    if (expandedIds.some(id => id !== context.variable)) {
+      return {
+        recognized: true,
+        ok: false,
+        message: `Pakeitimo ${symbol} apibrėžime liko su pradiniu nežinomuoju nesusietų simbolių: ${expandedIds.filter(id => id !== context.variable).join(', ')}.`
+      };
+    }
+
+    try {
+      const ast = parseExpression(expanded);
+      const variables = semanticAstVariablesV2(ast);
+      if (!variables.size || [...variables].some(id => id !== String(context.variable).toLowerCase())) {
+        return { recognized: false };
+      }
+    } catch (error) {
+      return { recognized: true, ok: false, message: friendlyParseError(error) };
+    }
+
+    const normalizedExpanded = normalizeMathLiveAscii(expanded).replace(/\s+/g, '');
+    const existing = context.substitutions?.[symbol];
+    if (existing) {
+      const same = normalizeMathLiveAscii(existing.expanded || '').replace(/\s+/g, '') === normalizedExpanded;
+      if (!same) {
+        return { recognized: true, ok: false, message: `Simbolis ${symbol} jau buvo apibrėžtas kitu pakeitimu.` };
+      }
+      return {
+        recognized: true,
+        ok: true,
+        status: 'correct',
+        semanticType: 'substitution-definition',
+        kind: 'substitution-definition',
+        symbol,
+        message: `Patvirtintas pakeitimas ${symbol} = ${rhs}.`
+      };
+    }
+
+    context.substitutions[symbol] = { source: rhs, expanded };
+    context.semanticSteps.push({ semanticType: 'substitution-definition', symbol, expanded });
+    return {
+      recognized: true,
+      ok: true,
+      status: 'correct',
+      semanticType: 'substitution-definition',
+      kind: 'substitution-definition',
+      symbol,
+      message: `Pakeitimas ${symbol} = ${rhs} susietas su pradiniu nežinomuoju ${context.variable}.`
+    };
+  }
+
+  function parseQuadraticSubstitutionEquationV5(source, context) {
+    const expanded = semanticExpandSubstitutionsV5(source, context);
+    if (!expanded.used) return { recognized: false };
+    try {
+      const equation = parseEquation(expanded.source);
+      const descriptor = describePolynomialEquation(equation);
+      return {
+        recognized: true,
+        ok: true,
+        equation,
+        descriptor,
+        expandedSource: expanded.source,
+        message: 'Pritaikytas anksčiau apibrėžtas pakeitimas; lygtis patikrinta pradinio nežinomojo kontekste.'
+      };
+    } catch (error) {
+      return { recognized: true, ok: false, message: friendlyParseError(error) };
+    }
+  }
+
+  function implicitZeroProductBranchStateV5(anchorEquation, targetDescriptor) {
+    if (!anchorEquation) return null;
+    let factors;
+    try { factors = nonzeroVariableFactorsFromZeroProduct(anchorEquation); }
+    catch (_) { return null; }
+    if (!Array.isArray(factors) || factors.length < 2) return null;
+    const targetRoots = descriptorRoots(targetDescriptor);
+    if (targetRoots.length && factors.length !== targetRoots.length) return null;
+    return {
+      kind: 'implicit-zero-product',
+      anchorEquation,
+      factors,
+      branches: new Map()
+    };
+  }
+
+  function implicitBranchMatchIndexV5(state, equation) {
+    if (!state || !equation) return -1;
+    let polynomial;
+    try { polynomial = equationPolynomial(equation); }
+    catch (_) { return -1; }
+    for (let index = 0; index < state.factors.length; index += 1) {
+      if (polynomialProportionalFactor(state.factors[index], polynomial) !== null) return index;
+    }
+    return -1;
+  }
+
+  function registerImplicitSequentialBranchV5(state, equation, descriptor, targetDescriptor, targetVariable) {
+    if (!state || !equation || !descriptor) return { recognized: false };
+    const roots = descriptorRoots(descriptor);
+    if (roots.length !== 1) return { recognized: false };
+    const expectedRoots = descriptorRoots(targetDescriptor);
+    if (expectedRoots.length && !expectedRoots.some(root => semanticNumberMatches(root, roots[0]))) return { recognized: false };
+
+    const factorIndex = implicitBranchMatchIndexV5(state, equation);
+    if (factorIndex < 0) return { recognized: false };
+
+    const previous = state.branches.get(factorIndex);
+    const isolated = isVariableIsolated(equation, targetVariable, roots[0]);
+    state.branches.set(factorIndex, {
+      equation,
+      descriptor,
+      root: roots[0],
+      isolated: Boolean(previous?.isolated || isolated)
+    });
+
+    const allSeen = state.branches.size === state.factors.length;
+    const allIsolated = allSeen && [...state.branches.values()].every(branch => branch.isolated);
+    const foundRoots = [...state.branches.values()].map(branch => branch.root);
+    const complete = allIsolated && sameRootValues(foundRoots, expectedRoots);
+    return {
+      recognized: true,
+      ok: true,
+      factorIndex,
+      isNew: !previous,
+      allSeen,
+      allIsolated,
+      complete,
+      message: !previous
+        ? `Atpažinta ${factorIndex + 1}-oji nulinės sandaugos sprendimo šaka.`
+        : `Tęsiama ${factorIndex + 1}-oji sprendimo šaka; jos sprendinių aibė išlieka ta pati.`
+    };
+  }
+
   function quadraticStepPrimarySymbolV3(source) {
     let parts;
     try { parts = splitTopLevelEqualities(source); }
@@ -3618,6 +3809,7 @@
     } catch (_) { left = ''; }
     const indexedMatch = left.match(/^([A-Za-z])([12])$/);
     if (!indexedMatch && semanticContext?.localSymbols && Object.prototype.hasOwnProperty.call(semanticContext.localSymbols, symbol)) return null;
+    if (!indexedMatch && semanticContext?.substitutions && Object.prototype.hasOwnProperty.call(semanticContext.substitutions, symbol)) return null;
 
     return {
       status: 'incorrect',
@@ -3727,6 +3919,10 @@
     // Tai matematiškai tas pats, kas dvi greta esančios „Šakos“ eilutės.
     const sequentialFormulaRoots = [];
     const sequentialRootSlots = new Map();
+    // P3.2.6.5: „Šakos“ UI nėra privalomas. Kai ankstesnė lygtis aiškiai yra
+    // nulinė sandauga, paprastose eilutėse užrašytas jos atvejų sprendimas
+    // sekamas pagal matematinį faktorių ryšį, o ne pagal fizinę eilučių vietą.
+    let implicitBranchState = null;
     for (let index = 0; index < steps.length; index += 1) {
       const step = normalizeStructuredStep(steps[index]);
       if (!stepHasContent(step)) {
@@ -3787,6 +3983,18 @@
       }
 
       if (semanticModeV2 && step.type !== 'alternatives') {
+        const substitutionDefinition = classifyQuadraticSubstitutionDefinitionV5(step.values[0], semanticContext);
+        if (substitutionDefinition.recognized) {
+          if (!substitutionDefinition.ok) {
+            stepResults[index] = { status: 'incorrect', message: substitutionDefinition.message };
+            return { status: 'incorrect', title: `Patikrink ${index + 1} žingsnį`, message: substitutionDefinition.message, stepResults };
+          }
+          usedSemanticStep = true;
+          stepResults[index] = { status: substitutionDefinition.status || 'correct', message: substitutionDefinition.message };
+          previousSemanticKind = substitutionDefinition.kind;
+          continue;
+        }
+
         const mismatch = variableContextMismatchResultV3(step.values[0], targetVariable, semanticContext);
         if (mismatch) {
           stepResults[index] = mismatch;
@@ -3911,6 +4119,22 @@
             }
           }
 
+          if (!descriptor && semanticModeV2) {
+            const substitutionEquation = parseQuadraticSubstitutionEquationV5(source, semanticContext);
+            if (substitutionEquation.recognized) {
+              if (!substitutionEquation.ok) throw new Error(substitutionEquation.message);
+              equation = substitutionEquation.equation;
+              descriptor = substitutionEquation.descriptor;
+              semanticTransition = {
+                ok: true,
+                semanticType: 'substitution-use',
+                kind: 'substitution-use',
+                message: substitutionEquation.message
+              };
+              usedSemanticStep = true;
+            }
+          }
+
           if (!descriptor) {
             equation = parseEquation(source);
             descriptor = describePolynomialEquation(equation);
@@ -3959,6 +4183,31 @@
         previousSemanticKind = semanticTransition.kind;
         if (sameRootValues(sequentialFormulaRoots, expectedRoots)) completed = true;
         continue;
+      }
+
+      // P3.2.6.5: automatinis nuoseklių šakų sekimas paprastose eilutėse.
+      // Naują šakų kontekstą leidžiame pradėti tik iš aiškios nulinės sandaugos,
+      // todėl dvi atsitiktinės viena po kitos parašytos lygtys nėra savavališkai
+      // paverčiamos „šakomis“.
+      if (semanticModeV2 && step.type !== 'alternatives' && equation) {
+        if (!implicitBranchState) {
+          const candidateState = implicitZeroProductBranchStateV5(previousEquation, previousDescriptor);
+          if (candidateState && implicitBranchMatchIndexV5(candidateState, equation) >= 0) {
+            implicitBranchState = candidateState;
+          }
+        }
+        if (implicitBranchState) {
+          const branchResult = registerImplicitSequentialBranchV5(
+            implicitBranchState, equation, descriptor, targetDescriptor, targetVariable
+          );
+          if (branchResult.recognized) {
+            stepResults[index] = { status: 'correct', message: branchResult.message };
+            previousSemanticKind = 'implicit-zero-product-branch';
+            usedSemanticStep = true;
+            if (branchResult.complete) completed = true;
+            continue;
+          }
+        }
       }
 
       if (!samePolynomialSolutionSet(previousDescriptor, descriptor)) {
@@ -4027,6 +4276,23 @@
 
     if (semanticModeV2) finalizeQuadraticPendingDefinitionsV2(semanticContext, stepResults);
     const unresolvedSemanticContext = semanticModeV2 && stepResults.some(item => item?.status === 'warning');
+
+    if (!completed && implicitBranchState) {
+      const seen = implicitBranchState.branches.size;
+      const total = implicitBranchState.factors.length;
+      const allSeen = seen === total;
+      const allReturned = allSeen && [...implicitBranchState.branches.values()].every(branch => branch.isolated);
+      return {
+        status: 'warning',
+        title: 'Šakojimas suprastas, bet sprendimas dar neužbaigtas',
+        message: !allSeen
+          ? `Atpažinau ${seen} iš ${total} nulinės sandaugos šakų. Užrašyk ir likusį atvejį.`
+          : !allReturned
+            ? `Atpažinau abi sprendimo šakas. Užbaik jas grįždamas prie pradinio nežinomojo ${targetVariable} arba pateik galutinę sprendinių aibę.`
+            : 'Šakos atpažintos, tačiau galutinis rezultatas dar neužfiksuotas.',
+        stepResults
+      };
+    }
 
     if (!completed) {
       return {
