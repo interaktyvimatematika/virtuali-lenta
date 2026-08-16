@@ -15,6 +15,10 @@
   const originalCreate = module.createLibraryEditor.bind(module);
   const patchedEditors = new WeakSet();
   const inputTimers = new WeakMap();
+  // P3.2.7.10.3: saugome paskutinį į rengyklę atidarytą užduočių modelį.
+  // Nustatymų blokai kuriami asinchroniškai, todėl jų negalima patikimai
+  // hidratuoti vien tik open() momentu.
+  const openedTasksByRoot = new WeakMap();
 
   function cloneArray(value) {
     return Array.isArray(value) ? value.slice() : [];
@@ -107,7 +111,7 @@
   }
 
 
-  // P3.2.7.10.2 — the public library editor does not guarantee a flat
+  // P3.2.7.10.3 — the public library editor does not guarantee a flat
   // lesson.tasks array. Locate task objects recursively and bind injected
   // structure switches to the actual equation shown in each task card.
   function collectTaskObjects(value, out = [], seen = new WeakSet()) {
@@ -291,9 +295,27 @@
     });
   }
 
+  function hydrateStructureBlocks(root) {
+    if (!root?.querySelectorAll) return;
+    const tasks = openedTasksByRoot.get(root) || [];
+    const blocks = [...root.querySelectorAll('.p327-structure-requirements')];
+    const used = new Set();
+    blocks.forEach(block => {
+      const task = taskForBlock(block, tasks, used);
+      if (block.dataset.p327Hydrated === '1') return;
+      const options = task?.response?.options || {};
+      const andBox = block.querySelector('[data-p327-require="and"]');
+      const orBox = block.querySelector('[data-p327-require="or"]');
+      if (andBox) andBox.checked = Boolean(options.requireExplicitAnd);
+      if (orBox) orBox.checked = Boolean(options.requireExplicitOr);
+      block.dataset.p327Hydrated = '1';
+    });
+  }
+
   function scanEditor(root) {
     refreshEditorCopy(root);
     ensureStructureRequirements(root);
+    hydrateStructureBlocks(root);
   }
 
   function scheduleScan(root, field = null) {
@@ -330,25 +352,23 @@
     const bridgedEditor = {
       element: root,
       open(...args) {
-        const result = originalOpen ? originalOpen(...args) : undefined;
         const tasks = [];
         args.forEach(value => collectTaskObjects(value, tasks));
+        openedTasksByRoot.set(root, tasks);
+        const result = originalOpen ? originalOpen(...args) : undefined;
+
         const hydrate = () => {
-          scanEditor(root);
-          const blocks = root?.querySelectorAll ? [...root.querySelectorAll('.p327-structure-requirements')] : [];
-          const used = new Set();
-          blocks.forEach(block => {
-            const task = taskForBlock(block, tasks, used);
-            const options = task?.response?.options || {};
-            const andBox = block.querySelector('[data-p327-require="and"]');
-            const orBox = block.querySelector('[data-p327-require="or"]');
-            if (andBox) andBox.checked = Boolean(options.requireExplicitAnd);
-            if (orBox) orBox.checked = Boolean(options.requireExplicitOr);
+          // Jei tas pats DOM pernaudojamas kitai pamokai, priverstinai
+          // perskaitome naujai atidarytos pamokos nustatymus.
+          root?.querySelectorAll?.('.p327-structure-requirements').forEach(block => {
+            block.dataset.p327Hydrated = '0';
           });
+          scanEditor(root);
         };
         queueMicrotask(hydrate);
         requestAnimationFrame(hydrate);
         setTimeout(hydrate, 80);
+        setTimeout(hydrate, 220);
         return result;
       },
       close(...args) {
@@ -369,6 +389,7 @@
             task.response.options.requireExplicitAnd = Boolean(block.querySelector('[data-p327-require="and"]')?.checked);
             task.response.options.requireExplicitOr = Boolean(block.querySelector('[data-p327-require="or"]')?.checked);
           });
+          openedTasksByRoot.set(root, tasks);
           return handler(patched);
         });
       },
@@ -383,6 +404,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.2';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.3';
   window.P772LibraryEditor = bridgedModule;
 })();
