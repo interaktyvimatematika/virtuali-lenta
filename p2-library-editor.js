@@ -138,7 +138,7 @@
           : 'Trumpas atsakymas';
       const promptMarkup = task.type === 'solution'
         ? `<div class="p2-library-editor-rich-field p2-library-editor-equation-field is-wide">
-            <div class="p2-library-editor-field-title"><span>Pradinė lygtis</span><small>Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su x.</small></div>
+            <div class="p2-library-editor-field-title"><span>Pradinė lygtis</span><small>Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su vienu nežinomuoju.</small></div>
             <div data-task-equation-editor></div>
             <div class="p2-library-editor-equation-analysis" data-task-equation-analysis aria-live="polite"></div>
           </div>`
@@ -246,7 +246,7 @@
           ok: false,
           status: 'unsupported',
           title: 'Reikia tiesinės arba kvadratinės lygties',
-          message: 'Šioje rengyklės versijoje sprendimo eiga automatiškai tikrinama tik lygčių su x, kurios susiveda į pirmojo arba antrojo laipsnio lygtį.'
+          message: 'Šioje rengyklės versijoje sprendimo eiga automatiškai tikrinama lygtims su vienu nežinomuoju, kurios susiveda į pirmojo arba antrojo laipsnio lygtį.'
         };
       }
       return analysis;
@@ -296,7 +296,7 @@
         if (canRichEdit) {
           const equationEditor = RichEditor.createPromptEditor({
             value: currentTask.prompt || '',
-            placeholder: 'Įrašyk lygtį su x…',
+            placeholder: 'Įrašyk lygtį…',
             contextLabel: 'Pratybų pradinė lygtis',
             ariaLabel: 'Pradinė lygtis',
             toolbarTitle: 'Matematikos juosta · lygtis',
@@ -472,7 +472,7 @@
               validator: 'semantic-equation-chain',
               options: {
                 initial: prompt,
-                expectedVariable: 'x',
+                expectedVariable: analysis.variable || 'x',
                 minimumSteps,
                 autoDerived: true,
                 stepTransitionValidation: 'semantic-v3'

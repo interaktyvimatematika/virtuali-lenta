@@ -5043,13 +5043,17 @@ body.p2-shell .p2-paper-step:focus-within {
 }
 body.p2-shell .p2-paper-step.is-correct,
 body.p2-shell .p2-paper-step.is-error,
-body.p2-shell .p2-paper-step.is-warning {
+body.p2-shell .p2-paper-step.is-warning,
+body.p2-shell .p2-paper-step.is-input-unrecognized,
+body.p2-shell .p2-paper-step.is-input-incomplete {
   background: transparent;
   box-shadow: none;
 }
 body.p2-shell .p2-paper-step.is-error:before,
 body.p2-shell .p2-paper-step.is-warning:before,
-body.p2-shell .p2-paper-step.is-correct:before {
+body.p2-shell .p2-paper-step.is-correct:before,
+body.p2-shell .p2-paper-step.is-input-unrecognized:before,
+body.p2-shell .p2-paper-step.is-input-incomplete:before {
   content: "";
   position: absolute;
   left: -12px;
@@ -5061,6 +5065,13 @@ body.p2-shell .p2-paper-step.is-correct:before {
 body.p2-shell .p2-paper-step.is-correct:before { background: #69ad84; }
 body.p2-shell .p2-paper-step.is-warning:before { background: #d2ac43; }
 body.p2-shell .p2-paper-step.is-error:before { background: #d96b73; }
+/* P3.2.6: neutralios įvedimo suprantamumo būsenos nėra teisingumo vertinimas. */
+body.p2-shell .p2-paper-step.is-input-unrecognized:before { background: #9a7a32; opacity: .72; }
+body.p2-shell .p2-paper-step.is-input-incomplete:before { background: #8d99ad; opacity: .58; }
+body.p2-shell .p2-paper-step.is-input-unrecognized .p2-solution-step-state,
+body.p2-shell .p2-paper-step.is-input-unrecognized .p2-solution-step-message { color: #866b2f; }
+body.p2-shell .p2-paper-step.is-input-incomplete .p2-solution-step-state,
+body.p2-shell .p2-paper-step.is-input-incomplete .p2-solution-step-message { color: #788497; }
 
 body.p2-shell .p2-paper-step .p2-solution-step-main {
   min-width: 0;

@@ -362,6 +362,7 @@
 
   const practiceEngine = window.P772PracticeEngine || null;
   const liveSolutionTimers = new Map();
+  const solutionInputAnalysisTimers = new Map();
   let solutionFocusRequest = null;
   let activeSolutionStep = { taskId: null, index: 0 };
   let branchGroupSequence = 0;
@@ -426,6 +427,60 @@
       return { status: 'incorrect', title: 'Tikrinimo variklis nepasiekiamas', message: 'Perkrauk puslapį ir bandyk dar kartą.', stepResults: [] };
     }
     return practiceEngine.validateTask(solutionTaskForEngine(task), normalizeSolutionResponse(response));
+  }
+
+  // P3.2.6: ši būsena nėra teisingumo įvertinimas. Ji tik padeda mokiniui dar
+  // rašant suprasti, ar tikrintuvas apskritai moka perskaityti jo užrašytą eilutę.
+  function clearLiveSolutionInputState(row) {
+    if (!row) return;
+    row.classList.remove('is-input-unrecognized', 'is-input-incomplete');
+    const message = row.querySelector('.p2-solution-step-message');
+    const stateMark = row.querySelector('.p2-solution-step-state');
+    if (message) message.textContent = '';
+    if (stateMark) stateMark.textContent = '';
+  }
+
+  function applyLiveSolutionInputState(taskId, index, result) {
+    if (currentTask()?.id !== taskId) return;
+    const item = currentTaskState();
+    if (item?.validationResult || item?.solved || isTaskExhausted(item, taskId)) return;
+    const row = studentPanel.querySelector(`[data-solution-step="${index}"]`);
+    if (!row) return;
+    clearLiveSolutionInputState(row);
+    const status = String(result?.status || '');
+    if (status !== 'unsupported' && status !== 'incomplete') return;
+    const message = row.querySelector('.p2-solution-step-message');
+    const stateMark = row.querySelector('.p2-solution-step-state');
+    if (status === 'unsupported') {
+      row.classList.add('is-input-unrecognized');
+      if (stateMark) stateMark.textContent = '?';
+      if (message) message.textContent = result?.message || 'Šios eilutės tikrintuvas kol kas nesupranta.';
+      return;
+    }
+    row.classList.add('is-input-incomplete');
+    if (stateMark) stateMark.textContent = '…';
+    if (message) message.textContent = result?.message || 'Eilutė dar nebaigta.';
+  }
+
+  function scheduleSolutionInputAnalysis(task, index) {
+    if (!practiceEngine?.analyzeSolutionInput || !task?.id) return;
+    const key = `${task.id}:${index}`;
+    const previousTimer = solutionInputAnalysisTimers.get(key);
+    if (previousTimer) clearTimeout(previousTimer);
+    solutionInputAnalysisTimers.set(key, setTimeout(() => {
+      solutionInputAnalysisTimers.delete(key);
+      if (currentTask()?.id !== task.id) return;
+      const item = currentTaskState();
+      if (item?.validationResult || item?.solved || isTaskExhausted(item, task.id)) return;
+      const response = solutionResponseForItem(item);
+      let analysis;
+      try {
+        analysis = practiceEngine.analyzeSolutionInput(solutionTaskForEngine(task), response);
+      } catch (_) {
+        return;
+      }
+      applyLiveSolutionInputState(task.id, index, analysis?.stepResults?.[index]);
+    }, 560));
   }
 
   function emptyExpressionResponse() {
@@ -1078,12 +1133,13 @@
         validationResult: null
       }
     };
-    row?.classList.remove('is-correct', 'is-error', 'is-warning');
+    row?.classList.remove('is-correct', 'is-error', 'is-warning', 'is-input-unrecognized', 'is-input-incomplete');
     const message = row?.querySelector('.p2-solution-step-message');
     const stateMark = row?.querySelector('.p2-solution-step-state');
     if (message) message.textContent = '';
     if (stateMark) stateMark.textContent = '';
     publishLiveProgress(next, task.id);
+    scheduleSolutionInputAnalysis(task, index);
   }
 
   function setSolutionStepType(taskId, index, type) {
