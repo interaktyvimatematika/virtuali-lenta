@@ -340,8 +340,15 @@
   function enforceExplicitStructureRequirements(task, response, result) {
     if (!result || result.status !== 'correct') return result;
     const options = task?.response?.options || {};
-    const requireAnd = Boolean(options.requireExplicitAnd);
-    const requireOr = Boolean(options.requireExplicitOr);
+    const criteria = Array.isArray(task?.assessment?.criteria) ? task.assessment.criteria : [];
+    const requireAnd = Boolean(
+      options.requireExplicitAnd ||
+      criteria.some(item => item?.id === 'explicit-ir-structure' && item?.required !== false)
+    );
+    const requireOr = Boolean(
+      options.requireExplicitOr ||
+      criteria.some(item => item?.id === 'explicit-arba-structure' && item?.required !== false)
+    );
     if (!requireAnd && !requireOr) return result;
     const steps = normalizeStructuredSteps(response?.steps);
     const hasAnd = steps.some(step => step.type === 'conjunction');

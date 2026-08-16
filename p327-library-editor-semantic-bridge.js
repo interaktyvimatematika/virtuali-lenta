@@ -15,7 +15,7 @@
   const originalCreate = module.createLibraryEditor.bind(module);
   const patchedEditors = new WeakSet();
   const inputTimers = new WeakMap();
-  // P3.2.7.10.3.1: saugome paskutinį į rengyklę atidarytą užduočių modelį.
+  // P3.2.7.10.4: saugome paskutinį į rengyklę atidarytą užduočių modelį.
   // Nustatymų blokai kuriami asinchroniškai, todėl jų negalima patikimai
   // hidratuoti vien tik open() momentu.
   const openedTasksByRoot = new WeakMap();
@@ -111,7 +111,7 @@
   }
 
 
-  // P3.2.7.10.3.1 — the public library editor does not guarantee a flat
+  // P3.2.7.10.4 — the public library editor does not guarantee a flat
   // lesson.tasks array. Locate task objects recursively and bind injected
   // structure switches to the actual equation shown in each task card.
   function collectTaskObjects(value, out = [], seen = new WeakSet()) {
@@ -144,6 +144,68 @@
       excluded,
       values
     });
+  }
+
+
+  const STRUCTURE_CRITERION_AND = 'explicit-ir-structure';
+  const STRUCTURE_CRITERION_OR = 'explicit-arba-structure';
+
+  function structureRequirementsFromTask(task) {
+    const options = task?.response?.options || {};
+    const criteria = Array.isArray(task?.assessment?.criteria) ? task.assessment.criteria : [];
+    const requireAnd = Boolean(
+      options.requireExplicitAnd ||
+      criteria.some(item => item?.id === STRUCTURE_CRITERION_AND && item?.required !== false)
+    );
+    const requireOr = Boolean(
+      options.requireExplicitOr ||
+      criteria.some(item => item?.id === STRUCTURE_CRITERION_OR && item?.required !== false)
+    );
+    return { requireAnd, requireOr };
+  }
+
+  function writeStructureRequirementsToTask(task, requireAnd, requireOr) {
+    if (!task || typeof task !== 'object') return task;
+
+    task.response = task.response && typeof task.response === 'object' ? task.response : {};
+    task.response.options = task.response.options && typeof task.response.options === 'object'
+      ? task.response.options
+      : {};
+    // Compatibility mirror for runtime/older builds.
+    task.response.options.requireExplicitAnd = Boolean(requireAnd);
+    task.response.options.requireExplicitOr = Boolean(requireOr);
+
+    task.assessment = task.assessment && typeof task.assessment === 'object' ? task.assessment : {};
+    const existing = Array.isArray(task.assessment.criteria) ? task.assessment.criteria : [];
+    const criteria = existing.filter(item =>
+      item?.id !== STRUCTURE_CRITERION_AND && item?.id !== STRUCTURE_CRITERION_OR
+    );
+
+    if (requireAnd) {
+      criteria.push({
+        id: STRUCTURE_CRITERION_AND,
+        type: 'required-solution-structure',
+        operator: 'and',
+        label: 'Aiškiai pažymėtos kartu galiojančios sąlygos (IR)',
+        role: 'secondary',
+        required: true
+      });
+    }
+    if (requireOr) {
+      criteria.push({
+        id: STRUCTURE_CRITERION_OR,
+        type: 'required-solution-structure',
+        operator: 'or',
+        label: 'Aiškiai pažymėtos alternatyvios šakos (ARBA)',
+        role: 'secondary',
+        required: true
+      });
+    }
+
+    task.assessment.criteria = criteria;
+    if (!task.assessment.mode) task.assessment.mode = 'multi-condition';
+    if (!task.assessment.modelVersion) task.assessment.modelVersion = 1;
+    return task;
   }
 
   function applyRationalAnalysisToTask(task, analysis, source) {
@@ -303,11 +365,11 @@
     blocks.forEach(block => {
       const task = taskForBlock(block, tasks, used);
       if (block.dataset.p327Hydrated === '1') return;
-      const options = task?.response?.options || {};
+      const requirements = structureRequirementsFromTask(task);
       const andBox = block.querySelector('[data-p327-require="and"]');
       const orBox = block.querySelector('[data-p327-require="or"]');
-      if (andBox) andBox.checked = Boolean(options.requireExplicitAnd);
-      if (orBox) orBox.checked = Boolean(options.requireExplicitOr);
+      if (andBox) andBox.checked = requirements.requireAnd;
+      if (orBox) orBox.checked = requirements.requireOr;
       block.dataset.p327Hydrated = '1';
     });
   }
@@ -384,10 +446,11 @@
           blocks.forEach(block => {
             const task = taskForBlock(block, tasks, used);
             if (!task) return;
-            task.response = task.response && typeof task.response === 'object' ? task.response : {};
-            task.response.options = task.response.options && typeof task.response.options === 'object' ? task.response.options : {};
-            task.response.options.requireExplicitAnd = Boolean(block.querySelector('[data-p327-require="and"]')?.checked);
-            task.response.options.requireExplicitOr = Boolean(block.querySelector('[data-p327-require="or"]')?.checked);
+            writeStructureRequirementsToTask(
+              task,
+              Boolean(block.querySelector('[data-p327-require="and"]')?.checked),
+              Boolean(block.querySelector('[data-p327-require="or"]')?.checked)
+            );
           });
           openedTasksByRoot.set(root, tasks);
           return handler(patched);
@@ -404,6 +467,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.3.1';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.10.4';
   window.P772LibraryEditor = bridgedModule;
 })();
