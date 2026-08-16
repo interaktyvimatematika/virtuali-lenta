@@ -4,7 +4,7 @@
   const module = window.P772LibraryEditor;
   const analyzer = window.P327SemanticEquationAnalyzer;
   if (!module || typeof module.createLibraryEditor !== 'function') {
-    console.warn('P3.2.7.3: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
+    console.warn('P3.2.7.4: P772LibraryEditor modulis nerastas; semantinis tiltas neprijungtas.');
     return;
   }
   if (!analyzer || typeof analyzer.analyze !== 'function') {
@@ -58,6 +58,44 @@
     catch (error) {
       return { ok: false, status: 'error', title: 'Automatinė lygties analizė nepavyko', message: error?.message || String(error) };
     }
+  }
+
+  // P3.2.7.4 — one authoritative equation-analysis entry point for the
+  // library editor. The editor itself calls window.P772PracticeEngine at
+  // input time *and* again while validating before save. Replacing only a
+  // visual error message would therefore leave the old parser blocking
+  // rational equations on save. Keep the proven legacy analysis for
+  // non-rational equations, but delegate recognized rational equations to
+  // the domain-aware semantic analyzer.
+  const originalPracticeEngine = window.P772PracticeEngine;
+  if (originalPracticeEngine?.analyzeEquation) {
+    const legacyAnalyzeEquation = originalPracticeEngine.analyzeEquation.bind(originalPracticeEngine);
+    const unifiedPracticeEngine = {
+      ...originalPracticeEngine,
+      analyzeEquation(source) {
+        const semantic = analyzeSource(source);
+        if (semantic?.ok && semantic.rational) {
+          return {
+            ok: true,
+            status: semantic.status || 'ready',
+            title: semantic.title || 'Trupmeninė lygtis ir AD išanalizuotos automatiškai',
+            message: semantic.message || '',
+            validator: 'semantic-equation-chain',
+            variable: semantic.variable || 'x',
+            value: Array.isArray(semantic.values) && semantic.values.length === 1 ? semantic.values[0] : null,
+            values: cloneArray(semantic.values),
+            display: semantic.display || '',
+            degree: Number(semantic.degree) || 1,
+            solutionKind: semantic.solutionKind || (semantic.values?.length === 1 ? 'single' : 'multiple'),
+            rational: true,
+            domainRestrictions: semantic.domainDisplay || '',
+            excludedValues: cloneArray(semantic.excludedValues)
+          };
+        }
+        return legacyAnalyzeEquation(source);
+      }
+    };
+    window.P772PracticeEngine = Object.freeze(unifiedPracticeEngine);
   }
 
   function promptSourceFromTask(task) {
@@ -143,53 +181,20 @@
     return best || root;
   }
 
-  function hideSupersededOldAnalysis(scope) {
-    if (!scope?.querySelectorAll) return;
-    // IMPORTANT: never replace textContent on structural containers. The
-    // library editor can keep the MathLive input in the same div/section;
-    // replacing a container's textContent would delete the live math-field.
-    const nodes = scope.querySelectorAll('p,small,span,label');
-    nodes.forEach(node => {
+  function refreshEditorCopy(root) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('.p327-semantic-analysis').forEach(node => node.remove());
+    root.querySelectorAll('small').forEach(node => {
       if (node.children && node.children.length) return;
       const text = elementText(node);
-      if (!text || text.length > 520) return;
-      if (/Automatinė lygties analizė nepavyko/i.test(text) || /neatpažintas simbolis\s*[„“"']?\/[„“"']?/i.test(text)) {
-        node.dataset.p327SupersededAnalysis = 'true';
-      }
       if (/^Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su vienu nežinomuoju\.?$/i.test(text)) {
         node.textContent = 'Automatiškai tikrinamos tiesinės, kvadratinės ir palaikomos trupmeninės lygtys su vienu nežinomuoju. Trupmeninėms lygtims pradinė AD sekama automatiškai.';
       }
     });
   }
 
-  function upsertStatus(field, analysis, scope) {
-    if (!field?.parentElement || !analysis?.ok || !analysis.rational) return;
-    let status = field.parentElement.querySelector(':scope > .p327-semantic-analysis');
-    if (!status) {
-      status = document.createElement('div');
-      status.className = 'p327-semantic-analysis';
-      status.setAttribute('role', 'status');
-      field.insertAdjacentElement('afterend', status);
-    }
-    const domain = analysis.domainDisplay ? ` AD: ${analysis.domainDisplay}.` : '';
-    const solution = analysis.display ? ` Sprendinių aibė: ${analysis.display}.` : '';
-    const html = `<strong>✓ Trupmeninė lygtis atpažinta bendru semantiniu tikrintuvu.</strong>${domain}${solution}`;
-    if (status.innerHTML !== html) status.innerHTML = html;
-    field.dataset.p327SemanticEquation = 'rational';
-    hideSupersededOldAnalysis(scope);
-  }
-
   function scanEditor(root) {
-    if (!root?.querySelectorAll) return;
-    const fields = root.querySelectorAll('math-field,input,textarea');
-    fields.forEach(field => {
-      const source = readMathFieldSource(field);
-      if (!source || !source.includes('=')) return;
-      const analysis = analyzeSource(source);
-      if (!analysis?.ok || !analysis.rational) return;
-      const scope = findTaskScope(field, root);
-      upsertStatus(field, analysis, scope);
-    });
+    refreshEditorCopy(root);
   }
 
   function scheduleScan(root, field = null) {
@@ -249,6 +254,6 @@
 
   const bridgedModule = { ...module };
   bridgedModule.createLibraryEditor = documentRef => patchEditor(originalCreate(documentRef));
-  bridgedModule.semanticBridgeVersion = 'P3.2.7.3';
+  bridgedModule.semanticBridgeVersion = 'P3.2.7.4';
   window.P772LibraryEditor = bridgedModule;
 })();
