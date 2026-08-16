@@ -988,7 +988,7 @@
     const taskNumber = taskIndex(task.id) + 1;
     const exhausted = isTaskExhausted(item, task.id);
     const feedback = taskFeedbackMarkup(task, item);
-    const hint = item.hintUsed ? `<div class="p2-hint-box"><strong>Užuomina</strong><span>${escapeHtml(task.hint)}</span></div>` : '';
+    const hint = item.hintUsed ? `<div class="p2-hint-box"><strong>Užuomina</strong><span>${renderRichMathText(task.hint)}</span></div>` : '';
 
     const answerMarkup = solutionTask
       ? solutionEditorMarkup(task, item)
@@ -4194,7 +4194,7 @@
               <span>Pagalba: <b>${item.hintUsed ? 'naudota' : 'nenaudota'}</b></span>
               <span>Paskutinis pateiktas: <b>${answerText}</b></span>
             </div>
-            <div class="p2-preview-hint"><span>Užuomina</span><p>${escapeHtml(previewTask.hint)}</p></div>
+            <div class="p2-preview-hint"><span>Užuomina</span><p>${renderRichMathText(previewTask.hint)}</p></div>
             <div class="p2-preview-detail-actions">
               <button type="button" class="p2-secondary" data-preview-action="previous" ${previewIndex === 1 ? 'disabled' : ''}>← Ankstesnė</button>
               <button type="button" class="p2-secondary" data-preview-action="next" ${previewIndex === activeLesson().taskCount ? 'disabled' : ''}>Kita →</button>

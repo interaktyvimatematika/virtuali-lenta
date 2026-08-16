@@ -37,15 +37,21 @@
   function createPromptEditor(options = {}) {
     const doc = options.document || document;
     const onChange = typeof options.onChange === 'function' ? options.onChange : () => {};
+    const contextLabel = String(options.contextLabel || 'Pratybų sąlyga');
+    const ariaLabel = String(options.ariaLabel || contextLabel);
+    const toolbarTitle = String(options.toolbarTitle || 'Matematikos juosta');
+    const toolbarHint = options.toolbarHint === false ? '' : String(options.toolbarHint || 'Alt+= – įterpti formulę');
+    const variant = String(options.variant || '').trim();
+    const compact = Boolean(options.compact);
     const root = doc.createElement('div');
-    root.className = 'p2-rich-prompt-editor';
+    root.className = `p2-rich-prompt-editor${compact ? ' is-compact' : ''}${variant ? ` is-${variant}` : ''}`;
 
     const toolbar = doc.createElement('div');
     toolbar.className = 'p2-rich-prompt-toolbar';
     toolbar.innerHTML = `
       <div class="p2-rich-prompt-toolbar-head">
-        <span>Matematikos juosta</span>
-        <small>Alt+= – įterpti formulę</small>
+        <span>${toolbarTitle}</span>
+        ${toolbarHint ? `<small>${toolbarHint}</small>` : ''}
       </div>
       <div class="p2-rich-prompt-categories" role="tablist" aria-label="Matematikos kategorijos"></div>
       <div class="p2-rich-prompt-keys" aria-label="Matematikos simboliai"></div>`;
@@ -56,7 +62,7 @@
     editor.dataset.p2RichEditor = '1';
     editor.setAttribute('role', 'textbox');
     editor.setAttribute('aria-multiline', 'true');
-    editor.setAttribute('aria-label', 'Užduoties sąlyga');
+    editor.setAttribute('aria-label', ariaLabel);
     editor.dataset.placeholder = options.placeholder || 'Įrašyk užduoties sąlygą. Formules įterpk Matematikos juosta.';
 
     root.append(toolbar, editor);
@@ -69,6 +75,7 @@
     let category = 'Pagrindiniai';
     let destroyed = false;
     let fieldCounter = 0;
+    const editorInstanceKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
     const belongsToEditor = node => Boolean(node && (node === editor || editor.contains(node)));
     const editorFromNode = node => {
@@ -158,7 +165,7 @@
         clearVbeVectorPromptState(field) { fieldEngine?.clearVbeVectorPromptState?.(field); },
         reaffirmMathEditSession(field) { activeField = field; return true; },
         ensureMathFieldVisible(field) { field?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); },
-        getActiveMathContext() { return 'Pratybų sąlyga'; },
+        getActiveMathContext() { return contextLabel; },
         scheduleSave() {}
       }
     });
@@ -220,14 +227,14 @@
       const wrapper = doc.createElement('span');
       wrapper.className = 'p2-rich-inline-formula mixed-inline-formula';
       wrapper.contentEditable = 'false';
-      wrapper.dataset.formulaNodeId = `p2-prompt-formula-${Date.now().toString(36)}-${++fieldCounter}`;
+      wrapper.dataset.formulaNodeId = `p2-rich-formula-${editorInstanceKey}-${++fieldCounter}`;
       let field;
       if (fieldEngine?.createDirectMathField) {
         field = fieldEngine.createDirectMathField({
           source: '',
           latexSource: String(latex || ''),
           fieldKey: wrapper.dataset.formulaNodeId,
-          contextLabel: 'Pratybų sąlyga',
+          contextLabel,
           placeholder: 'Formulė',
           onCommit(_plain, nextLatex) {
             wrapper.dataset.latex = String(nextLatex || '');
@@ -245,7 +252,7 @@
       field.classList.remove('direct-math-field');
       field.classList.add('p2-rich-prompt-math-field');
       field.dataset.mathFieldKey = field.dataset.mathFieldKey || wrapper.dataset.formulaNodeId;
-      field.dataset.mathContext = 'Pratybų sąlyga';
+      field.dataset.mathContext = contextLabel;
       wrapper.dataset.latex = String(latex || '');
       wrapper.appendChild(field);
 
@@ -480,7 +487,7 @@
   }
 
   window.P772RichPromptEditor = Object.freeze({
-    version: 'P3.2.3',
+    version: 'P3.2.4',
     createPromptEditor,
     parsePrompt
   });

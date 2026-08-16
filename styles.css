@@ -8118,6 +8118,8 @@ body.p2-shell,
   --p2-task-prompt-line-height: 1.5;
   --p2-task-choice-font-size: 13px;
   --p2-task-choice-font-weight: 650;
+  --p2-task-hint-font-size: 12px;
+  --p2-task-hint-font-weight: 550;
 }
 
 /* Sąlygos tekstas turi atrodyti taip pat kuriant ir abiejose peržiūrose. */
@@ -8157,4 +8159,57 @@ body.p2-shell .p2-preview-choice b {
   font-size: var(--p2-task-choice-font-size);
   font-weight: var(--p2-task-choice-font-weight);
   line-height: 1.4;
+}
+
+/* P3.2.4 · mišrus teksto + matematikos redagavimas atsakymo variantams ir užuominai */
+.p2-library-editor-choice-row {
+  align-items:start;
+}
+.p2-library-editor-choice-row input[type="radio"] {
+  margin-top:12px;
+}
+.p2-library-editor-choice-row > button {
+  margin-top:7px;
+}
+.p2-library-editor-choice-editor,
+[data-task-rich-hint] {
+  min-width:0;
+}
+.p2-rich-prompt-editor.is-compact .p2-rich-prompt-toolbar {
+  display:none;
+  padding:6px 7px 7px;
+}
+.p2-rich-prompt-editor.is-compact:focus-within .p2-rich-prompt-toolbar,
+.p2-rich-prompt-editor.is-compact.is-active .p2-rich-prompt-toolbar {
+  display:grid;
+}
+.p2-rich-prompt-editor.is-compact .p2-rich-prompt-toolbar-head > small {
+  display:none;
+}
+.p2-rich-prompt-editor.is-compact .p2-rich-prompt-content {
+  min-height:40px;
+  max-height:140px;
+  padding:8px 10px;
+}
+.p2-rich-prompt-editor.is-choice .p2-rich-prompt-content {
+  font-family:var(--p2-task-copy-font-family) !important;
+  font-size:var(--p2-task-choice-font-size) !important;
+  font-weight:var(--p2-task-choice-font-weight) !important;
+  line-height:1.4 !important;
+}
+.p2-library-editor-modal {
+  --p2-task-hint-font-size:12px;
+  --p2-task-hint-font-weight:550;
+}
+.p2-rich-prompt-editor.is-hint .p2-rich-prompt-content,
+body.p2-shell .p2-hint-box > span,
+body.p2-shell .p2-preview-hint > p {
+  font-family:var(--p2-task-copy-font-family) !important;
+  font-size:var(--p2-task-hint-font-size, 12px) !important;
+  font-weight:var(--p2-task-hint-font-weight, 550) !important;
+  line-height:1.45 !important;
+}
+.p2-rich-prompt-editor.is-choice .p2-rich-prompt-math-field,
+.p2-rich-prompt-editor.is-hint .p2-rich-prompt-math-field {
+  font-size:1em;
 }

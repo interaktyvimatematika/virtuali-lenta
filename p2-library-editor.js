@@ -114,7 +114,7 @@
       const choiceRows = task.type === 'choice' ? task.choices.map((choice, choiceIndex) => `
         <div class="p2-library-editor-choice-row">
           <input type="radio" name="answer-${escapeHtml(task.id)}" data-task-choice-correct="${choiceIndex}" ${task.answer === choice ? 'checked' : ''} aria-label="Teisingas variantas">
-          <input type="text" data-task-choice="${choiceIndex}" value="${escapeHtml(choice)}" placeholder="Atsakymo variantas">
+          <div class="p2-library-editor-choice-editor" data-task-rich-choice="${choiceIndex}" data-choice-value="${escapeHtml(choice)}"></div>
           <button type="button" data-remove-choice="${choiceIndex}" aria-label="Pašalinti variantą">×</button>
         </div>`).join('') : '';
       return `
@@ -138,7 +138,10 @@
               <label><span>Atsakymo tipas</span><select data-task-field="answerType"><option value="text" ${task.answerType === 'text' ? 'selected' : ''}>Tekstas</option><option value="number" ${task.answerType === 'number' ? 'selected' : ''}>Skaičius</option></select></label>
               <label><span>Teisingas atsakymas</span><input type="text" data-task-field="answer" value="${escapeHtml(task.answer)}" placeholder="Pvz., 12 arba x = 3"></label>
             `}
-            <label class="is-wide"><span>Užuomina</span><textarea data-task-field="hint" rows="2" placeholder="Rodoma mokiniui pasirinkus pagalbą">${escapeHtml(task.hint)}</textarea></label>
+            <div class="p2-library-editor-rich-field is-wide is-hint-field">
+              <div class="p2-library-editor-field-title"><span>Užuomina</span><small>Gali būti tekstas ir formulės. Rodoma mokiniui pasirinkus pagalbą.</small></div>
+              <div data-task-rich-hint></div>
+            </div>
           </div>
         </article>`;
     }
@@ -154,11 +157,15 @@
       const task = draft.tasks.find(item => item.id === card.dataset.taskId);
       if (!task) return;
       if (card.__p2RichPromptEditor) task.prompt = card.__p2RichPromptEditor.getValue();
+      if (card.__p2RichHintEditor) task.hint = card.__p2RichHintEditor.getValue();
       card.querySelectorAll('[data-task-field]').forEach(field => {
         task[field.dataset.taskField] = field.value;
       });
       if (task.type === 'choice') {
-        const choices = Array.from(card.querySelectorAll('[data-task-choice]')).map(input => input.value);
+        const richChoices = Array.isArray(card.__p2RichChoiceEditors) ? card.__p2RichChoiceEditors : [];
+        const choices = richChoices.length
+          ? richChoices.map(editor => editor?.getValue?.() ?? '')
+          : Array.from(card.querySelectorAll('[data-task-choice]')).map(input => input.value);
         task.choices = choices;
         const checked = card.querySelector('[data-task-choice-correct]:checked');
         const selected = checked ? Number(checked.dataset.taskChoiceCorrect) : -1;
@@ -174,15 +181,33 @@
       modal.querySelectorAll('[data-task-id]').forEach(syncTaskFromCard);
     }
 
+    function destroyTaskEditors(card) {
+      card?.__p2RichPromptEditor?.destroy?.();
+      card?.__p2RichHintEditor?.destroy?.();
+      if (Array.isArray(card?.__p2RichChoiceEditors)) {
+        card.__p2RichChoiceEditors.forEach(editor => editor?.destroy?.());
+      }
+      if (card) {
+        card.__p2RichPromptEditor = null;
+        card.__p2RichHintEditor = null;
+        card.__p2RichChoiceEditors = [];
+      }
+    }
+
     function bindTaskCard(card) {
       const taskId = card.dataset.taskId;
       const task = () => draft.tasks.find(item => item.id === taskId);
+      const RichEditor = window.P772RichPromptEditor;
+      const canRichEdit = Boolean(RichEditor?.createPromptEditor);
+      const currentTask = task();
+
       const richHost = card.querySelector('[data-task-rich-prompt]');
-      if (richHost && window.P772RichPromptEditor?.createPromptEditor) {
-        const currentTask = task();
-        const richEditor = window.P772RichPromptEditor.createPromptEditor({
+      if (richHost && canRichEdit) {
+        const richEditor = RichEditor.createPromptEditor({
           value: currentTask?.prompt || '',
           placeholder: 'Įrašyk užduoties sąlygą…',
+          contextLabel: 'Pratybų sąlyga',
+          ariaLabel: 'Užduoties sąlyga',
           onChange(value) {
             const current = task();
             if (!current) return;
@@ -193,8 +218,63 @@
         card.__p2RichPromptEditor = richEditor;
         richHost.appendChild(richEditor.element);
       } else if (richHost) {
-        richHost.innerHTML = `<textarea data-task-field="prompt" rows="3" placeholder="Įrašyk užduoties sąlygą">${escapeHtml(task()?.prompt || '')}</textarea>`;
+        richHost.innerHTML = `<textarea data-task-field="prompt" rows="3" placeholder="Įrašyk užduoties sąlygą">${escapeHtml(currentTask?.prompt || '')}</textarea>`;
       }
+
+      const hintHost = card.querySelector('[data-task-rich-hint]');
+      if (hintHost && canRichEdit) {
+        const hintEditor = RichEditor.createPromptEditor({
+          value: currentTask?.hint || '',
+          placeholder: 'Įrašyk užuominą…',
+          contextLabel: 'Pratybų užuomina',
+          ariaLabel: 'Užduoties užuomina',
+          toolbarTitle: 'Matematika užuominai',
+          toolbarHint: false,
+          compact: true,
+          variant: 'hint',
+          onChange(value) {
+            const current = task();
+            if (!current) return;
+            current.hint = value;
+            setStatus('Yra neišsaugotų pakeitimų', 'pending');
+          }
+        });
+        card.__p2RichHintEditor = hintEditor;
+        hintHost.appendChild(hintEditor.element);
+      } else if (hintHost) {
+        hintHost.innerHTML = `<textarea data-task-field="hint" rows="2" placeholder="Rodoma mokiniui pasirinkus pagalbą">${escapeHtml(currentTask?.hint || '')}</textarea>`;
+      }
+
+      card.__p2RichChoiceEditors = [];
+      card.querySelectorAll('[data-task-rich-choice]').forEach(host => {
+        const choiceIndex = Number(host.dataset.taskRichChoice);
+        const initialValue = String(currentTask?.choices?.[choiceIndex] ?? host.dataset.choiceValue ?? '');
+        if (canRichEdit) {
+          const choiceEditor = RichEditor.createPromptEditor({
+            value: initialValue,
+            placeholder: `Atsakymo variantas ${choiceIndex + 1}`,
+            contextLabel: `Atsakymo variantas ${choiceIndex + 1}`,
+            ariaLabel: `Atsakymo variantas ${choiceIndex + 1}`,
+            toolbarTitle: 'Matematika atsakymui',
+            toolbarHint: false,
+            compact: true,
+            variant: 'choice',
+            onChange(value) {
+              const current = task();
+              if (!current || current.type !== 'choice') return;
+              current.choices[choiceIndex] = value;
+              const correct = card.querySelector(`[data-task-choice-correct="${choiceIndex}"]`);
+              if (correct?.checked) current.answer = value;
+              setStatus('Yra neišsaugotų pakeitimų', 'pending');
+            }
+          });
+          card.__p2RichChoiceEditors[choiceIndex] = choiceEditor;
+          host.appendChild(choiceEditor.element);
+        } else {
+          host.innerHTML = `<input type="text" data-task-choice="${choiceIndex}" value="${escapeHtml(initialValue)}" placeholder="Atsakymo variantas">`;
+        }
+      });
+
       card.querySelectorAll('input, textarea, select').forEach(field => field.addEventListener('input', () => {
         syncTaskFromCard(card);
         const current = task();
@@ -236,7 +316,7 @@
     }
 
     function renderTasks() {
-      tasksHost.querySelectorAll('[data-task-id]').forEach(card => card.__p2RichPromptEditor?.destroy?.());
+      tasksHost.querySelectorAll('[data-task-id]').forEach(destroyTaskEditors);
       tasksHost.innerHTML = draft.tasks.length
         ? draft.tasks.map(taskMarkup).join('')
         : '<div class="p2-library-editor-empty"><strong>Dar nėra užduočių.</strong><span>Pridėk trumpo atsakymo arba pasirinkimo užduotį.</span></div>';
@@ -245,7 +325,7 @@
     }
 
     function close() {
-      tasksHost.querySelectorAll('[data-task-id]').forEach(card => card.__p2RichPromptEditor?.destroy?.());
+      tasksHost.querySelectorAll('[data-task-id]').forEach(destroyTaskEditors);
       modal.hidden = true;
       setStatus('');
     }
