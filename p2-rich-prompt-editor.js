@@ -43,8 +43,9 @@
     const toolbarHint = options.toolbarHint === false ? '' : String(options.toolbarHint || 'Alt+= – įterpti formulę');
     const variant = String(options.variant || '').trim();
     const compact = Boolean(options.compact);
+    const formulaOnly = Boolean(options.formulaOnly);
     const root = doc.createElement('div');
-    root.className = `p2-rich-prompt-editor${compact ? ' is-compact' : ''}${variant ? ` is-${variant}` : ''}`;
+    root.className = `p2-rich-prompt-editor${compact ? ' is-compact' : ''}${formulaOnly ? ' is-formula-only' : ''}${variant ? ` is-${variant}` : ''}`;
 
     const toolbar = doc.createElement('div');
     toolbar.className = 'p2-rich-prompt-toolbar';
@@ -58,7 +59,7 @@
 
     const editor = doc.createElement('div');
     editor.className = 'p2-rich-prompt-content';
-    editor.contentEditable = 'true';
+    editor.contentEditable = formulaOnly ? 'false' : 'true';
     editor.dataset.p2RichEditor = '1';
     editor.setAttribute('role', 'textbox');
     editor.setAttribute('aria-multiline', 'true');
@@ -283,6 +284,10 @@
     }
 
     function getValue() {
+      if (formulaOnly) {
+        const field = editor.querySelector('math-field');
+        return readFieldLatex(field);
+      }
       const output = [];
       [...editor.childNodes].forEach(node => serializeNode(node, output));
       return output.join('').replace(/\n{3,}/g, '\n\n').replace(/\n+$/g, '');
@@ -338,7 +343,7 @@
       });
       field.addEventListener('selection-change', () => captureMathSelection(field));
       field.addEventListener('keydown', event => {
-        if (!event.defaultPrevented && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
+        if (!formulaOnly && !event.defaultPrevented && !event.isComposing && !event.ctrlKey && !event.altKey && !event.metaKey
           && (event.key === 'Backspace' || event.key === 'Delete') && mathFieldIsEmpty(field)) {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -377,10 +382,16 @@
       activeField = null;
       savedTextRange = null;
       editor.replaceChildren();
-      parsePrompt(value).forEach(node => {
-        if (node.type === 'formula') editor.appendChild(createMathField(node.latex));
-        else appendTextWithBreaks(node.value);
-      });
+      if (formulaOnly) {
+        const wrapper = createMathField(String(value || ''));
+        editor.appendChild(wrapper);
+        activeField = wrapper.querySelector('math-field');
+      } else {
+        parsePrompt(value).forEach(node => {
+          if (node.type === 'formula') editor.appendChild(createMathField(node.latex));
+          else appendTextWithBreaks(node.value);
+        });
+      }
       root.classList.toggle('is-empty', !String(value || '').trim());
     }
 
@@ -412,6 +423,18 @@
     }
 
     function insertFormulaAtTextCaret(latex = '') {
+      if (formulaOnly) {
+        let field = editor.querySelector('math-field');
+        if (!field) {
+          const wrapper = createMathField(latex);
+          editor.replaceChildren(wrapper);
+          field = wrapper.querySelector('math-field');
+        }
+        activeField = field;
+        try { field?.focus({ preventScroll: true }); } catch (_) { field?.focus?.(); }
+        if (field) captureMathSelection(field);
+        return field;
+      }
       const range = ensureTextRange();
       const wrapper = createMathField(latex);
       range.deleteContents();
@@ -427,6 +450,7 @@
 
     function insertMathKey(key, forcedField = null) {
       let field = forcedField?.isConnected ? forcedField : (activeField?.isConnected && editor.contains(activeField) ? activeField : null);
+      if (!field && formulaOnly) field = editor.querySelector('math-field');
       if (!field) field = insertFormulaAtTextCaret('');
       if (!field) return;
       if (toolbarEngine?.insertIntoDirectMathField) {
@@ -467,15 +491,17 @@
 
     function renderKeys() {
       keysHost.replaceChildren();
-      const mathMode = doc.createElement('button');
-      mathMode.type = 'button';
-      mathMode.className = 'p2-rich-prompt-key is-math-mode';
-      mathMode.textContent = '𝑥';
-      mathMode.title = 'Įterpti formulę (Alt+=)';
-      mathMode.setAttribute('aria-label', 'Įterpti formulę');
-      mathMode.addEventListener('pointerdown', event => event.preventDefault());
-      mathMode.addEventListener('click', () => insertFormulaAtTextCaret(''));
-      keysHost.appendChild(mathMode);
+      if (!formulaOnly) {
+        const mathMode = doc.createElement('button');
+        mathMode.type = 'button';
+        mathMode.className = 'p2-rich-prompt-key is-math-mode';
+        mathMode.textContent = '𝑥';
+        mathMode.title = 'Įterpti formulę (Alt+=)';
+        mathMode.setAttribute('aria-label', 'Įterpti formulę');
+        mathMode.addEventListener('pointerdown', event => event.preventDefault());
+        mathMode.addEventListener('click', () => insertFormulaAtTextCaret(''));
+        keysHost.appendChild(mathMode);
+      }
 
       directKeys.filter(key => key.category === category).forEach(key => {
         const button = doc.createElement('button');
@@ -567,7 +593,10 @@
       editor,
       getValue,
       setValue,
-      focus() { try { editor.focus({ preventScroll: true }); } catch (_) { editor.focus(); } },
+      focus() {
+        const target = formulaOnly ? editor.querySelector('math-field') : editor;
+        try { target?.focus({ preventScroll: true }); } catch (_) { target?.focus?.(); }
+      },
       destroy() {
         destroyed = true;
         doc.removeEventListener('selectionchange', selectionChangeHandler);
@@ -576,7 +605,7 @@
   }
 
   window.P772RichPromptEditor = Object.freeze({
-    version: 'P3.2.4.1',
+    version: 'P3.2.5',
     createPromptEditor,
     parsePrompt
   });

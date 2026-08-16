@@ -365,6 +365,12 @@
         };
       }
       return deepClone(validator(safeTask, deepClone(response)));
+    },
+    // P3.2.5: pratybų rengyklė naudoja tą patį lygties analizatorių kaip
+    // pagrindinis P7.7.2 variklis. Taip nekuriamas antras, nuo tikrintuvo galintis
+    // išsiskirti lygties parseris vien tik authoring UI.
+    analyzeEquation(source) {
+      return deepClone(analyzeMathContent(String(source ?? ''), 'equation'));
     }
   });
 

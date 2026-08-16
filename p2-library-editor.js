@@ -17,17 +17,30 @@
 
   function normalizeTask(raw, index = 0) {
     const source = raw && typeof raw === 'object' ? raw : {};
-    const type = source.type === 'choice' ? 'choice' : 'input';
+    const type = source.type === 'choice'
+      ? 'choice'
+      : (source.type === 'solution' || source?.response?.renderer === 'math-step-list' ? 'solution' : 'input');
     const choices = type === 'choice'
       ? (Array.isArray(source.choices) && source.choices.length ? source.choices : ['Atsakymas A', 'Atsakymas B']).map(value => String(value ?? ''))
       : [];
+    const solutionPrompt = source?.response?.options?.initial
+      ?? (source?.prompt && typeof source.prompt === 'object' ? source.prompt.value : source.prompt)
+      ?? '';
+    const prompt = type === 'solution'
+      ? String(solutionPrompt)
+      : String(source.promptDisplay || source.prompt || '');
+    const minimumSteps = Math.max(1, Math.min(6, Number(source.minimumSteps ?? source?.response?.options?.minimumSteps) || 2));
     return {
       id: String(source.id || makeId('task')),
       type,
       section: source.section === 'self' ? 'self' : 'class',
-      label: String(source.label || (type === 'choice' ? 'Pasirinkimas' : 'Trumpas atsakymas')),
+      label: String(source.label || (type === 'choice' ? 'Pasirinkimas' : type === 'solution' ? 'Lygtis' : 'Trumpas atsakymas')),
       title: String(source.title || `Užduotis ${index + 1}`),
-      prompt: String(source.promptDisplay || source.prompt || ''),
+      prompt,
+      instruction: String(source.instruction || (type === 'solution'
+        ? 'Išspręsk lygtį. Sprendimą rašyk nuosekliais žingsniais.'
+        : '')),
+      minimumSteps,
       hint: String(source.hint || ''),
       answer: String(source.answer || ''),
       answerType: source.answerType === 'number' ? 'number' : 'text',
@@ -89,6 +102,7 @@
             <div class="p2-library-editor-add-actions">
               <button type="button" class="p2-secondary" data-add-task="input">+ Trumpas atsakymas</button>
               <button type="button" class="p2-secondary" data-add-task="choice">+ Pasirinkimas</button>
+              <button type="button" class="p2-secondary" data-add-task="solution">+ Lygties sprendimas</button>
             </div>
           </div>
           <div class="p2-library-editor-tasks" data-editor-tasks></div>
@@ -117,27 +131,48 @@
           <div class="p2-library-editor-choice-editor" data-task-rich-choice="${choiceIndex}" data-choice-value="${escapeHtml(choice)}"></div>
           <button type="button" data-remove-choice="${choiceIndex}" aria-label="Pašalinti variantą">×</button>
         </div>`).join('') : '';
+      const typeTitle = task.type === 'choice'
+        ? 'Pasirinkimas iš variantų'
+        : task.type === 'solution'
+          ? 'Lygties sprendimas'
+          : 'Trumpas atsakymas';
+      const promptMarkup = task.type === 'solution'
+        ? `<div class="p2-library-editor-rich-field p2-library-editor-equation-field is-wide">
+            <div class="p2-library-editor-field-title"><span>Pradinė lygtis</span><small>Šiuo metu automatiškai tikrinamos tiesinės ir kvadratinės lygtys su x.</small></div>
+            <div data-task-equation-editor></div>
+            <div class="p2-library-editor-equation-analysis" data-task-equation-analysis aria-live="polite"></div>
+          </div>`
+        : `<div class="p2-library-editor-rich-field is-wide">
+            <div class="p2-library-editor-field-title"><span>Sąlyga</span><small>Rašyk tekstą tiesiogiai, o formules įterpk Matematikos juosta.</small></div>
+            <div data-task-rich-prompt></div>
+          </div>`;
+      const answerMarkup = task.type === 'choice'
+        ? `<div class="p2-library-editor-choices is-wide"><div class="p2-library-editor-field-title"><span>Atsakymo variantai</span><small>Pažymėk teisingą variantą.</small></div>${choiceRows}<button type="button" class="p2-library-editor-add-choice" data-add-choice>+ Pridėti variantą</button></div>`
+        : task.type === 'solution'
+          ? `<label class="is-wide"><span>Nurodymas mokiniui</span><textarea data-task-field="instruction" rows="2" maxlength="500" placeholder="Kaip mokinys turi pateikti sprendimą?">${escapeHtml(task.instruction)}</textarea></label>
+            <label><span>Mažiausiai sprendimo žingsnių</span><select data-task-field="minimumSteps">
+              ${[1,2,3,4,5,6].map(value => `<option value="${value}" ${Number(task.minimumSteps) === value ? 'selected' : ''}>${value}</option>`).join('')}
+            </select></label>
+            <div class="p2-library-editor-auto-answer">
+              <span>Automatinio tikrintuvo atsakymas</span>
+              <strong data-task-equation-answer>—</strong>
+              <small>Atsakymas apskaičiuojamas iš pradinės lygties; jo ranka įvesti nereikia.</small>
+            </div>`
+          : `<label><span>Atsakymo tipas</span><select data-task-field="answerType"><option value="text" ${task.answerType === 'text' ? 'selected' : ''}>Tekstas</option><option value="number" ${task.answerType === 'number' ? 'selected' : ''}>Skaičius</option></select></label>
+            <label><span>Teisingas atsakymas</span><input type="text" data-task-field="answer" value="${escapeHtml(task.answer)}" placeholder="Pvz., 12 arba x = 3"></label>`;
       return `
         <article class="p2-library-editor-task" data-task-id="${escapeHtml(task.id)}">
           <header>
             <div class="p2-library-editor-task-number">${index + 1}</div>
-            <div><strong>${task.type === 'choice' ? 'Pasirinkimas iš variantų' : 'Trumpas atsakymas'}</strong><small>${task.section === 'self' ? 'Savarankiškai' : 'Pamokoje'}</small></div>
+            <div><strong>${typeTitle}</strong><small>${task.section === 'self' ? 'Savarankiškai' : 'Pamokoje'}</small></div>
             <div class="p2-library-editor-task-actions"><button type="button" data-move-task="up" aria-label="Aukštyn">↑</button><button type="button" data-move-task="down" aria-label="Žemyn">↓</button><button type="button" data-remove-task aria-label="Ištrinti užduotį">×</button></div>
           </header>
           <div class="p2-library-editor-task-grid">
             <label><span>Skiltis</span><select data-task-field="section"><option value="class" ${task.section === 'class' ? 'selected' : ''}>Pamoka</option><option value="self" ${task.section === 'self' ? 'selected' : ''}>Savarankiškai</option></select></label>
             <label><span>Temos žyma</span><input type="text" data-task-field="label" maxlength="50" value="${escapeHtml(task.label)}" placeholder="Pvz., Trupmenos"></label>
             <label class="is-wide"><span>Užduoties pavadinimas</span><input type="text" data-task-field="title" maxlength="100" value="${escapeHtml(task.title)}" placeholder="Pvz., Trupmenų sudėtis"></label>
-            <div class="p2-library-editor-rich-field is-wide">
-              <div class="p2-library-editor-field-title"><span>Sąlyga</span><small>Rašyk tekstą tiesiogiai, o formules įterpk Matematikos juosta.</small></div>
-              <div data-task-rich-prompt></div>
-            </div>
-            ${task.type === 'choice' ? `
-              <div class="p2-library-editor-choices is-wide"><div class="p2-library-editor-field-title"><span>Atsakymo variantai</span><small>Pažymėk teisingą variantą.</small></div>${choiceRows}<button type="button" class="p2-library-editor-add-choice" data-add-choice>+ Pridėti variantą</button></div>
-            ` : `
-              <label><span>Atsakymo tipas</span><select data-task-field="answerType"><option value="text" ${task.answerType === 'text' ? 'selected' : ''}>Tekstas</option><option value="number" ${task.answerType === 'number' ? 'selected' : ''}>Skaičius</option></select></label>
-              <label><span>Teisingas atsakymas</span><input type="text" data-task-field="answer" value="${escapeHtml(task.answer)}" placeholder="Pvz., 12 arba x = 3"></label>
-            `}
+            ${promptMarkup}
+            ${answerMarkup}
             <div class="p2-library-editor-rich-field is-wide is-hint-field">
               <div class="p2-library-editor-field-title"><span>Užuomina</span><small>Gali būti tekstas ir formulės. Rodoma mokiniui pasirinkus pagalbą.</small></div>
               <div data-task-rich-hint></div>
@@ -157,6 +192,7 @@
       const task = draft.tasks.find(item => item.id === card.dataset.taskId);
       if (!task) return;
       if (card.__p2RichPromptEditor) task.prompt = card.__p2RichPromptEditor.getValue();
+      if (card.__p2EquationEditor) task.prompt = card.__p2EquationEditor.getValue();
       if (card.__p2RichHintEditor) task.hint = card.__p2RichHintEditor.getValue();
       card.querySelectorAll('[data-task-field]').forEach(field => {
         task[field.dataset.taskField] = field.value;
@@ -183,15 +219,49 @@
 
     function destroyTaskEditors(card) {
       card?.__p2RichPromptEditor?.destroy?.();
+      card?.__p2EquationEditor?.destroy?.();
       card?.__p2RichHintEditor?.destroy?.();
       if (Array.isArray(card?.__p2RichChoiceEditors)) {
         card.__p2RichChoiceEditors.forEach(editor => editor?.destroy?.());
       }
       if (card) {
         card.__p2RichPromptEditor = null;
+        card.__p2EquationEditor = null;
         card.__p2RichHintEditor = null;
         card.__p2RichChoiceEditors = [];
       }
+    }
+
+    function analyzeSolutionEquation(source) {
+      const value = String(source || '').trim();
+      if (!value) return { ok: false, status: 'empty', title: 'Įrašyk lygtį', message: 'Pradinė lygtis dar neįrašyta.', display: '' };
+      const engine = window.P772PracticeEngine;
+      if (!engine?.analyzeEquation) {
+        return { ok: false, status: 'error', title: 'Lygties analizatorius nepasiekiamas', message: 'Perkrauk puslapį ir bandyk dar kartą.', display: '' };
+      }
+      const analysis = engine.analyzeEquation(value) || {};
+      if (analysis.ok && ![1, 2].includes(Number(analysis.degree))) {
+        return {
+          ...analysis,
+          ok: false,
+          status: 'unsupported',
+          title: 'Reikia tiesinės arba kvadratinės lygties',
+          message: 'Šioje rengyklės versijoje sprendimo eiga automatiškai tikrinama tik lygčių su x, kurios susiveda į pirmojo arba antrojo laipsnio lygtį.'
+        };
+      }
+      return analysis;
+    }
+
+    function updateEquationAnalysis(card, task) {
+      if (!card || task?.type !== 'solution') return null;
+      const host = card.querySelector('[data-task-equation-analysis]');
+      const answer = card.querySelector('[data-task-equation-answer]');
+      if (!host || !answer) return null;
+      const analysis = analyzeSolutionEquation(task.prompt);
+      host.className = `p2-library-editor-equation-analysis is-${analysis.ok ? 'success' : (analysis.status === 'empty' ? 'empty' : 'error')}`;
+      host.innerHTML = `<strong>${escapeHtml(analysis.title || (analysis.ok ? 'Lygtis atpažinta' : 'Patikrink lygtį'))}</strong><span>${escapeHtml(analysis.message || '')}</span>`;
+      answer.textContent = analysis.ok ? String(analysis.display || '—') : '—';
+      return analysis;
     }
 
     function bindTaskCard(card) {
@@ -219,6 +289,34 @@
         richHost.appendChild(richEditor.element);
       } else if (richHost) {
         richHost.innerHTML = `<textarea data-task-field="prompt" rows="3" placeholder="Įrašyk užduoties sąlygą">${escapeHtml(currentTask?.prompt || '')}</textarea>`;
+      }
+
+      const equationHost = card.querySelector('[data-task-equation-editor]');
+      if (equationHost && currentTask?.type === 'solution') {
+        if (canRichEdit) {
+          const equationEditor = RichEditor.createPromptEditor({
+            value: currentTask.prompt || '',
+            placeholder: 'Įrašyk lygtį su x…',
+            contextLabel: 'Pratybų pradinė lygtis',
+            ariaLabel: 'Pradinė lygtis',
+            toolbarTitle: 'Matematikos juosta · lygtis',
+            toolbarHint: 'Įvesk visą lygtį viename matematiniame lauke',
+            formulaOnly: true,
+            variant: 'equation',
+            onChange(value) {
+              const current = task();
+              if (!current || current.type !== 'solution') return;
+              current.prompt = value;
+              updateEquationAnalysis(card, current);
+              setStatus('Yra neišsaugotų pakeitimų', 'pending');
+            }
+          });
+          card.__p2EquationEditor = equationEditor;
+          equationHost.appendChild(equationEditor.element);
+        } else {
+          equationHost.innerHTML = `<input type="text" data-task-field="prompt" value="${escapeHtml(currentTask.prompt || '')}" placeholder="Pvz., 2x+3=11">`;
+        }
+        updateEquationAnalysis(card, currentTask);
       }
 
       const hintHost = card.querySelector('[data-task-rich-hint]');
@@ -280,6 +378,7 @@
         const current = task();
         const small = card.querySelector('header small');
         if (small && current) small.textContent = current.section === 'self' ? 'Savarankiškai' : 'Pamokoje';
+        if (current?.type === 'solution') updateEquationAnalysis(card, current);
         updateTaskCount();
         setStatus('Yra neišsaugotų pakeitimų', 'pending');
       }));
@@ -319,7 +418,7 @@
       tasksHost.querySelectorAll('[data-task-id]').forEach(destroyTaskEditors);
       tasksHost.innerHTML = draft.tasks.length
         ? draft.tasks.map(taskMarkup).join('')
-        : '<div class="p2-library-editor-empty"><strong>Dar nėra užduočių.</strong><span>Pridėk trumpo atsakymo arba pasirinkimo užduotį.</span></div>';
+        : '<div class="p2-library-editor-empty"><strong>Dar nėra užduočių.</strong><span>Pridėk trumpo atsakymo, pasirinkimo arba lygties sprendimo užduotį.</span></div>';
       tasksHost.querySelectorAll('[data-task-id]').forEach(bindTaskCard);
       updateTaskCount();
     }
@@ -351,6 +450,36 @@
         const prompt = String(task.prompt || '').trim();
         const taskTitle = String(task.title || '').trim() || `Užduotis ${index + 1}`;
         if (!prompt) throw new Error(`${index + 1} užduočiai trūksta sąlygos.`);
+        if (task.type === 'solution') {
+          const analysis = analyzeSolutionEquation(prompt);
+          if (!analysis.ok) throw new Error(`${index + 1} užduoties lygtis netinka automatiniam tikrinimui: ${analysis.message || analysis.title || 'patikrink lygtį.'}`);
+          const minimumSteps = Math.max(1, Math.min(6, Number(task.minimumSteps) || 2));
+          return {
+            id: task.id,
+            type: 'solution',
+            section: task.section === 'self' ? 'self' : 'class',
+            label: String(task.label || 'Lygtis').trim() || 'Lygtis',
+            title: taskTitle,
+            prompt,
+            instruction: String(task.instruction || 'Išspręsk lygtį. Sprendimą rašyk nuosekliais žingsniais.').trim(),
+            answer: String(analysis.display || ''),
+            hint: String(task.hint || '').trim(),
+            response: {
+              renderer: 'math-step-list',
+              valueType: 'equation',
+              label: 'Sprendimo eiga',
+              placeholder: 'Įrašyk kitą lygties žingsnį',
+              validator: 'semantic-equation-chain',
+              options: {
+                initial: prompt,
+                expectedVariable: 'x',
+                minimumSteps,
+                autoDerived: true,
+                stepTransitionValidation: 'semantic-v3'
+              }
+            }
+          };
+        }
         if (task.type === 'choice') {
           const choices = task.choices.map(value => String(value || '').trim()).filter(Boolean);
           if (choices.length < 2) throw new Error(`${index + 1} užduočiai reikia bent 2 atsakymo variantų.`);
@@ -413,8 +542,15 @@
     modal.querySelectorAll('[data-lesson-field]').forEach(field => field.addEventListener('input', () => setStatus('Yra neišsaugotų pakeitimų', 'pending')));
     modal.querySelectorAll('[data-add-task]').forEach(button => button.addEventListener('click', () => {
       syncAll();
-      const type = button.dataset.addTask === 'choice' ? 'choice' : 'input';
-      draft.tasks.push(normalizeTask({ type, section: 'class', choices: type === 'choice' ? ['Variantas 1', 'Variantas 2'] : [] }, draft.tasks.length));
+      const requestedType = button.dataset.addTask;
+      const type = requestedType === 'choice' ? 'choice' : (requestedType === 'solution' ? 'solution' : 'input');
+      draft.tasks.push(normalizeTask({
+        type,
+        section: 'class',
+        choices: type === 'choice' ? ['Variantas 1', 'Variantas 2'] : [],
+        instruction: type === 'solution' ? 'Išspręsk lygtį. Sprendimą rašyk nuosekliais žingsniais.' : '',
+        minimumSteps: type === 'solution' ? 2 : undefined
+      }, draft.tasks.length));
       renderTasks();
       const cards = tasksHost.querySelectorAll('[data-task-id]');
       cards[cards.length - 1]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
