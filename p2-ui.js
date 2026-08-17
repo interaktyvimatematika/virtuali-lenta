@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17-ASSIGNMENT-TYPE-CORRECTION';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.1-SCHEDULE-ASSIGNMENT-PANEL-UX';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4077,33 +4077,86 @@
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked { display:grid; gap:2px; color:#566177; }
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked strong { font-size:11px; }
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked small { color:#7a8495; line-height:1.35; }
+      /* P3.2.7.10.11.17.1: tvarkingas priskyrimo / tipo korekcijos skydelis */
+      .p2-schedule-body:not(.is-editor-closed) {
+        grid-template-columns:minmax(0,1fr) minmax(410px,460px) !important;
+      }
+      #p2ScheduleWeekPane {
+        min-width:0 !important;
+      }
+      #p2ScheduleEditorPane:not([hidden]) {
+        min-width:0 !important;
+        width:auto !important;
+        max-width:none !important;
+        overflow-x:hidden !important;
+      }
+      #p2ScheduleEditorPane * {
+        min-width:0;
+        box-sizing:border-box;
+      }
+      #p2ScheduleEditorPane .p2-schedule-assignment-row {
+        display:grid !important;
+        grid-template-columns:minmax(0,1fr) auto !important;
+        gap:8px 10px !important;
+        align-items:start !important;
+      }
+      #p2ScheduleEditorPane .p2-schedule-assignment-row > .p2-schedule-recurring-start-tools,
+      #p2ScheduleEditorPane .p2-schedule-assignment-row > .p2-schedule-type-correction,
+      #p2ScheduleEditorPane .p2-schedule-assignment-row > .p2-schedule-legacy-tools {
+        grid-column:1 / -1 !important;
+      }
       #p2ScheduleEditorPane .p2-schedule-type-correction {
         display:grid;
-        gap:7px;
+        gap:0;
         width:100%;
-        margin-top:7px;
-        padding-top:7px;
-        border-top:1px dashed #e1e6ef;
+        margin-top:8px;
+        padding:9px 10px;
+        border:1px solid #e1e6ef;
+        border-radius:10px;
+        background:#f8fafd;
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction-head {
         display:flex;
         align-items:center;
         justify-content:space-between;
-        gap:8px;
+        gap:10px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-title {
+        display:grid;
+        gap:2px;
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction-head strong {
-        color:#566177;
+        color:#4f5b72;
         font-size:11px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-current {
+        color:#737d8e;
+        font-size:10px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-toggle {
+        flex:0 0 auto;
+        min-height:30px !important;
+        padding:4px 9px !important;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-body {
+        display:grid;
+        gap:9px;
+        margin-top:9px;
+        padding-top:9px;
+        border-top:1px solid #e1e6ef;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-body[hidden] {
+        display:none !important;
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction-grid {
         display:grid;
-        grid-template-columns:minmax(135px,.8fr) minmax(145px,1fr) auto;
-        gap:7px;
-        align-items:end;
+        grid-template-columns:1fr;
+        gap:8px;
+        align-items:stretch;
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction label {
         display:grid;
-        gap:3px;
+        gap:4px;
         margin:0;
         color:#687287;
         font-size:10px;
@@ -4111,44 +4164,67 @@
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction select,
       #p2ScheduleEditorPane .p2-schedule-type-correction input {
+        width:100%;
         min-width:0;
-        height:32px;
+        height:34px;
         border:1px solid #dbe2ef;
         border-radius:8px;
-        padding:4px 7px;
+        padding:4px 8px;
         background:#fff;
         font:inherit;
       }
-      #p2ScheduleEditorPane .p2-schedule-type-correction button {
+      #p2ScheduleEditorPane .p2-schedule-type-correction-actions {
+        display:flex;
+        justify-content:flex-end;
+        gap:7px;
+        flex-wrap:wrap;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-actions button {
         min-height:32px;
         white-space:nowrap;
       }
       #p2ScheduleEditorPane .p2-schedule-type-correction-note {
         color:#7a8495;
         font-size:10px;
-        line-height:1.35;
+        line-height:1.4;
       }
       #p2ScheduleEditorPane .p2-schedule-type-date-list {
         display:grid;
-        gap:5px;
+        gap:6px;
       }
       #p2ScheduleEditorPane .p2-schedule-type-date-row {
         display:grid;
-        grid-template-columns:minmax(0,1fr) auto;
-        gap:5px;
+        grid-template-columns:minmax(0,1fr) 34px;
+        gap:6px;
       }
       #p2ScheduleEditorPane .p2-schedule-type-date-row button {
-        min-width:32px;
-        padding:4px 8px;
+        min-width:34px;
+        width:34px;
+        padding:4px 6px;
       }
       #p2ScheduleEditorPane .p2-schedule-type-date-add {
         justify-self:start;
-        min-height:28px !important;
-        padding:3px 8px !important;
+        min-height:29px !important;
+        padding:3px 9px !important;
       }
-      @media (max-width: 760px) {
-        #p2ScheduleEditorPane .p2-schedule-type-correction-grid {
-          grid-template-columns:1fr;
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools {
+        grid-column:1 / -1 !important;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row {
+        grid-template-columns:minmax(0,1fr) minmax(130px,170px);
+      }
+      @media (max-width: 1150px) {
+        .p2-schedule-body:not(.is-editor-closed) {
+          grid-template-columns:minmax(0,1fr) minmax(360px,410px) !important;
+        }
+      }
+      @media (max-width: 850px) {
+        .p2-schedule-body:not(.is-editor-closed) {
+          grid-template-columns:1fr !important;
+        }
+        #p2ScheduleEditorPane:not([hidden]) {
+          border-left:0 !important;
+          border-top:1px solid #e4e8f0;
         }
       }
       #p2ScheduleTestClockBar {
@@ -4268,16 +4344,34 @@
 
     const head = document.createElement('div');
     head.className = 'p2-schedule-type-correction-head';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'p2-schedule-type-correction-title';
     const title = document.createElement('strong');
-    title.textContent = 'Pamokos tipo korekcija';
-    head.appendChild(title);
+    title.textContent = 'Pamokos tipas';
+    const current = document.createElement('span');
+    current.className = 'p2-schedule-type-correction-current';
+    current.textContent = scheduleTypeCorrectionModeLabel(currentMode);
+    titleWrap.append(title, current);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'is-muted p2-schedule-type-correction-toggle';
+    toggle.textContent = 'Keisti';
+    toggle.setAttribute('aria-expanded', 'false');
+
+    head.append(titleWrap, toggle);
+
+    const body = document.createElement('div');
+    body.className = 'p2-schedule-type-correction-body';
+    body.hidden = true;
 
     const grid = document.createElement('div');
     grid.className = 'p2-schedule-type-correction-grid';
 
     const typeLabel = document.createElement('label');
     const typeCaption = document.createElement('span');
-    typeCaption.textContent = 'Pamokos tipas';
+    typeCaption.textContent = 'Naujas pamokos tipas';
     const select = document.createElement('select');
     select.dataset.scheduleTypeCorrectionMode = String(assignment.id || '');
     [
@@ -4296,19 +4390,29 @@
     const dateHost = document.createElement('div');
     dateHost.dataset.scheduleTypeCorrectionFields = String(assignment.id || '');
 
+    const actions = document.createElement('div');
+    actions.className = 'p2-schedule-type-correction-actions';
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'is-muted';
+    cancel.textContent = 'Atšaukti';
+
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'p2-secondary';
-    save.textContent = 'Keisti tipą';
+    save.textContent = 'Išsaugoti pakeitimą';
     save.dataset.scheduleTypeCorrectionSave = String(assignment.id || '');
 
-    grid.append(typeLabel, dateHost, save);
+    actions.append(cancel, save);
+    grid.append(typeLabel, dateHost);
 
     const note = document.createElement('div');
     note.className = 'p2-schedule-type-correction-note';
     note.textContent = 'Keičiama tik priskyrimo klasifikacija. Istorinės lentos, Room, lankomumas ir pratybų duomenys neperrašomi.';
 
-    tools.append(head, grid, note);
+    body.append(grid, note, actions);
+    tools.append(head, body);
     row.appendChild(tools);
 
     const currentDates = Object.keys(assignment?.dates && typeof assignment.dates === 'object' ? assignment.dates : {})
@@ -4322,6 +4426,20 @@
       input.className = 'p2-schedule-type-date-input';
       return input;
     };
+
+    function closeEditor() {
+      body.hidden = true;
+      toggle.textContent = 'Keisti';
+      toggle.setAttribute('aria-expanded', 'false');
+      select.value = currentMode;
+      renderFields();
+    }
+
+    function openEditor() {
+      body.hidden = false;
+      toggle.textContent = 'Uždaryti';
+      toggle.setAttribute('aria-expanded', 'true');
+    }
 
     function renderFields() {
       const targetMode = String(select.value || currentMode);
@@ -4391,6 +4509,11 @@
       save.disabled = targetMode === currentMode;
     }
 
+    toggle.addEventListener('click', () => {
+      if (body.hidden) openEditor();
+      else closeEditor();
+    });
+    cancel.addEventListener('click', closeEditor);
     select.addEventListener('change', renderFields);
     renderFields();
 
