@@ -129,7 +129,7 @@
   let editingScheduleDateKey = '';
   // P3.2.7.10.11.2: tvarkaraščio kortelė pati parenka, kuri dešiniojo
   // inspektoriaus dalis rodoma. Tai yra p2-ui.js būsena, ne DOM stebėtojas.
-  let scheduleContextMode = 'overview'; // overview | time | assignment | add | content
+  let scheduleContextMode = 'overview'; // overview | time | assignment | attendance | add | content
   let scheduleContextAssignmentLabel = '';
   let scheduleContextStudentId = '';
   let scheduleAttendanceRefreshLastAt = 0;
@@ -3306,24 +3306,50 @@
     const presentCount = rows.filter(item => item.status === 'present').length;
     const absentCount = rows.filter(item => item.status === 'absent').length;
     const unknownCount = rows.filter(item => item.status === 'unknown').length;
+    const confirmedCount = presentCount + absentCount;
+    const totalCount = rows.length;
+    const attendanceComplete = totalCount > 0 && confirmedCount === totalCount;
     const modelKnown = Number(run?.attendanceModelVersion || 0) >= 1;
 
+    // Pamokos faktas ir lankomumo užbaigtumas yra dvi atskiros būsenos.
     let lessonState = occurrenceState?.state || '';
     if (lessonState === 'past') {
       if (presentCount > 0) lessonState = 'occurred';
       else if (modelKnown || !run) lessonState = 'not-occurred';
       else lessonState = 'unconfirmed';
     }
-    return { lessonState, presentCount, absentCount, unknownCount, modelKnown, rows };
+    return {
+      lessonState,
+      presentCount,
+      absentCount,
+      unknownCount,
+      confirmedCount,
+      totalCount,
+      attendanceComplete,
+      modelKnown,
+      rows
+    };
   }
 
   function scheduleAttendanceStatusLabel(summary) {
     if (!summary) return '';
+    if (summary.lessonState === 'future') return 'Vyks';
     if (summary.lessonState === 'running') return '● Vyksta';
     if (summary.lessonState === 'occurred') return '✓ Įvyko';
     if (summary.lessonState === 'not-occurred') return '○ Neįvyko';
-    if (summary.lessonState === 'unconfirmed') return '? Lankomumas nepatvirtintas';
+    if (summary.lessonState === 'unconfirmed') return '? Istorinė būsena nepatvirtinta';
     return '';
+  }
+
+  function scheduleAttendanceCompletionLabel(summary, occurrenceState) {
+    if (!summary) return '';
+    if (!summary.totalCount) return 'Mokinių nepriskirta';
+    if (occurrenceState?.state === 'future') return `Lankomumas bus fiksuojamas · ${summary.totalCount} mok.`;
+    if (summary.lessonState === 'unconfirmed' && !summary.modelKnown && !summary.confirmedCount) {
+      return 'Istorinis lankomumas nežinomas';
+    }
+    if (summary.attendanceComplete) return `Lankomumas ${summary.confirmedCount}/${summary.totalCount} patvirtintas`;
+    return `Lankomumas ${summary.confirmedCount}/${summary.totalCount} patvirtintas · ${summary.unknownCount} nepatvirt.`;
   }
 
   function decorateScheduleAttendanceCards(weekHost) {
@@ -3357,6 +3383,14 @@
         status.textContent = label;
         copy.appendChild(status);
       }
+
+      const attendanceLabel = scheduleAttendanceCompletionLabel(summary, occurrenceState);
+      if (attendanceLabel) {
+        const attendance = document.createElement('small');
+        attendance.className = `p2-schedule-attendance-completion${summary.attendanceComplete ? ' is-complete' : ''}`;
+        attendance.textContent = attendanceLabel;
+        copy.appendChild(attendance);
+      }
     });
   }
 
@@ -3373,12 +3407,25 @@
     const headingCopy = document.createElement('div');
     const title = document.createElement('strong');
     title.textContent = 'Lankomumas';
+    const summaryLine = document.createElement('small');
+    summaryLine.className = 'p2-schedule-attendance-summary-line';
+    summaryLine.textContent = scheduleAttendanceCompletionLabel(summary, occurrenceState);
     const note = document.createElement('small');
+    note.className = 'p2-schedule-attendance-note';
     note.textContent = occurrenceState.state === 'running'
       ? 'Sistema fiksuoja tik tikrų mokinių prisijungimą pamokos laiko metu. Mokytojo peržiūra neskaičiuojama.'
-      : 'Automatinis vertinimas yra pasiūlymas. Galutinį lankomumą gali pataisyti mokytojas.';
-    headingCopy.append(title, note);
+      : 'Automatinis „Dalyvavo“ yra patvirtintas prisijungimu. Nefiksuotą dalyvavimą galutinai patvirtina mokytojas.';
+    headingCopy.append(title, summaryLine, note);
     heading.appendChild(headingCopy);
+
+    if (occurrenceState.state !== 'future') {
+      const manage = document.createElement('button');
+      manage.type = 'button';
+      manage.className = 'p2-secondary p2-schedule-attendance-manage';
+      manage.dataset.scheduleAttendanceManage = '1';
+      manage.textContent = 'Tvarkyti lankomumą';
+      heading.appendChild(manage);
+    }
     panel.appendChild(heading);
 
     if (!activeAssignments.length) {
@@ -3432,6 +3479,32 @@
     }
 
     lessonSection.appendChild(panel);
+  }
+
+  function renderScheduleOverviewSummary(editorHost, activeAssignments, run, occurrenceState, selectedDate, time) {
+    if (!editorHost) return;
+    const lessonSection = Array.from(editorHost.querySelectorAll('.p2-schedule-slot-editor > .p2-schedule-editor-section')).slice(-1)[0];
+    if (!lessonSection) return;
+    const summary = scheduleAttendanceSummary(run, activeAssignments, occurrenceState);
+    const overview = document.createElement('div');
+    overview.className = 'p2-schedule-overview-summary';
+
+    const items = [
+      ['Pamokos būsena', scheduleAttendanceStatusLabel(summary) || '—'],
+      ['Mokiniai', summary.totalCount ? `${summary.totalCount}` : '0'],
+      ['Lankomumas', scheduleAttendanceCompletionLabel(summary, occurrenceState)]
+    ];
+    items.forEach(([label, value]) => {
+      const item = document.createElement('div');
+      const caption = document.createElement('span');
+      caption.textContent = label;
+      const strong = document.createElement('strong');
+      strong.textContent = value;
+      item.append(caption, strong);
+      overview.appendChild(item);
+    });
+
+    lessonSection.prepend(overview);
   }
 
   function updateScheduleLessonBoxState(editorHost, run, activeAssignments, occurrenceState) {
@@ -3681,6 +3754,57 @@
       .p2-schedule-card-copy .p2-schedule-attendance-state.is-running { color: #23744a; }
       .p2-schedule-card-copy .p2-schedule-attendance-state.is-not-occurred { color: #9a4d42; }
       .p2-schedule-card-copy .p2-schedule-attendance-state.is-unconfirmed { color: #8a6825; }
+      .p2-schedule-card-copy .p2-schedule-attendance-completion {
+        display:block;
+        margin-top:2px;
+        color:#727b8c;
+        font-size:10px;
+        font-weight:650;
+      }
+      .p2-schedule-card-copy .p2-schedule-attendance-completion.is-complete {
+        color:#466d5a;
+      }
+      #p2ScheduleEditorPane .p2-schedule-overview-summary {
+        display:grid;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:8px;
+        margin:0 0 12px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-overview-summary > div {
+        display:grid;
+        gap:3px;
+        min-width:0;
+        padding:9px 10px;
+        border:1px solid #e0e6f0;
+        border-radius:10px;
+        background:#f8fafd;
+      }
+      #p2ScheduleEditorPane .p2-schedule-overview-summary span {
+        color:#727b8c;
+        font-size:10px;
+        font-weight:700;
+        text-transform:uppercase;
+        letter-spacing:.025em;
+      }
+      #p2ScheduleEditorPane .p2-schedule-overview-summary strong {
+        min-width:0;
+        font-size:12px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-head {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-summary-line {
+        font-weight:750;
+        color:#49566f;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-manage {
+        flex:0 0 auto;
+        min-height:32px;
+        padding:5px 9px;
+      }
       #p2ScheduleEditorPane .p2-schedule-attendance-panel {
         margin-top: 12px;
         padding: 12px;
@@ -3736,6 +3860,7 @@
   function scheduleContextModeLabel() {
     if (scheduleContextMode === 'time') return 'Laiko nustatymai';
     if (scheduleContextMode === 'assignment') return 'Mokinio informacija';
+    if (scheduleContextMode === 'attendance') return 'Lankomumo tvarkymas';
     if (scheduleContextMode === 'add') return 'Priskirti mokinį';
     if (scheduleContextMode === 'content') return 'Pamokos turinys';
     return 'Pamokos peržiūra';
@@ -3827,6 +3952,7 @@
     const sectionByMode = {
       time: timeSection,
       content: infoSection,
+      attendance: lessonSection,
       add: assignmentSection,
       overview: lessonSection
     };
@@ -3866,21 +3992,44 @@
       }
     }
 
+    const attendancePanel = lessonSection?.querySelector('.p2-schedule-attendance-panel');
+    const overviewSummary = lessonSection?.querySelector('.p2-schedule-overview-summary');
+    const attendanceRows = attendancePanel ? Array.from(attendancePanel.querySelectorAll('[data-schedule-attendance-row-student]')) : [];
+    const attendanceBulk = attendancePanel?.querySelector('[data-schedule-attendance-mark-missing]');
+    const attendanceManage = attendancePanel?.querySelector('[data-schedule-attendance-manage]');
+    const attendanceNote = attendancePanel?.querySelector('.p2-schedule-attendance-note');
+
+    if (scheduleContextMode === 'overview' && lessonSection) {
+      overviewSummary?.classList.remove('p2-schedule-context-hidden');
+      attendanceRows.forEach(row => row.classList.add('p2-schedule-context-hidden'));
+      attendanceBulk?.classList.add('p2-schedule-context-hidden');
+      attendanceNote?.classList.add('p2-schedule-context-hidden');
+      attendanceManage?.classList.remove('p2-schedule-context-hidden');
+    }
+
+    if (scheduleContextMode === 'attendance' && lessonSection) {
+      overviewSummary?.classList.add('p2-schedule-context-hidden');
+      attendanceRows.forEach(row => row.classList.remove('p2-schedule-context-hidden'));
+      attendanceBulk?.classList.remove('p2-schedule-context-hidden');
+      attendanceNote?.classList.remove('p2-schedule-context-hidden');
+      attendanceManage?.classList.add('p2-schedule-context-hidden');
+    }
+
     if (scheduleContextMode === 'assignment' && lessonSection) {
       Array.from(lessonSection.children).forEach(child => {
         if (!child.classList.contains('p2-schedule-attendance-panel')) child.classList.add('p2-schedule-context-hidden');
       });
-      const attendancePanel = lessonSection.querySelector('.p2-schedule-attendance-panel');
       if (attendancePanel) {
         const title = attendancePanel.querySelector('.p2-schedule-attendance-head strong');
         if (title) title.textContent = scheduleContextAssignmentLabel
           ? `Lankomumas · ${scheduleContextAssignmentLabel}`
           : 'Lankomumas';
-        attendancePanel.querySelectorAll('[data-schedule-attendance-row-student]').forEach(row => {
+        attendanceRows.forEach(row => {
           const rowStudentId = String(row.dataset.scheduleAttendanceRowStudent || '');
           row.classList.toggle('p2-schedule-context-hidden', Boolean(scheduleContextStudentId && rowStudentId !== scheduleContextStudentId));
         });
-        attendancePanel.querySelector('[data-schedule-attendance-mark-missing]')?.classList.add('p2-schedule-context-hidden');
+        attendanceBulk?.classList.add('p2-schedule-context-hidden');
+        attendanceManage?.classList.add('p2-schedule-context-hidden');
       }
     }
   }
@@ -4004,6 +4153,7 @@
       });
       enhanceLegacyScheduleAssignmentRows(editorHost, assignments);
       updateScheduleLessonBoxState(editorHost, run, activeAssignments, occurrenceState);
+      renderScheduleOverviewSummary(editorHost, activeAssignments, run, occurrenceState, selectedDate, time);
       renderScheduleAttendancePanel(editorHost, selectedDate, activeAssignments, run, occurrenceState, students);
 
       // P3.2.7.10.11.7: istorinės lentos atidarymas ir pamokos įvykimo faktas
@@ -4240,6 +4390,13 @@
       if (!window.confirm('Pašalinti šį mokinio priskyrimą? Jau įvykusių pamokų istorija liks.')) return;
       requestSchedule({ action: 'assignment-delete', scheduleId: editingScheduleId, assignmentId });
     }));
+
+    editorHost.querySelector('[data-schedule-attendance-manage]')?.addEventListener('click', () => {
+      scheduleContextMode = 'attendance';
+      scheduleContextAssignmentLabel = '';
+      scheduleContextStudentId = '';
+      renderScheduleModal();
+    });
 
     editorHost.querySelectorAll('[data-schedule-attendance-student]').forEach(select => select.addEventListener('change', () => {
       if (!editingScheduleId) return;
