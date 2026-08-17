@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16.1-TEST-CLOCK-VISIBLE-HOTFIX';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4078,8 +4078,16 @@
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked strong { font-size:11px; }
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked small { color:#7a8495; line-height:1.35; }
       #p2ScheduleTestClockBar {
+        position:fixed;
+        right:24px;
+        bottom:24px;
+        z-index:100000;
         display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-        padding:7px 16px; border-top:1px solid #edf0f5; border-bottom:1px solid #e6eaf1;
+        width:min(720px,calc(100vw - 48px));
+        padding:10px 12px;
+        border:1px solid #ead9a9;
+        border-radius:12px;
+        box-shadow:0 10px 30px rgba(37,45,66,.18);
         background:#fffaf0; color:#5d5c68; font-size:11px;
       }
       #p2ScheduleTestClockBar strong { color:#805d14; }
@@ -4325,7 +4333,7 @@
     const now = scheduleNow();
     bar.innerHTML = `
       <div class="p2-schedule-test-clock-status">
-        <strong>${active ? `🧪 Testavimo laikas · ${escapeHtml(scheduleDateTimeLocalValue(now).replace('T',' '))}` : '🧪 Testavimo laikas · išjungtas'}</strong>
+        <strong>${active ? `🧪 Testavimo laikrodis · ${escapeHtml(scheduleDateTimeLocalValue(now).replace('T',' '))}` : '🧪 Testavimo laikrodis · išjungtas'}</strong>
         <small>Tik tvarkaraščio / lentos būsenoms ir „Lanko nuo“ ribai. Firebase laiko žymos lieka tikros.</small>
       </div>
       <input id="p2ScheduleTestClockInput" type="datetime-local" value="${escapeHtml(scheduleDateTimeLocalValue(now))}" aria-label="Testavimo data ir laikas">
