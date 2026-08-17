@@ -151,6 +151,7 @@
   let teacherStudentDb = { profileId: '', meta: {}, students: {}, roomLinks: {}, classSessions: {}, scheduleEntries: {}, scheduleRuns: {}, customLessons: {} };
   let roomStudentProfile = null;
   let lessonStudentTabs = null;
+  let lessonOccurrenceTicker = null;
   let roomSwitching = false;
 
   // P1.7.3.1: senų, dar iki turinio versijavimo pradėtų priskyrimų backfill.
@@ -2003,6 +2004,162 @@
     }));
   }
 
+
+  function ensureLessonOccurrenceStyles() {
+    if (document.getElementById('p327101113LessonOccurrenceStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'p327101113LessonOccurrenceStyles';
+    style.textContent = `
+      .p2-board-heading .p2-lesson-occurrence-badge {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 7px;
+        width: fit-content;
+        max-width: 100%;
+        margin-top: 4px;
+        padding: 3px 7px;
+        border: 1px solid rgba(74,103,214,.18);
+        border-radius: 999px;
+        background: rgba(74,103,214,.055);
+        color: #526079;
+        font-size: 10px;
+        line-height: 1.25;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge[hidden] { display: none !important; }
+      .p2-board-heading .p2-lesson-occurrence-badge > strong {
+        font-size: 10px;
+        font-weight: 800;
+        color: inherit;
+        white-space: nowrap;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge > span {
+        min-width: 0;
+        color: #6c7689;
+        font-weight: 650;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge.is-running {
+        border-color: rgba(48,123,83,.28);
+        background: rgba(48,123,83,.08);
+        color: #356d4d;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge.is-occurred {
+        border-color: rgba(48,123,83,.22);
+        background: rgba(48,123,83,.06);
+        color: #466d5a;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge.is-not-occurred {
+        border-color: rgba(160,79,79,.23);
+        background: rgba(160,79,79,.055);
+        color: #865454;
+      }
+      .p2-board-heading .p2-lesson-occurrence-badge.is-unconfirmed,
+      .p2-board-heading .p2-lesson-occurrence-badge.is-past {
+        border-color: rgba(151,113,42,.24);
+        background: rgba(151,113,42,.06);
+        color: #80652f;
+      }
+      @media (max-width: 820px) {
+        .p2-board-heading .p2-lesson-occurrence-badge {
+          border-radius: 9px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureLessonOccurrenceBadge() {
+    ensureLessonOccurrenceStyles();
+    let badge = document.getElementById('p2LessonOccurrenceBadge');
+    if (badge) return badge;
+    const subtitle = document.querySelector('.p2-board-subtitle');
+    const holder = subtitle?.parentElement;
+    if (!holder) return null;
+    badge = document.createElement('span');
+    badge.id = 'p2LessonOccurrenceBadge';
+    badge.className = 'p2-lesson-occurrence-badge';
+    badge.setAttribute('role', 'status');
+    badge.setAttribute('aria-live', 'polite');
+    badge.hidden = true;
+    holder.appendChild(badge);
+    return badge;
+  }
+
+  function currentRoomLessonScheduleMeta() {
+    const classSessionId = linkedClassSessionIdForRoom();
+    const session = teacherStudentDb.classSessions?.[classSessionId] || {};
+    const roomLink = teacherStudentDb.roomLinks?.[currentRoomId()] || {};
+    const scheduleId = String(roomStudentProfile?.scheduleId || session.scheduleId || roomLink.scheduleId || '').trim();
+    const dateKey = String(roomStudentProfile?.scheduleDate || session.scheduleDate || '').trim();
+    const start = String(roomStudentProfile?.scheduledStart || session.scheduledStart || '').trim();
+    const durationMinutes = Math.max(0, Number(roomStudentProfile?.durationMinutes || session.durationMinutes || 0));
+    if (!scheduleDateKeyValid(dateKey) || scheduleTimeToMinutes(start) === null || !durationMinutes) return null;
+    return { scheduleId, dateKey, start, durationMinutes, classSessionId };
+  }
+
+  function lessonOccurrenceParticipantLabel(meta) {
+    const participants = classSessionParticipants(meta?.classSessionId || '');
+    if (participants.length > 1) return `${participants.length} mokiniai`;
+    const name = currentStudentName('');
+    return name || (participants[0]?.name ? String(participants[0].name) : '');
+  }
+
+  function lessonOccurrenceSemanticState(meta, temporalState) {
+    if (!temporalState?.known) return { key: '', label: '' };
+    if (temporalState.state === 'future') return { key: 'future', label: 'Būsima pamoka' };
+    if (temporalState.state === 'running') return { key: 'running', label: '● Vykstanti pamoka' };
+
+    // Praeities mokytojo lentoje naudojame tą pačią semantiką kaip tvarkaraštyje:
+    // Room egzistavimas pats savaime nereiškia, kad pamoka įvyko.
+    if (role() === 'teacher' && meta?.scheduleId) {
+      const entryRaw = teacherStudentDb.scheduleEntries?.[meta.scheduleId];
+      if (entryRaw && typeof entryRaw === 'object') {
+        const entry = { id: meta.scheduleId, ...entryRaw };
+        const active = scheduleActiveAssignments(entry, meta.dateKey);
+        const run = teacherStudentDb.scheduleRuns?.[meta.scheduleId]?.[meta.dateKey] || null;
+        const summary = scheduleAttendanceSummary(run, active, temporalState);
+        if (summary.lessonState === 'occurred') return { key: 'occurred', label: '✓ Įvykusi pamoka' };
+        if (summary.lessonState === 'not-occurred') return { key: 'not-occurred', label: '○ Neįvykusi pamoka' };
+        if (summary.lessonState === 'unconfirmed') return { key: 'unconfirmed', label: '? Istorinė būsena nepatvirtinta' };
+      }
+    }
+
+    // Mokinio / mokytojo peržiūros režimas neturi prieigos prie visos mokytojo
+    // lankomumo bazės, todėl čia neapsimetame žinantys įvykimo faktą.
+    return { key: 'past', label: '◷ Praėjusi pamoka' };
+  }
+
+  function updateLessonOccurrenceBadge() {
+    const badge = ensureLessonOccurrenceBadge();
+    if (!badge) return;
+    const meta = currentRoomLessonScheduleMeta();
+    if (!meta) {
+      badge.hidden = true;
+      badge.textContent = '';
+      return;
+    }
+
+    const temporalState = scheduleOccurrenceStateFromParts(meta.dateKey, meta.start, meta.durationMinutes, new Date());
+    const semantic = lessonOccurrenceSemanticState(meta, temporalState);
+    if (!semantic.label) {
+      badge.hidden = true;
+      badge.textContent = '';
+      return;
+    }
+
+    const startMinutes = scheduleTimeToMinutes(meta.start);
+    const end = startMinutes === null ? '' : scheduleClockFromMinutes(startMinutes + meta.durationMinutes);
+    const when = `${meta.dateKey} · ${meta.start}${end ? `–${end}` : ''}`;
+    const who = lessonOccurrenceParticipantLabel(meta);
+    badge.className = `p2-lesson-occurrence-badge is-${semantic.key || 'future'}`;
+    badge.innerHTML = `<strong>${escapeHtml(semantic.label)}</strong><span>${escapeHtml(`${when}${who ? ` · ${who}` : ''}`)}</span>`;
+    badge.hidden = false;
+
+    if (!lessonOccurrenceTicker) {
+      lessonOccurrenceTicker = window.setInterval(() => updateLessonOccurrenceBadge(), 30000);
+    }
+  }
+
   function updateStudentIdentityLabels() {
     const isTeacher = role() === 'teacher';
     const name = currentStudentName('Mokinys');
@@ -2016,6 +2173,7 @@
     const boardSubtitle = document.querySelector('.p2-board-subtitle');
     if (boardTitle) boardTitle.textContent = hasName ? `${name} · lenta` : 'Bendra lenta';
     if (boardSubtitle) boardSubtitle.textContent = hasName ? 'Individuali realaus laiko erdvė' : 'Bendra realaus laiko erdvė';
+    updateLessonOccurrenceBadge();
     if (isTeacher) {
       if (teacherPreviewMode !== 'docked' && sideTitle) sideTitle.textContent = `${name} · eiga`;
       if (practiceModeButton) practiceModeButton.textContent = `${name} · eiga`;
@@ -4547,6 +4705,8 @@
     // neuždarome mokytojo pratybų peržiūros režimo. Naujo mokinio assignment
     // ir progress netrukus ateis iš jo Firebase Room.
     roomStudentProfile = null;
+    const occurrenceBadge = document.getElementById('p2LessonOccurrenceBadge');
+    if (occurrenceBadge) { occurrenceBadge.hidden = true; occurrenceBadge.textContent = ''; }
     assignment = null;
     progress = null;
     selectedAnswers = {};
@@ -4561,6 +4721,9 @@
     renderStudentsModal();
     queueCurrentStudentLessonSnapshot();
   });
+
+  window.addEventListener('p2:schedule-saved', () => updateLessonOccurrenceBadge());
+  window.addEventListener('p2:schedule-attendance-refreshed', () => updateLessonOccurrenceBadge());
 
   window.addEventListener('p2:room-switch-error', () => {
     roomSwitching = false;
