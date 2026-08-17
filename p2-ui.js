@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.1-SCHEDULE-ASSIGNMENT-PANEL-UX';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.2-STUDENT-LESSON-INSPECTOR';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4213,6 +4213,77 @@
       #p2ScheduleEditorPane .p2-schedule-attendance-row {
         grid-template-columns:minmax(0,1fr) minmax(130px,170px);
       }
+      .p2-schedule-body.is-student-context:not(.is-editor-closed) {
+        grid-template-columns:minmax(0,1fr) minmax(360px,410px) !important;
+      }
+      #p2ScheduleEditorPane.is-student-context .p2-schedule-context-toolbar > span {
+        text-transform:none;
+        letter-spacing:0;
+        font-size:12px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-inspector {
+        display:grid;
+        gap:10px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-head {
+        display:grid;
+        gap:3px;
+        padding:10px 11px;
+        border:1px solid #dfe5ef;
+        border-radius:12px;
+        background:#f7f9fd;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-head strong {
+        font-size:13px;
+        color:#25304a;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-head small {
+        color:#727c8f;
+        line-height:1.35;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-section {
+        display:grid;
+        gap:8px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-section-title {
+        color:#687287;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.035em;
+        text-transform:uppercase;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-assignment {
+        display:grid;
+        gap:8px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-assignment > .p2-schedule-assignment-row {
+        margin:0 !important;
+        width:100% !important;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-attendance {
+        display:grid;
+        gap:8px;
+        padding:10px;
+        border:1px solid #e0e6f0;
+        border-radius:12px;
+        background:#f8fafd;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-attendance-head {
+        display:grid;
+        gap:2px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-attendance-head strong {
+        font-size:12px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-attendance-head small,
+      #p2ScheduleEditorPane .p2-schedule-single-student-future-note {
+        color:#727c8f;
+        font-size:10px;
+        line-height:1.4;
+      }
+      #p2ScheduleEditorPane .p2-schedule-single-student-attendance .p2-schedule-attendance-row {
+        margin:0;
+      }
       @media (max-width: 1150px) {
         .p2-schedule-body:not(.is-editor-closed) {
           grid-template-columns:minmax(0,1fr) minmax(360px,410px) !important;
@@ -4637,8 +4708,100 @@
     });
   }
 
+
+  function applySingleStudentScheduleInspector(editorHost, assignmentSection, lessonSection, attendancePanel, attendanceRows, occurrenceState) {
+    if (!editorHost || !assignmentSection || !lessonSection || !scheduleContextStudentId) return false;
+
+    const studentId = String(scheduleContextStudentId || '');
+    const selectedRow = Array.from(assignmentSection.querySelectorAll('.p2-schedule-assignment-row'))
+      .find(row => String(row.dataset.scheduleAssignmentStudent || '') === studentId);
+    if (!selectedRow) return false;
+
+    const student = studentRecord(studentId);
+    const studentLabel = scheduleStudentTeacherLabel(student, studentList());
+    const entry = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] : null;
+    const assignment = entry
+      ? scheduleAssignments({ id: editingScheduleId, ...entry }).find(item =>
+          String(item?.studentId || '') === studentId
+          && (!scheduleDateKeyValid(editingScheduleDateKey) || scheduleAssignmentOccursOnDate({ id: editingScheduleId, ...entry }, item, editingScheduleDateKey))
+        )
+      : null;
+
+    editorHost.classList.add('is-student-context');
+    editorHost.closest('.p2-schedule-body')?.classList.add('is-student-context');
+
+    const assignmentOriginalChildren = Array.from(assignmentSection.children);
+    const lessonOriginalChildren = Array.from(lessonSection.children);
+
+    const inspector = document.createElement('div');
+    inspector.className = 'p2-schedule-single-student-inspector';
+
+    const head = document.createElement('div');
+    head.className = 'p2-schedule-single-student-head';
+    const name = document.createElement('strong');
+    name.textContent = studentLabel || 'Mokinys';
+    const meta = document.createElement('small');
+    const mode = assignment ? scheduleModeLabel(scheduleMode(assignment)) : '';
+    const date = scheduleDateKeyValid(editingScheduleDateKey) ? editingScheduleDateKey : scheduleSelectedDateKey;
+    meta.textContent = [mode, date].filter(Boolean).join(' · ');
+    head.append(name, meta);
+
+    const assignmentBlock = document.createElement('div');
+    assignmentBlock.className = 'p2-schedule-single-student-section';
+    const assignmentTitle = document.createElement('div');
+    assignmentTitle.className = 'p2-schedule-single-student-section-title';
+    assignmentTitle.textContent = 'Pamokos priskyrimas';
+    const assignmentBody = document.createElement('div');
+    assignmentBody.className = 'p2-schedule-single-student-assignment';
+    selectedRow.classList.remove('p2-schedule-context-hidden');
+    selectedRow.classList.add('is-context-active');
+    assignmentBody.appendChild(selectedRow);
+    assignmentBlock.append(assignmentTitle, assignmentBody);
+
+    const attendanceBlock = document.createElement('div');
+    attendanceBlock.className = 'p2-schedule-single-student-attendance';
+    const attendanceHead = document.createElement('div');
+    attendanceHead.className = 'p2-schedule-single-student-attendance-head';
+    const attendanceTitle = document.createElement('strong');
+    attendanceTitle.textContent = 'Lankomumas';
+    const attendanceMeta = document.createElement('small');
+
+    const selectedAttendanceRow = Array.from(attendanceRows || [])
+      .find(row => String(row.dataset.scheduleAttendanceRowStudent || '') === studentId);
+
+    if (selectedAttendanceRow) {
+      attendanceMeta.textContent = 'Rodomas tik šio mokinio lankomumas.';
+      selectedAttendanceRow.classList.remove('p2-schedule-context-hidden');
+      attendanceHead.append(attendanceTitle, attendanceMeta);
+      attendanceBlock.append(attendanceHead, selectedAttendanceRow);
+    } else {
+      attendanceMeta.textContent = occurrenceState?.state === 'future'
+        ? 'Lankomumas bus fiksuojamas prasidėjus pamokai.'
+        : 'Šiai pamokai individualaus lankomumo įrašo nėra.';
+      attendanceHead.append(attendanceTitle, attendanceMeta);
+      const note = document.createElement('div');
+      note.className = 'p2-schedule-single-student-future-note';
+      note.textContent = occurrenceState?.state === 'future'
+        ? 'Tikras mokinio prisijungimas pamokos metu bus fiksuojamas automatiškai.'
+        : 'Jei reikia, lankomumą galima tvarkyti iš bendro pamokos lankomumo vaizdo.';
+      attendanceBlock.append(attendanceHead, note);
+    }
+
+    assignmentOriginalChildren.forEach(child => {
+      if (child !== inspector) child.classList.add('p2-schedule-context-hidden');
+    });
+    lessonOriginalChildren.forEach(child => child.classList.add('p2-schedule-context-hidden'));
+
+    inspector.append(head, assignmentBlock, attendanceBlock);
+    assignmentSection.appendChild(inspector);
+
+    return true;
+  }
+
   function applyScheduleContextEditor(editorHost) {
     if (!editorHost || !editingScheduleId || scheduleCreateMode) return;
+    editorHost.classList.remove('is-student-context');
+    editorHost.closest('.p2-schedule-body')?.classList.remove('is-student-context');
     const editorHead = editorHost.querySelector('.p2-schedule-editor-head');
     const sections = Array.from(editorHost.querySelectorAll('.p2-schedule-slot-editor > .p2-schedule-editor-section'));
     // Dabartinis stabilus rendereris turi 4 aiškias sekcijas. Jei ateityje jų
@@ -4665,7 +4828,9 @@
     const toolbar = document.createElement('div');
     toolbar.className = 'p2-schedule-context-toolbar';
     const label = document.createElement('span');
-    label.textContent = scheduleContextModeLabel();
+    label.textContent = scheduleContextMode === 'assignment' && scheduleContextAssignmentLabel
+      ? scheduleContextAssignmentLabel
+      : scheduleContextModeLabel();
     toolbar.appendChild(label);
     const openButton = lessonSection.querySelector('[data-schedule-open-lesson]');
     if (openButton) toolbar.appendChild(openButton);
@@ -4712,21 +4877,19 @@
     }
 
     if (scheduleContextMode === 'assignment' && lessonSection) {
-      Array.from(lessonSection.children).forEach(child => {
-        if (!child.classList.contains('p2-schedule-attendance-panel')) child.classList.add('p2-schedule-context-hidden');
-      });
-      if (attendancePanel) {
-        const title = attendancePanel.querySelector('.p2-schedule-attendance-head strong');
-        if (title) title.textContent = scheduleContextAssignmentLabel
-          ? `Lankomumas · ${scheduleContextAssignmentLabel}`
-          : 'Lankomumas';
-        attendanceRows.forEach(row => {
-          const rowStudentId = String(row.dataset.scheduleAttendanceRowStudent || '');
-          row.classList.toggle('p2-schedule-context-hidden', Boolean(scheduleContextStudentId && rowStudentId !== scheduleContextStudentId));
-        });
-        attendanceBulk?.classList.add('p2-schedule-context-hidden');
-        attendanceManage?.classList.add('p2-schedule-context-hidden');
-      }
+      attendanceBulk?.classList.add('p2-schedule-context-hidden');
+      attendanceManage?.classList.add('p2-schedule-context-hidden');
+      applySingleStudentScheduleInspector(
+        editorHost,
+        assignmentSection,
+        lessonSection,
+        attendancePanel,
+        attendanceRows,
+        scheduleOccurrenceState(
+          { id: editingScheduleId, ...(teacherStudentDb.scheduleEntries?.[editingScheduleId] || {}) },
+          editingScheduleDateKey || scheduleSelectedDateKey
+        )
+      );
     }
   }
 
@@ -5302,13 +5465,19 @@
       // praeities datai nekuriamas. Atidarome tik jau egzistuojantį Room ir
       // pridedame stay=1, kad senas transition nenukreiptų į naujesnę sesiją.
       if (occurrenceState.state === 'past') {
-        if (!rooms.length) {
-          toast('Šiai įvykusiai pamokai lenta nebuvo sukurta');
+        const selectedStudentRoom = scheduleContextMode === 'assignment' && scheduleContextStudentId
+          ? String(run?.rooms?.[scheduleContextStudentId] || '')
+          : '';
+        const targetRoom = selectedStudentRoom || rooms[0] || '';
+        if (!targetRoom) {
+          toast(scheduleContextMode === 'assignment'
+            ? 'Šiam mokiniui istorinė lenta nebuvo sukurta'
+            : 'Šiai įvykusiai pamokai lenta nebuvo sukurta');
           return;
         }
         if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
         if (scheduleModal) scheduleModal.hidden = true;
-        location.assign(historicalRoomUrl(rooms[0], 'teacher', true));
+        location.assign(historicalRoomUrl(targetRoom, 'teacher', true));
         return;
       }
 
