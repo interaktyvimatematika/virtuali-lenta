@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.7-SCHEDULE-ATTENDANCE-SEMANTICS-P1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.10-RECURRING-FIRST-LESSON-MIGRATION';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1856,6 +1856,178 @@ function scheduleActiveAssignmentsForDate(entry, dateKey) {
   }
   return Array.from(byStudent.values());
 }
+
+const RECURRING_FIRST_LESSON_MIGRATION_KEY = 'p327101110_recurring_first_lesson_v1';
+let recurringFirstLessonMigrationRunning = false;
+
+function timestampDateKey(value) {
+  const stamp = Number(value || 0);
+  if (!Number.isFinite(stamp) || stamp <= 0) return '';
+  const date = new Date(stamp);
+  if (!Number.isFinite(date.getTime())) return '';
+  return localDateKey(date);
+}
+
+function firstScheduleOccurrenceOnOrAfter(entry, fromDateRaw, maxDays = 1100) {
+  let dateKey = scheduleHistoryStartDate(fromDateRaw);
+  for (let guard = 0; guard < maxDays && dateKey; guard += 1) {
+    if (scheduleSlotOccursOnDate(entry, dateKey)) return dateKey;
+    dateKey = scheduleAddDays(dateKey, 1);
+  }
+  return '';
+}
+
+function recurringHistoricalEvidenceDates(scheduleId, studentId) {
+  const dates = [];
+  const safeSchedule = String(scheduleId || '').trim();
+  const safeStudent = safeStudentId(studentId);
+  if (!safeSchedule || !safeStudent) return dates;
+
+  // Konkrečios datos scheduleRun: patikimiausias įrodymas, kad mokinys buvo
+  // priskirtas būtent tai tvarkaraščio pamokai. Pats Room atidarymas čia
+  // nereiškia lankomumo; naudojame tik priskyrimo istorijos datai atkurti.
+  const runs = teacherProfileCache.scheduleRuns?.[safeSchedule];
+  if (runs && typeof runs === 'object') {
+    for (const [dateRaw, run] of Object.entries(runs)) {
+      const dateKey = validScheduleDateKey(dateRaw);
+      if (!dateKey || dateKey < SCHEDULE_HISTORY_MIN_DATE || !run || typeof run !== 'object') continue;
+      const rooms = run.rooms && typeof run.rooms === 'object' ? run.rooms : {};
+      const attendanceModes = run.attendanceModes && typeof run.attendanceModes === 'object' ? run.attendanceModes : {};
+      const attendance = run.attendance && typeof run.attendance === 'object' ? run.attendance : {};
+      if (rooms[safeStudent] || attendanceModes[safeStudent] || attendance[safeStudent]) dates.push(dateKey);
+    }
+  }
+
+  // ClassSession yra antras nepriklausomas konkrečios datos šaltinis.
+  for (const session of Object.values(teacherProfileCache.classSessions || {})) {
+    if (!session || typeof session !== 'object' || String(session.scheduleId || '') !== safeSchedule) continue;
+    const dateKey = validScheduleDateKey(session.scheduleDate);
+    if (!dateKey || dateKey < SCHEDULE_HISTORY_MIN_DATE) continue;
+    const students = session.students && typeof session.students === 'object' ? session.students : {};
+    if (students[safeStudent]) dates.push(dateKey);
+  }
+
+  // Mokinio kortelės pamokų istorija gali turėti seną Room net jei scheduleRun
+  // buvo migruotas ar taisytas atskirai.
+  const lessons = teacherProfileCache.students?.[safeStudent]?.lessons;
+  if (lessons && typeof lessons === 'object') {
+    for (const lesson of Object.values(lessons)) {
+      if (!lesson || typeof lesson !== 'object' || String(lesson.scheduleId || '') !== safeSchedule) continue;
+      const dateKey = validScheduleDateKey(lesson.scheduleDate);
+      if (dateKey && dateKey >= SCHEDULE_HISTORY_MIN_DATE) dates.push(dateKey);
+    }
+  }
+
+  return Array.from(new Set(dates)).sort();
+}
+
+function normalizedRecurringFirstLessonDate(scheduleId, entry, assignment) {
+  const studentId = safeStudentId(assignment?.studentId);
+  if (!studentId) return '';
+
+  const evidence = recurringHistoricalEvidenceDates(scheduleId, studentId);
+  const currentStart = validScheduleDateKey(assignment?.startDate);
+  const createdDate = timestampDateKey(assignment?.createdAt || entry?.createdAt);
+
+  // Jei yra reali ankstesnė istorija, jos negalima paslėpti vėlesne startDate.
+  // Jei istorijos nėra, jau turimą normalaus assignment startDate laikome
+  // autoritetingu. Legacy įrašui naudojame įrašo sukūrimo datą, jei ji žinoma.
+  let baseDate = evidence[0] || currentStart || createdDate || SCHEDULE_HISTORY_MIN_DATE;
+  if (baseDate < SCHEDULE_HISTORY_MIN_DATE) baseDate = SCHEDULE_HISTORY_MIN_DATE;
+
+  // Istorinis konkretus occurrence jau pats yra pirmos pamokos data.
+  if (evidence[0]) return evidence[0];
+
+  // startDate / createdAt gali būti bet kuri savaitės diena; saugome pirmą
+  // tikrą šio pamokos laiko occurrence.
+  return firstScheduleOccurrenceOnOrAfter(entry, baseDate) || scheduleHistoryStartDate(baseDate);
+}
+
+async function applyRecurringFirstLessonMigrationOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || recurringFirstLessonMigrationRunning) return;
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[RECURRING_FIRST_LESSON_MIGRATION_KEY]?.status === 'done') return;
+
+  recurringFirstLessonMigrationRunning = true;
+  try {
+    const updates = {};
+    let changedAssignments = 0;
+    let convertedLegacy = 0;
+    const resolved = [];
+
+    for (const [scheduleId, entryRaw] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
+      if (!entryRaw || typeof entryRaw !== 'object') continue;
+      const entry = { ...entryRaw };
+      const assignments = scheduleAssignmentsForEntry(entry).filter(item => safeAttendanceMode(item.mode) === 'recurring');
+      if (!assignments.length) continue;
+
+      const payload = scheduleAssignmentOnlyPayload(entry);
+      let changedEntry = false;
+
+      for (const assignment of assignments) {
+        const studentId = safeStudentId(assignment.studentId);
+        if (!studentId || !teacherProfileCache.students?.[studentId]) continue;
+        const firstDate = normalizedRecurringFirstLessonDate(scheduleId, entry, assignment);
+        if (!firstDate) continue;
+
+        if (assignment.legacy) {
+          const newId = newScheduleAssignmentId();
+          payload.assignments[newId] = {
+            studentId,
+            mode: 'recurring',
+            startDate: firstDate,
+            createdAt: Math.max(0, Number(assignment.createdAt || entry.createdAt || Date.now())) || Date.now(),
+            updatedAt: Date.now(),
+            migratedFromLegacy: true
+          };
+          removeLegacyScheduleStudent(payload, studentId);
+          changedEntry = true;
+          changedAssignments += 1;
+          convertedLegacy += 1;
+          resolved.push({ scheduleId, studentId, firstDate, source: recurringHistoricalEvidenceDates(scheduleId, studentId)[0] ? 'history' : 'legacy' });
+          continue;
+        }
+
+        const assignmentId = String(assignment.id || '').trim();
+        if (!assignmentId || !payload.assignments?.[assignmentId]) continue;
+        const currentStart = validScheduleDateKey(payload.assignments[assignmentId].startDate);
+        if (currentStart !== firstDate) {
+          payload.assignments[assignmentId] = {
+            ...payload.assignments[assignmentId],
+            startDate: firstDate,
+            updatedAt: Date.now()
+          };
+          changedEntry = true;
+          changedAssignments += 1;
+          resolved.push({ scheduleId, studentId, firstDate, source: 'normalized' });
+        }
+      }
+
+      if (changedEntry) updates[`scheduleEntries/${scheduleId}`] = payload;
+    }
+
+    const now = Date.now();
+    updates[`meta/migrations/${RECURRING_FIRST_LESSON_MIGRATION_KEY}`] = {
+      status: 'done',
+      appliedAt: now,
+      historyFloor: SCHEDULE_HISTORY_MIN_DATE,
+      changedAssignments,
+      convertedLegacy,
+      resolvedCount: resolved.length
+    };
+
+    await update(teacherProfileRef, updates);
+    if (changedAssignments > 0) {
+      bridge.showToast?.(`Sutvarkytos ${changedAssignments} nuolatinių priskyrimų pirmos pamokos datos.`);
+    }
+  } catch (error) {
+    console.error('Nuolatinių priskyrimų pirmos pamokos datų migracijos klaida', error);
+    bridge.showToast?.('Nepavyko automatiškai sutvarkyti pirmų pamokų datų');
+  } finally {
+    recurringFirstLessonMigrationRunning = false;
+  }
+}
 function scheduleTimesOverlap(a, b) {
   const aStart = scheduleTimeMinutes(a?.start);
   const bStart = scheduleTimeMinutes(b?.start);
@@ -2238,6 +2410,7 @@ if (teacherProfileRef) {
     } catch (_) {}
     applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
     applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.18 istorinio Room pataisa neįvykdyta', error));
+    applyRecurringFirstLessonMigrationOnce().catch(error => console.warn('P3.2.7.10.11.10 pirmų pamokų datų migracija neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
