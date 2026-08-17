@@ -3571,7 +3571,14 @@
       const occurrenceState = scheduleOccurrenceState(editing, selectedDate);
       const runRooms = scheduleRunRooms(run);
       const presetId = scheduleCreatePreset?.studentId && teacherStudentDb.students?.[scheduleCreatePreset.studentId] ? scheduleCreatePreset.studentId : '';
-      const versions = scheduleSlotTimeVersions(editing);
+      const allTimeVersions = scheduleSlotTimeVersions(editing);
+      // P3.2.7.10.11.3: viena vienintelė laiko versija nėra „istorija“,
+      // todėl kasdieniame skydelyje jos techninės effectiveFrom datos nerodome.
+      // Jei versijų yra daugiau, pirmąją aiškiai vadiname „Pradinis laikas“,
+      // o tik vėlesnės rodomos „Nuo YYYY-MM-DD“.
+      const versions = allTimeVersions.length > 1
+        ? allTimeVersions.map((item, index) => index === 0 ? { ...item, id: '__legacy__' } : item)
+        : [];
       const closureRanges = scheduleSlotClosureRanges(editing);
       const retiredFrom = scheduleDateKeyValid(editing.retiredFrom) ? String(editing.retiredFrom) : '';
       const label = String(editing.label || '').trim();
