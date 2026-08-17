@@ -131,6 +131,7 @@
   // inspektoriaus dalis rodoma. Tai yra p2-ui.js būsena, ne DOM stebėtojas.
   let scheduleContextMode = 'overview'; // overview | time | assignment | add | content
   let scheduleContextAssignmentLabel = '';
+  let scheduleContextStudentId = '';
   let scheduleAttendanceRefreshLastAt = 0;
   let scheduleAttendanceRefreshKey = '';
   // P1.7.5.6: kuriant pamoką iš mokinio kortelės atidaromas tas pats
@@ -3397,6 +3398,7 @@
       const effective = scheduleEffectiveAttendanceStatus(record);
       const row = document.createElement('div');
       row.className = `p2-schedule-attendance-row is-${effective}`;
+      row.dataset.scheduleAttendanceRowStudent = assignment.studentId;
 
       const copy = document.createElement('div');
       const name = document.createElement('strong');
@@ -3520,6 +3522,7 @@
   function scheduleContextReset(mode = 'overview') {
     scheduleContextMode = String(mode || 'overview');
     scheduleContextAssignmentLabel = '';
+    scheduleContextStudentId = '';
   }
 
   function scheduleContextNormalizeLabel(value) {
@@ -3572,6 +3575,35 @@
       #p2ScheduleWeekPane .p2-schedule-context-zone.is-context-active {
         background: rgba(74,103,214,.13);
         box-shadow: 0 0 0 2px rgba(74,103,214,.10);
+      }
+      #p2ScheduleWeekPane [data-schedule-card].p2-schedule-context-card {
+        cursor: pointer;
+        transition: box-shadow .14s ease, border-color .14s ease;
+      }
+      #p2ScheduleWeekPane [data-schedule-card].p2-schedule-context-card:hover {
+        box-shadow: 0 5px 16px rgba(39,55,91,.10);
+      }
+      #p2ScheduleWeekPane .p2-schedule-card-overview-action {
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        width:100%;
+        min-height:30px;
+        margin-top:8px;
+        padding:5px 8px;
+        border:1px solid rgba(74,103,214,.18);
+        border-radius:9px;
+        background:rgba(74,103,214,.055);
+        color:#4a5f9d;
+        font:inherit;
+        font-size:11px;
+        font-weight:750;
+        cursor:pointer;
+      }
+      #p2ScheduleWeekPane .p2-schedule-card-overview-action:hover,
+      #p2ScheduleWeekPane .p2-schedule-card-overview-action.is-context-active {
+        background:rgba(74,103,214,.13);
+        border-color:rgba(74,103,214,.28);
       }
       #p2ScheduleEditorPane .p2-schedule-context-toolbar {
         position: sticky;
@@ -3703,7 +3735,7 @@
 
   function scheduleContextModeLabel() {
     if (scheduleContextMode === 'time') return 'Laiko nustatymai';
-    if (scheduleContextMode === 'assignment') return 'Mokinio priskyrimas';
+    if (scheduleContextMode === 'assignment') return 'Mokinio informacija';
     if (scheduleContextMode === 'add') return 'Priskirti mokinį';
     if (scheduleContextMode === 'content') return 'Pamokos turinys';
     return 'Pamokos peržiūra';
@@ -3714,6 +3746,17 @@
     weekHost.querySelectorAll('[data-schedule-card]').forEach(card => {
       const selected = String(card.dataset.scheduleCard || '') === String(editingScheduleId || '')
         && String(card.dataset.scheduleDate || '') === String(editingScheduleDateKey || '');
+      card.classList.add('p2-schedule-context-card');
+      let overviewAction = card.querySelector('[data-schedule-card-overview]');
+      if (!overviewAction) {
+        overviewAction = document.createElement('button');
+        overviewAction.type = 'button';
+        overviewAction.className = 'p2-schedule-card-overview-action';
+        overviewAction.dataset.scheduleCardOverview = '1';
+        overviewAction.textContent = 'Pamokos informacija';
+        card.appendChild(overviewAction);
+      }
+      overviewAction.classList.toggle('is-context-active', Boolean(selected && scheduleContextMode === 'overview'));
       const zones = [
         ['time', card.querySelector('.p2-schedule-card-time')],
         ['add', card.querySelector('.p2-schedule-card-students em')],
@@ -3732,9 +3775,10 @@
     if (!editorHost || !Array.isArray(assignments)) return;
     const rows = Array.from(editorHost.querySelectorAll('.p2-schedule-assignment-row'));
     assignments.forEach((assignment, index) => {
-      if (!assignment?.legacy) return;
       const row = rows[index];
       if (!row) return;
+      row.dataset.scheduleAssignmentStudent = String(assignment?.studentId || '');
+      if (!assignment?.legacy) return;
       const marker = Array.from(row.querySelectorAll('em, small, span')).find(el => String(el.textContent || '').trim() === 'Senas įrašas');
       if (!marker) return;
 
@@ -3783,15 +3827,16 @@
     const sectionByMode = {
       time: timeSection,
       content: infoSection,
-      assignment: assignmentSection,
       add: assignmentSection,
       overview: lessonSection
     };
     sections.forEach(section => section.classList.remove('p2-schedule-context-hidden', 'p2-schedule-context-focus'));
 
-    const targetSection = sectionByMode[scheduleContextMode] || lessonSection;
+    const targetSections = scheduleContextMode === 'assignment'
+      ? [assignmentSection, lessonSection]
+      : [sectionByMode[scheduleContextMode] || lessonSection];
     sections.forEach(section => {
-      if (section === targetSection) section.classList.add('p2-schedule-context-focus');
+      if (targetSections.includes(section)) section.classList.add('p2-schedule-context-focus');
       else section.classList.add('p2-schedule-context-hidden');
     });
 
@@ -3818,6 +3863,24 @@
         });
       } else if (scheduleContextMode === 'add') {
         rows.forEach(row => row.classList.add('p2-schedule-context-hidden'));
+      }
+    }
+
+    if (scheduleContextMode === 'assignment' && lessonSection) {
+      Array.from(lessonSection.children).forEach(child => {
+        if (!child.classList.contains('p2-schedule-attendance-panel')) child.classList.add('p2-schedule-context-hidden');
+      });
+      const attendancePanel = lessonSection.querySelector('.p2-schedule-attendance-panel');
+      if (attendancePanel) {
+        const title = attendancePanel.querySelector('.p2-schedule-attendance-head strong');
+        if (title) title.textContent = scheduleContextAssignmentLabel
+          ? `Lankomumas · ${scheduleContextAssignmentLabel}`
+          : 'Lankomumas';
+        attendancePanel.querySelectorAll('[data-schedule-attendance-row-student]').forEach(row => {
+          const rowStudentId = String(row.dataset.scheduleAttendanceRowStudent || '');
+          row.classList.toggle('p2-schedule-context-hidden', Boolean(scheduleContextStudentId && rowStudentId !== scheduleContextStudentId));
+        });
+        attendancePanel.querySelector('[data-schedule-attendance-mark-missing]')?.classList.add('p2-schedule-context-hidden');
       }
     }
   }
@@ -4012,6 +4075,33 @@
       const context = scheduleContextForCardClick(event.target, card);
       scheduleContextMode = context.mode;
       scheduleContextAssignmentLabel = context.label;
+      scheduleContextStudentId = '';
+      if (context.mode === 'assignment' && context.label) {
+        const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+        const active = entry ? scheduleActiveAssignments({ id: scheduleId, ...entry }, dateKey) : [];
+        const matched = active.find(item => {
+          const student = studentRecord(item.studentId);
+          return scheduleContextLabelsMatch(scheduleStudentTeacherLabel(student, studentList()), context.label);
+        });
+        scheduleContextStudentId = String(matched?.studentId || '');
+      }
+      editingScheduleId = scheduleId;
+      editingScheduleDateKey = dateKey;
+      scheduleCreateMode = false;
+      scheduleSelectedDateKey = dateKey;
+      scheduleSelectedDay = scheduleDateDayIndex(dateKey);
+      renderScheduleModal();
+    }));
+
+    weekHost.querySelectorAll('[data-schedule-card-overview]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const card = button.closest('[data-schedule-card]');
+      const scheduleId = String(card?.dataset.scheduleCard || '');
+      const dateKey = String(card?.dataset.scheduleDate || '');
+      if (!scheduleId || !scheduleDateKeyValid(dateKey)) return;
+      scheduleContextMode = 'overview';
+      scheduleContextAssignmentLabel = '';
+      scheduleContextStudentId = '';
       editingScheduleId = scheduleId;
       editingScheduleDateKey = dateKey;
       scheduleCreateMode = false;
