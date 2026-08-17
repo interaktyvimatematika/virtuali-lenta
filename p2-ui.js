@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16.1-TEST-CLOCK-VISIBLE-HOTFIX';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16.2-DRAGGABLE-TEST-CLOCK';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4090,9 +4090,27 @@
         box-shadow:0 10px 30px rgba(37,45,66,.18);
         background:#fffaf0; color:#5d5c68; font-size:11px;
       }
+      #p2ScheduleTestClockBar {
+        cursor:grab;
+        user-select:none;
+        touch-action:none;
+      }
+      #p2ScheduleTestClockBar.is-dragging { cursor:grabbing; }
       #p2ScheduleTestClockBar strong { color:#805d14; }
-      #p2ScheduleTestClockBar input { height:32px; border:1px solid #d9deea; border-radius:8px; padding:4px 7px; background:#fff; font:inherit; }
-      #p2ScheduleTestClockBar button { min-height:32px; padding:5px 9px; }
+      #p2ScheduleTestClockBar input { height:32px; border:1px solid #d9deea; border-radius:8px; padding:4px 7px; background:#fff; font:inherit; cursor:text; user-select:text; touch-action:auto; }
+      #p2ScheduleTestClockBar button { min-height:32px; padding:5px 9px; cursor:pointer; touch-action:auto; }
+      #p2ScheduleTestClockBar .p2-schedule-test-clock-drag-handle {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:26px;
+        height:32px;
+        border-radius:8px;
+        color:#9a721d;
+        font-size:18px;
+        line-height:1;
+        flex:0 0 auto;
+      }
       #p2ScheduleTestClockBar .p2-schedule-test-clock-status { margin-right:auto; display:grid; gap:1px; }
       #p2ScheduleTestClockBar .p2-schedule-test-clock-status small { color:#858b98; }
     `;
@@ -4319,6 +4337,109 @@
     return `${y}-${m}-${d}T${h}:${min}`;
   }
 
+
+  const SCHEDULE_TEST_CLOCK_POSITION_KEY = 'p3271011162_schedule_test_clock_position';
+
+  function scheduleTestClockViewportPosition(bar, left, top) {
+    const margin = 8;
+    const rect = bar.getBoundingClientRect();
+    const width = Math.min(rect.width || bar.offsetWidth || 320, Math.max(120, window.innerWidth - margin * 2));
+    const height = Math.min(rect.height || bar.offsetHeight || 56, Math.max(40, window.innerHeight - margin * 2));
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    return {
+      left: Math.min(maxLeft, Math.max(margin, Number(left) || margin)),
+      top: Math.min(maxTop, Math.max(margin, Number(top) || margin))
+    };
+  }
+
+  function scheduleSaveTestClockPosition(left, top) {
+    try {
+      sessionStorage.setItem(SCHEDULE_TEST_CLOCK_POSITION_KEY, JSON.stringify({ left, top }));
+    } catch (_) {}
+  }
+
+  function scheduleRestoreTestClockPosition(bar) {
+    if (!bar) return;
+    try {
+      const raw = sessionStorage.getItem(SCHEDULE_TEST_CLOCK_POSITION_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!Number.isFinite(Number(saved?.left)) || !Number.isFinite(Number(saved?.top))) return;
+      const next = scheduleTestClockViewportPosition(bar, Number(saved.left), Number(saved.top));
+      bar.style.left = `${next.left}px`;
+      bar.style.top = `${next.top}px`;
+      bar.style.right = 'auto';
+      bar.style.bottom = 'auto';
+    } catch (_) {}
+  }
+
+  function enableScheduleTestClockDragging(bar) {
+    if (!bar || bar.dataset.scheduleTestClockDragReady === '1') return;
+    bar.dataset.scheduleTestClockDragReady = '1';
+
+    let drag = null;
+
+    bar.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (event.target?.closest?.('input, button, select, textarea, a, [contenteditable="true"]')) return;
+
+      const rect = bar.getBoundingClientRect();
+      bar.style.left = `${rect.left}px`;
+      bar.style.top = `${rect.top}px`;
+      bar.style.right = 'auto';
+      bar.style.bottom = 'auto';
+
+      drag = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+
+      try { bar.setPointerCapture(event.pointerId); } catch (_) {}
+      bar.classList.add('is-dragging');
+      event.preventDefault();
+    });
+
+    bar.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const next = scheduleTestClockViewportPosition(
+        bar,
+        event.clientX - drag.offsetX,
+        event.clientY - drag.offsetY
+      );
+      bar.style.left = `${next.left}px`;
+      bar.style.top = `${next.top}px`;
+      event.preventDefault();
+    });
+
+    const finishDrag = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const rect = bar.getBoundingClientRect();
+      const next = scheduleTestClockViewportPosition(bar, rect.left, rect.top);
+      bar.style.left = `${next.left}px`;
+      bar.style.top = `${next.top}px`;
+      scheduleSaveTestClockPosition(next.left, next.top);
+      try { bar.releasePointerCapture(event.pointerId); } catch (_) {}
+      bar.classList.remove('is-dragging');
+      drag = null;
+    };
+
+    bar.addEventListener('pointerup', finishDrag);
+    bar.addEventListener('pointercancel', finishDrag);
+
+    window.addEventListener('resize', () => {
+      if (!bar.isConnected) return;
+      const hasManualPosition = bar.style.left && bar.style.top;
+      if (!hasManualPosition) return;
+      const rect = bar.getBoundingClientRect();
+      const next = scheduleTestClockViewportPosition(bar, rect.left, rect.top);
+      bar.style.left = `${next.left}px`;
+      bar.style.top = `${next.top}px`;
+      scheduleSaveTestClockPosition(next.left, next.top);
+    });
+  }
+
   function renderScheduleTestClockBar() {
     if (!scheduleModal || role() !== 'teacher') return;
     const body = scheduleModal.querySelector('.p2-schedule-body');
@@ -4332,6 +4453,7 @@
     const active = scheduleTestClockActive();
     const now = scheduleNow();
     bar.innerHTML = `
+      <span class="p2-schedule-test-clock-drag-handle" title="Vilk laikrodį į kitą vietą" aria-hidden="true">⠿</span>
       <div class="p2-schedule-test-clock-status">
         <strong>${active ? `🧪 Testavimo laikrodis · ${escapeHtml(scheduleDateTimeLocalValue(now).replace('T',' '))}` : '🧪 Testavimo laikrodis · išjungtas'}</strong>
         <small>Tik tvarkaraščio / lentos būsenoms ir „Lanko nuo“ ribai. Firebase laiko žymos lieka tikros.</small>
@@ -4340,6 +4462,8 @@
       <button type="button" class="p2-secondary" data-schedule-test-clock-apply>Taikyti</button>
       ${active ? '<button type="button" class="is-muted" data-schedule-test-clock-reset>Tikras laikas</button>' : ''}
     `;
+    enableScheduleTestClockDragging(bar);
+    scheduleRestoreTestClockPosition(bar);
     bar.querySelector('[data-schedule-test-clock-apply]')?.addEventListener('click', () => {
       const raw = String(bar.querySelector('#p2ScheduleTestClockInput')?.value || '').trim();
       const date = raw ? new Date(raw) : null;
