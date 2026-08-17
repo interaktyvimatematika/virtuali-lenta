@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.2-STUDENT-LESSON-INSPECTOR';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.2.1-STUDENT-ID-CONTEXT-FIX';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -3830,7 +3830,11 @@
     const time = element.closest('.p2-schedule-card-time');
     if (time && card.contains(time)) return { mode: 'time', label: '' };
     const student = element.closest('.p2-schedule-card-students span');
-    if (student && card.contains(student)) return { mode: 'assignment', label: String(student.textContent || '').trim() };
+    if (student && card.contains(student)) return {
+      mode: 'assignment',
+      label: String(student.textContent || '').trim(),
+      studentId: String(student.dataset.scheduleStudentId || '')
+    };
     const empty = element.closest('.p2-schedule-card-students em');
     if (empty && card.contains(empty)) return { mode: 'add', label: '' };
     const content = element.closest('.p2-schedule-card-copy > p');
@@ -4368,7 +4372,34 @@
         ['add', card.querySelector('.p2-schedule-card-students em')],
         ['content', card.querySelector('.p2-schedule-card-copy > p')]
       ];
-      card.querySelectorAll('.p2-schedule-card-students span').forEach(student => zones.push(['assignment', student]));
+      const scheduleId = String(card.dataset.scheduleCard || '');
+      const dateKey = String(card.dataset.scheduleDate || '');
+      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+      const activeAssignments = entry && scheduleDateKeyValid(dateKey)
+        ? scheduleActiveAssignments({ id: scheduleId, ...entry }, dateKey)
+        : [];
+      const usedStudentIds = new Set();
+
+      card.querySelectorAll('.p2-schedule-card-students span').forEach(student => {
+        const labelText = String(student.textContent || '').trim();
+        const matched = activeAssignments.find(item => {
+          const id = String(item?.studentId || '');
+          if (!id || usedStudentIds.has(id)) return false;
+          const record = studentRecord(id);
+          return scheduleContextLabelsMatch(scheduleStudentTeacherLabel(record, studentList()), labelText);
+        }) || activeAssignments.find(item => {
+          const id = String(item?.studentId || '');
+          return id && !usedStudentIds.has(id);
+        });
+
+        const studentId = String(matched?.studentId || '');
+        if (studentId) {
+          student.dataset.scheduleStudentId = studentId;
+          usedStudentIds.add(studentId);
+        }
+        zones.push(['assignment', student]);
+      });
+
       zones.forEach(([mode, zone]) => {
         if (!zone) return;
         zone.classList.add('p2-schedule-context-zone');
@@ -4636,6 +4667,7 @@
       const row = rows[index];
       if (!row) return;
       row.dataset.scheduleAssignmentStudent = String(assignment?.studentId || '');
+      row.dataset.scheduleAssignmentId = String(assignment?.id || '');
 
       if (!assignment?.legacy && scheduleMode(assignment) === 'recurring' && entry) {
         const locked = scheduleRecurringStartLocked({ id: editingScheduleId, ...entry }, assignment);
@@ -4710,22 +4742,10 @@
 
 
   function applySingleStudentScheduleInspector(editorHost, assignmentSection, lessonSection, attendancePanel, attendanceRows, occurrenceState) {
-    if (!editorHost || !assignmentSection || !lessonSection || !scheduleContextStudentId) return false;
+    if (!editorHost || !assignmentSection || !lessonSection) return false;
 
     const studentId = String(scheduleContextStudentId || '');
-    const selectedRow = Array.from(assignmentSection.querySelectorAll('.p2-schedule-assignment-row'))
-      .find(row => String(row.dataset.scheduleAssignmentStudent || '') === studentId);
-    if (!selectedRow) return false;
-
-    const student = studentRecord(studentId);
-    const studentLabel = scheduleStudentTeacherLabel(student, studentList());
-    const entry = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] : null;
-    const assignment = entry
-      ? scheduleAssignments({ id: editingScheduleId, ...entry }).find(item =>
-          String(item?.studentId || '') === studentId
-          && (!scheduleDateKeyValid(editingScheduleDateKey) || scheduleAssignmentOccursOnDate({ id: editingScheduleId, ...entry }, item, editingScheduleDateKey))
-        )
-      : null;
+    const student = studentId ? studentRecord(studentId) : null;
 
     editorHost.classList.add('is-student-context');
     editorHost.closest('.p2-schedule-body')?.classList.add('is-student-context');
@@ -4733,17 +4753,45 @@
     const assignmentOriginalChildren = Array.from(assignmentSection.children);
     const lessonOriginalChildren = Array.from(lessonSection.children);
 
+    assignmentOriginalChildren.forEach(child => child.classList.add('p2-schedule-context-hidden'));
+    lessonOriginalChildren.forEach(child => child.classList.add('p2-schedule-context-hidden'));
+
     const inspector = document.createElement('div');
     inspector.className = 'p2-schedule-single-student-inspector';
+
+    if (!studentId || !student) {
+      const error = document.createElement('div');
+      error.className = 'p2-schedule-single-student-head';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Nepavyko atidaryti mokinio nustatymų';
+      const small = document.createElement('small');
+      small.textContent = 'Mokinio kortelė nebuvo susieta su vienareikšmiu mokinio ID. Bendri kitų mokinių nustatymai saugumo sumetimais nerodomi.';
+      error.append(strong, small);
+      inspector.appendChild(error);
+      assignmentSection.appendChild(inspector);
+      return false;
+    }
+
+    const selectedRows = Array.from(assignmentSection.querySelectorAll('.p2-schedule-assignment-row'))
+      .filter(row => String(row.dataset.scheduleAssignmentStudent || '') === studentId);
+
+    const studentLabel = scheduleStudentTeacherLabel(student, studentList());
+    const entry = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] : null;
+    const activeAssignments = entry
+      ? scheduleActiveAssignments(
+          { id: editingScheduleId, ...entry },
+          scheduleDateKeyValid(editingScheduleDateKey) ? editingScheduleDateKey : scheduleSelectedDateKey
+        ).filter(item => String(item?.studentId || '') === studentId)
+      : [];
 
     const head = document.createElement('div');
     head.className = 'p2-schedule-single-student-head';
     const name = document.createElement('strong');
     name.textContent = studentLabel || 'Mokinys';
     const meta = document.createElement('small');
-    const mode = assignment ? scheduleModeLabel(scheduleMode(assignment)) : '';
+    const modeLabels = Array.from(new Set(activeAssignments.map(item => scheduleModeLabel(scheduleMode(item))).filter(Boolean)));
     const date = scheduleDateKeyValid(editingScheduleDateKey) ? editingScheduleDateKey : scheduleSelectedDateKey;
-    meta.textContent = [mode, date].filter(Boolean).join(' · ');
+    meta.textContent = [...modeLabels, date].filter(Boolean).join(' · ');
     head.append(name, meta);
 
     const assignmentBlock = document.createElement('div');
@@ -4753,9 +4801,20 @@
     assignmentTitle.textContent = 'Pamokos priskyrimas';
     const assignmentBody = document.createElement('div');
     assignmentBody.className = 'p2-schedule-single-student-assignment';
-    selectedRow.classList.remove('p2-schedule-context-hidden');
-    selectedRow.classList.add('is-context-active');
-    assignmentBody.appendChild(selectedRow);
+
+    if (selectedRows.length) {
+      selectedRows.forEach(row => {
+        row.classList.remove('p2-schedule-context-hidden');
+        row.classList.add('is-context-active');
+        assignmentBody.appendChild(row);
+      });
+    } else {
+      const missing = document.createElement('div');
+      missing.className = 'p2-schedule-single-student-future-note';
+      missing.textContent = 'Šio mokinio priskyrimo įrašas šiame laike nerastas.';
+      assignmentBody.appendChild(missing);
+    }
+
     assignmentBlock.append(assignmentTitle, assignmentBody);
 
     const attendanceBlock = document.createElement('div');
@@ -4787,14 +4846,8 @@
       attendanceBlock.append(attendanceHead, note);
     }
 
-    assignmentOriginalChildren.forEach(child => {
-      if (child !== inspector) child.classList.add('p2-schedule-context-hidden');
-    });
-    lessonOriginalChildren.forEach(child => child.classList.add('p2-schedule-context-hidden'));
-
     inspector.append(head, assignmentBlock, attendanceBlock);
     assignmentSection.appendChild(inspector);
-
     return true;
   }
 
@@ -4844,10 +4897,7 @@
       form?.classList.remove('p2-schedule-context-hidden');
       if (scheduleContextMode === 'assignment') {
         form?.classList.add('p2-schedule-context-hidden');
-        if (scheduleContextAssignmentLabel) rows.forEach(row => {
-          if (scheduleContextLabelsMatch(row.textContent, scheduleContextAssignmentLabel)) row.classList.add('is-context-active');
-          else row.classList.add('p2-schedule-context-hidden');
-        });
+        rows.forEach(row => row.classList.add('p2-schedule-context-hidden'));
       } else if (scheduleContextMode === 'add') {
         rows.forEach(row => row.classList.add('p2-schedule-context-hidden'));
       }
@@ -5243,8 +5293,8 @@
       const context = scheduleContextForCardClick(event.target, card);
       scheduleContextMode = context.mode;
       scheduleContextAssignmentLabel = context.label;
-      scheduleContextStudentId = '';
-      if (context.mode === 'assignment' && context.label) {
+      scheduleContextStudentId = String(context.studentId || '');
+      if (context.mode === 'assignment' && !scheduleContextStudentId && context.label) {
         const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
         const active = entry ? scheduleActiveAssignments({ id: scheduleId, ...entry }, dateKey) : [];
         const matched = active.find(item => {
