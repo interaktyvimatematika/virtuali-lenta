@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.15-MARKAS-INTRO-CORRECTION';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1771,6 +1771,25 @@ function scheduleOccurrenceBounds(entry, dateKeyRaw) {
   const startAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
   const durationMinutes = safeScheduleDuration(time.durationMinutes);
   return { startAt, endAt: new Date(startAt.getTime() + durationMinutes * 60000), time, durationMinutes };
+}
+function scheduleRecurringFirstOccurrenceBounds(entry, assignment) {
+  if (!entry || safeAttendanceMode(assignment?.mode || assignment?.scheduleMode) !== 'recurring') return null;
+  const from = scheduleHistoryStartDate(assignment?.startDate);
+  for (let offset = 0; offset <= 370; offset += 1) {
+    const dateKey = scheduleAddDays(from, offset);
+    if (!dateKey || !scheduleSlotOccursOnDate(entry, dateKey)) continue;
+    const bounds = scheduleOccurrenceBounds(entry, dateKey);
+    if (bounds) return { ...bounds, dateKey };
+  }
+  return null;
+}
+
+function scheduleAssignmentValidationNow(detail) {
+  if (String(detail?.validationClock || '') === 'test') {
+    const value = Number(detail?.validationNowMs);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return Date.now();
 }
 function scheduleClosureRangesForEntry(entry) {
   const raw = entry?.closedRanges && typeof entry.closedRanges === 'object' ? entry.closedRanges : {};
@@ -3830,6 +3849,41 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
 
+    if (detail.action === 'assignment-start-update') {
+      const assignmentId = String(detail.assignmentId || '').trim();
+      const startDate = validScheduleDateKey(detail.startDate);
+      if (!assignmentId || !startDate) throw new Error('Pasirink naują „Lanko nuo“ datą');
+      if (startDate < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pirmas lankymas negali būti ankstesnis nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+
+      const payload = scheduleAssignmentOnlyPayload(existing);
+      const current = payload.assignments?.[assignmentId];
+      if (!current || safeAttendanceMode(current?.mode || current?.scheduleMode) !== 'recurring') throw new Error('Nuolatinis mokinio priskyrimas nerastas');
+
+      const currentBounds = scheduleRecurringFirstOccurrenceBounds(existing, current);
+      if (!currentBounds?.startAt) throw new Error('Nepavyko nustatyti pirmosios pamokos laiko');
+      const validationNow = scheduleAssignmentValidationNow(detail);
+      if (validationNow >= currentBounds.startAt.getTime()) {
+        throw new Error(`„Lanko nuo“ užrakinta: pirmoji pamoka ${currentBounds.dateKey} ${safeScheduleTime(currentBounds.time?.start)} jau prasidėjo`);
+      }
+
+      if (!scheduleSlotOccursOnDate(existing, startDate)) throw new Error(`${startDate} nėra šio pamokos laiko diena`);
+      const nextBounds = scheduleOccurrenceBounds(existing, startDate);
+      if (!nextBounds?.startAt) throw new Error('Nepavyko nustatyti naujos pirmosios pamokos laiko');
+      if (validationNow >= nextBounds.startAt.getTime()) throw new Error('„Lanko nuo“ negalima perkelti į jau prasidėjusią ar praėjusią pamoką');
+
+      payload.assignments[assignmentId] = {
+        ...current,
+        mode: 'recurring',
+        startDate,
+        updatedAt: Date.now()
+      };
+      delete payload.assignments[assignmentId].date;
+      delete payload.assignments[assignmentId].dates;
+      delete payload.assignments[assignmentId].scheduleMode;
+      await saveSlot(scheduleId, payload, 'assignment', `„Lanko nuo“ pakeista į ${startDate}`);
+      return;
+    }
+
     if (detail.action === 'assignment-legacy-migrate') {
       const assignmentId = String(detail.assignmentId || '').trim();
       const studentId = legacyScheduleStudentIdFromAssignmentId(assignmentId);
@@ -3870,6 +3924,7 @@ window.addEventListener('p2:schedule-request', async event => {
         assignment.startDate = validScheduleDateKey(detail.startDate);
         if (!assignment.startDate) throw new Error('Pasirink, nuo kada mokinys lanko nuolat');
         if (assignment.startDate < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pirmas lankymas negali būti ankstesnis nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+        if (!scheduleSlotOccursOnDate(payload, assignment.startDate)) throw new Error(`${assignment.startDate} nėra šio pamokos laiko diena`);
       } else if (mode === 'dates') {
         let dates = Array.isArray(detail.dates) ? detail.dates.map(validScheduleDateKey).filter(Boolean) : [];
         if (!dates.length && validScheduleDateKey(detail.rangeStart) && validScheduleDateKey(detail.rangeEnd)) {

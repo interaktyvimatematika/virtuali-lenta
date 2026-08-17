@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.1';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -134,6 +134,10 @@
   let scheduleContextStudentId = '';
   let scheduleAttendanceRefreshLastAt = 0;
   let scheduleAttendanceRefreshKey = '';
+  // P3.2.7.10.11.16: testinis tvarkaraščio laikrodis gyvena tik šiame naršyklės
+  // skirtuke (sessionStorage) ir NIEKADA nekeičia Firebase / createdAt / updatedAt laikų.
+  const SCHEDULE_TEST_CLOCK_KEY = 'p327101116_schedule_test_clock_ms';
+  const SCHEDULE_TEST_CLOCK_PANEL_KEY = 'p327101116_schedule_test_clock_panel';
   // P1.7.5.6: kuriant pamoką iš mokinio kortelės atidaromas tas pats
   // scheduleEntry redaktorius, tik mokinys iš anksto pažymimas. Jokios atskiros
   // „mokinio kortelės pamokos“ struktūros nebėra.
@@ -2139,7 +2143,7 @@
       return;
     }
 
-    const temporalState = scheduleOccurrenceStateFromParts(meta.dateKey, meta.start, meta.durationMinutes, new Date());
+    const temporalState = scheduleOccurrenceStateFromParts(meta.dateKey, meta.start, meta.durationMinutes, scheduleNow());
     const semantic = lessonOccurrenceSemanticState(meta, temporalState);
     if (!semantic.label) {
       badge.hidden = true;
@@ -2518,14 +2522,14 @@
     return formatStudentDate(lesson?.createdAt || lesson?.linkedAt);
   }
 
-  function studentLessonOccurrenceState(lesson, now = new Date()) {
+  function studentLessonOccurrenceState(lesson, now = scheduleNow()) {
     const schedule = studentLessonScheduleMeta(lesson);
     return scheduleOccurrenceStateFromParts(schedule.dateKey, schedule.start, schedule.duration, now);
   }
 
   // P2-SPLIT-P2.5-P4-P1.7.8.1: būsimos mokinio pamokos skaičiuojamos ne iš
   // paties pamokos laiko, o iš konkrečių mokinio priskyrimų tam laikui.
-  function studentScheduleNextOccurrence(entry, studentId, now = new Date()) {
+  function studentScheduleNextOccurrence(entry, studentId, now = scheduleNow()) {
     const id = String(studentId || '').trim();
     if (!id) return null;
     const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
@@ -2547,7 +2551,7 @@
   function studentUpcomingScheduleLessons(studentId) {
     const id = String(studentId || '').trim();
     if (!id) return [];
-    const now = new Date();
+    const now = scheduleNow();
     const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
     const result = [];
     for (let offset = 0; offset <= 120; offset += 1) {
@@ -3088,7 +3092,7 @@
       editingScheduleId = '';
       editingScheduleDateKey = '';
       scheduleCreateMode = false;
-      scheduleWeekStartKey = scheduleWeekStart(new Date());
+      scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
       scheduleSelectedDateKey = localDateKey();
       scheduleSelectedDay = scheduleTodayIndex();
       // P1.7.7: iš mokinio kortelės nekuriamas atskiras laikas. Mokytojas
@@ -3168,12 +3172,35 @@
     final: { label: 'Paskutinė', long: 'Paskutinė pamoka' }
   });
 
-  function scheduleTodayIndex(date = new Date()) {
+  function scheduleTestClockMs() {
+    try {
+      const raw = sessionStorage.getItem(SCHEDULE_TEST_CLOCK_KEY);
+      if (!raw) return 0;
+      const value = Number(raw);
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    } catch (_) { return 0; }
+  }
+
+  function scheduleTestClockActive() { return scheduleTestClockMs() > 0; }
+
+  function scheduleNow() {
+    const testMs = scheduleTestClockMs();
+    return new Date(testMs || Date.now());
+  }
+
+  function scheduleSetTestClock(value) {
+    try {
+      if (value instanceof Date && Number.isFinite(value.getTime())) sessionStorage.setItem(SCHEDULE_TEST_CLOCK_KEY, String(value.getTime()));
+      else sessionStorage.removeItem(SCHEDULE_TEST_CLOCK_KEY);
+    } catch (_) {}
+  }
+
+  function scheduleTodayIndex(date = scheduleNow()) {
     const day = Number(date.getDay());
     return day === 0 ? 7 : day;
   }
 
-  function localDateKey(date = new Date()) {
+  function localDateKey(date = scheduleNow()) {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
@@ -3190,7 +3217,7 @@
 
   function scheduleDateKeyValid(value) { return Boolean(scheduleDateFromKey(value)); }
 
-  function scheduleOccurrenceStateFromParts(dateKeyRaw, startRaw, durationRaw, now = new Date()) {
+  function scheduleOccurrenceStateFromParts(dateKeyRaw, startRaw, durationRaw, now = scheduleNow()) {
     const date = scheduleDateFromKey(dateKeyRaw);
     const startMinutes = scheduleTimeToMinutes(startRaw);
     const duration = Math.max(0, Number(durationRaw || 0));
@@ -3203,7 +3230,7 @@
     return { known: true, state: 'past', startAt, endAt };
   }
 
-  function scheduleOccurrenceState(entry, dateKey, now = new Date()) {
+  function scheduleOccurrenceState(entry, dateKey, now = scheduleNow()) {
     const time = scheduleSlotTimeForDate(entry, dateKey);
     return scheduleOccurrenceStateFromParts(dateKey, time?.start, time?.durationMinutes, now);
   }
@@ -3215,7 +3242,7 @@
     return localDateKey(date);
   }
 
-  function scheduleWeekStart(value = new Date()) {
+  function scheduleWeekStart(value = scheduleNow()) {
     const date = value instanceof Date ? new Date(value.getTime()) : (scheduleDateFromKey(value) || new Date());
     date.setHours(12, 0, 0, 0);
     date.setDate(date.getDate() - (scheduleTodayIndex(date) - 1));
@@ -3223,7 +3250,7 @@
   }
 
   function scheduleWeekDates(weekStartKey) {
-    const start = scheduleDateFromKey(weekStartKey) || scheduleDateFromKey(scheduleWeekStart(new Date()));
+    const start = scheduleDateFromKey(weekStartKey) || scheduleDateFromKey(scheduleWeekStart(scheduleNow()));
     return SCHEDULE_DAYS.map((day, index) => {
       const date = new Date(start.getTime());
       date.setDate(start.getDate() + index);
@@ -3244,7 +3271,7 @@
   }
 
   function defaultScheduleTime() {
-    const date = new Date();
+    const date = scheduleNow();
     let minutes = date.getMinutes();
     minutes = Math.ceil(minutes / 15) * 15;
     if (minutes >= 60) { date.setHours(date.getHours() + 1); minutes = 0; }
@@ -3745,6 +3772,28 @@
     return String(assignment.date || '—');
   }
 
+  function scheduleRecurringFirstOccurrence(entry, assignment) {
+    if (!entry || scheduleMode(assignment) !== 'recurring') return null;
+    const from = scheduleHistoryStartDate(assignment?.startDate);
+    // Normaliuose įrašuose startDate yra tikra šio laiko savaitės diena.
+    // Saugus fallback leidžia senesniems duomenims surasti artimiausią realią pamoką.
+    for (let offset = 0; offset <= 370; offset += 1) {
+      const dateKey = scheduleAddDays(from, offset);
+      if (!dateKey || !scheduleSlotOccursOnDate(entry, dateKey)) continue;
+      const time = scheduleSlotTimeForDate(entry, dateKey);
+      const state = scheduleOccurrenceStateFromParts(dateKey, time?.start, time?.durationMinutes, scheduleNow());
+      if (!state.known) return null;
+      return { dateKey, time, ...state };
+    }
+    return null;
+  }
+
+  function scheduleRecurringStartLocked(entry, assignment) {
+    const first = scheduleRecurringFirstOccurrence(entry, assignment);
+    if (!first?.startAt) return true;
+    return scheduleNow().getTime() >= first.startAt.getTime();
+  }
+
   function requestSchedule(detail) {
     if (role() !== 'teacher') return;
     window.dispatchEvent(new CustomEvent('p2:schedule-request', { detail }));
@@ -4011,6 +4060,33 @@
         margin: 9px 0 0;
         color: #70798a;
       }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools {
+        display:grid;
+        grid-template-columns:minmax(145px,1fr) auto;
+        align-items:end;
+        gap:7px;
+        width:100%;
+        margin-top:7px;
+        padding-top:7px;
+        border-top:1px dashed #e1e6ef;
+      }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools label { display:grid; gap:3px; margin:0; color:#687287; font-size:10px; font-weight:700; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools input { height:32px; min-width:0; border:1px solid #dbe2ef; border-radius:8px; padding:4px 7px; background:#fff; font:inherit; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools button { min-height:32px; white-space:nowrap; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-tools.is-locked { grid-template-columns:1fr; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-locked { display:grid; gap:2px; color:#566177; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-locked strong { font-size:11px; }
+      #p2ScheduleEditorPane .p2-schedule-recurring-start-locked small { color:#7a8495; line-height:1.35; }
+      #p2ScheduleTestClockBar {
+        display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+        padding:7px 16px; border-top:1px solid #edf0f5; border-bottom:1px solid #e6eaf1;
+        background:#fffaf0; color:#5d5c68; font-size:11px;
+      }
+      #p2ScheduleTestClockBar strong { color:#805d14; }
+      #p2ScheduleTestClockBar input { height:32px; border:1px solid #d9deea; border-radius:8px; padding:4px 7px; background:#fff; font:inherit; }
+      #p2ScheduleTestClockBar button { min-height:32px; padding:5px 9px; }
+      #p2ScheduleTestClockBar .p2-schedule-test-clock-status { margin-right:auto; display:grid; gap:1px; }
+      #p2ScheduleTestClockBar .p2-schedule-test-clock-status small { color:#858b98; }
     `;
     document.head.appendChild(style);
   }
@@ -4057,10 +4133,43 @@
   function enhanceLegacyScheduleAssignmentRows(editorHost, assignments) {
     if (!editorHost || !Array.isArray(assignments)) return;
     const rows = Array.from(editorHost.querySelectorAll('.p2-schedule-assignment-row'));
+    const entry = editingScheduleId ? teacherStudentDb.scheduleEntries?.[editingScheduleId] : null;
     assignments.forEach((assignment, index) => {
       const row = rows[index];
       if (!row) return;
       row.dataset.scheduleAssignmentStudent = String(assignment?.studentId || '');
+
+      if (!assignment?.legacy && scheduleMode(assignment) === 'recurring' && entry) {
+        const locked = scheduleRecurringStartLocked({ id: editingScheduleId, ...entry }, assignment);
+        const first = scheduleRecurringFirstOccurrence({ id: editingScheduleId, ...entry }, assignment);
+        const tools = document.createElement('div');
+        tools.className = `p2-schedule-recurring-start-tools${locked ? ' is-locked' : ''}`;
+
+        if (locked) {
+          const state = document.createElement('div');
+          state.className = 'p2-schedule-recurring-start-locked';
+          state.innerHTML = `<strong>🔒 Lanko nuo ${escapeHtml(scheduleHistoryStartDate(assignment.startDate))}</strong><small>Pirmoji pamoka ${escapeHtml(first?.dateKey || scheduleHistoryStartDate(assignment.startDate))}${first?.time?.start ? ` · ${escapeHtml(first.time.start)}` : ''} jau prasidėjo — pradžios data yra istorinis faktas.</small>`;
+          tools.appendChild(state);
+        } else {
+          const label = document.createElement('label');
+          const caption = document.createElement('span');
+          caption.textContent = 'Lanko nuo';
+          const input = document.createElement('input');
+          input.type = 'date';
+          input.min = SCHEDULE_HISTORY_MIN_DATE;
+          input.value = scheduleHistoryStartDate(assignment.startDate);
+          input.dataset.scheduleRecurringStart = String(assignment.id || '');
+          label.append(caption, input);
+          const save = document.createElement('button');
+          save.type = 'button';
+          save.className = 'p2-secondary';
+          save.textContent = 'Keisti pradžią';
+          save.dataset.scheduleRecurringStartSave = String(assignment.id || '');
+          tools.append(label, save);
+        }
+        row.appendChild(tools);
+      }
+
       if (!assignment?.legacy) return;
       const marker = Array.from(row.querySelectorAll('em, small, span')).find(el => String(el.textContent || '').trim() === 'Senas įrašas');
       if (!marker) return;
@@ -4192,6 +4301,58 @@
     }
   }
 
+  function scheduleDateTimeLocalValue(date) {
+    const value = date instanceof Date ? date : scheduleNow();
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    const h = String(value.getHours()).padStart(2, '0');
+    const min = String(value.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  function renderScheduleTestClockBar() {
+    if (!scheduleModal || role() !== 'teacher') return;
+    const body = scheduleModal.querySelector('.p2-schedule-body');
+    if (!body) return;
+    let bar = scheduleModal.querySelector('#p2ScheduleTestClockBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'p2ScheduleTestClockBar';
+      body.insertAdjacentElement('beforebegin', bar);
+    }
+    const active = scheduleTestClockActive();
+    const now = scheduleNow();
+    bar.innerHTML = `
+      <div class="p2-schedule-test-clock-status">
+        <strong>${active ? `🧪 Testavimo laikas · ${escapeHtml(scheduleDateTimeLocalValue(now).replace('T',' '))}` : '🧪 Testavimo laikas · išjungtas'}</strong>
+        <small>Tik tvarkaraščio / lentos būsenoms ir „Lanko nuo“ ribai. Firebase laiko žymos lieka tikros.</small>
+      </div>
+      <input id="p2ScheduleTestClockInput" type="datetime-local" value="${escapeHtml(scheduleDateTimeLocalValue(now))}" aria-label="Testavimo data ir laikas">
+      <button type="button" class="p2-secondary" data-schedule-test-clock-apply>Taikyti</button>
+      ${active ? '<button type="button" class="is-muted" data-schedule-test-clock-reset>Tikras laikas</button>' : ''}
+    `;
+    bar.querySelector('[data-schedule-test-clock-apply]')?.addEventListener('click', () => {
+      const raw = String(bar.querySelector('#p2ScheduleTestClockInput')?.value || '').trim();
+      const date = raw ? new Date(raw) : null;
+      if (!date || !Number.isFinite(date.getTime())) { toast('Įvesk tinkamą testavimo datą ir laiką'); return; }
+      scheduleSetTestClock(date);
+      scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
+      scheduleSelectedDateKey = localDateKey(scheduleNow());
+      editingScheduleDateKey = scheduleSelectedDateKey;
+      updateLessonOccurrenceBadge();
+      renderScheduleModal();
+    });
+    bar.querySelector('[data-schedule-test-clock-reset]')?.addEventListener('click', () => {
+      scheduleSetTestClock(null);
+      scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
+      scheduleSelectedDateKey = localDateKey(scheduleNow());
+      editingScheduleDateKey = scheduleSelectedDateKey;
+      updateLessonOccurrenceBadge();
+      renderScheduleModal();
+    });
+  }
+
   function ensureScheduleModal() {
     if (scheduleModal) return scheduleModal;
     scheduleModal = scheduleUi.createScheduleModal(document);
@@ -4213,8 +4374,9 @@
     const editorHost = scheduleModal.querySelector('#p2ScheduleEditorPane');
     if (!weekHost || !editorHost) return;
 
-    const todayKey = localDateKey();
-    if (!scheduleWeekStartKey) scheduleWeekStartKey = scheduleWeekStart(new Date());
+    const todayKey = localDateKey(scheduleNow());
+    if (!scheduleWeekStartKey) scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
+    renderScheduleTestClockBar();
     const weekDates = scheduleWeekDates(scheduleWeekStartKey);
     const weekKeys = weekDates.map(item => item.dateKey);
     if (!scheduleSelectedDateKey || !weekKeys.includes(scheduleSelectedDateKey)) scheduleSelectedDateKey = weekKeys.includes(todayKey) ? todayKey : weekKeys[0];
@@ -4348,7 +4510,7 @@
     weekHost.querySelector('[data-schedule-prev-week]')?.addEventListener('click', () => shiftWeek(-7));
     weekHost.querySelector('[data-schedule-next-week]')?.addEventListener('click', () => shiftWeek(7));
     weekHost.querySelector('[data-schedule-this-week]')?.addEventListener('click', () => {
-      scheduleWeekStartKey = scheduleWeekStart(new Date());
+      scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
       scheduleSelectedDateKey = localDateKey();
       editingScheduleId = '';
       editingScheduleDateKey = '';
@@ -4541,6 +4703,22 @@
       requestSchedule({ action: 'assignment-legacy-migrate', scheduleId: editingScheduleId, assignmentId, startDate });
     }));
 
+    editorHost.querySelectorAll('[data-schedule-recurring-start-save]').forEach(button => button.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const assignmentId = String(button.dataset.scheduleRecurringStartSave || '').trim();
+      const input = Array.from(editorHost.querySelectorAll('[data-schedule-recurring-start]'))
+        .find(el => String(el.dataset.scheduleRecurringStart || '') === assignmentId);
+      const startDate = String(input?.value || '').trim();
+      if (!assignmentId || !scheduleDateKeyValid(startDate)) { toast('Pasirink naują „Lanko nuo“ datą'); return; }
+      if (startDate < SCHEDULE_HISTORY_MIN_DATE) { toast(`Tvarkaraščio istorija prasideda ${SCHEDULE_HISTORY_MIN_DATE}`); return; }
+      const detail = { action: 'assignment-start-update', scheduleId: editingScheduleId, assignmentId, startDate };
+      if (scheduleTestClockActive()) {
+        detail.validationClock = 'test';
+        detail.validationNowMs = scheduleNow().getTime();
+      }
+      requestSchedule(detail);
+    }));
+
     editorHost.querySelectorAll('[data-schedule-assignment-delete]').forEach(button => button.addEventListener('click', () => {
       if (!editingScheduleId) return;
       const assignmentId = String(button.dataset.scheduleAssignmentDelete || '').trim();
@@ -4631,7 +4809,7 @@
 
   function openSchedule() {
     if (role() !== 'teacher') return;
-    scheduleWeekStartKey = scheduleWeekStart(new Date());
+    scheduleWeekStartKey = scheduleWeekStart(scheduleNow());
     scheduleSelectedDateKey = localDateKey();
     scheduleSelectedDay = scheduleTodayIndex();
     ensureScheduleModal();
