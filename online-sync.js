@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.12-ADOMAS-0813-ATTENDANCE-REPAIR';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.15-MARKAS-INTRO-CORRECTION';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2623,6 +2623,219 @@ async function applyP17913LegacyScheduleRoomRepairOnce() {
     return;
   }
 }
+
+const MONDAY_ASSIGNMENTS_RESTORE_KEY = 'p327101114_restore_monday_assignments_v1';
+let mondayAssignmentsRestoreRunning = false;
+
+async function applyMondayAssignmentsRestoreOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== P1756_TARGET_PROFILE_ID) return;
+  if (mondayAssignmentsRestoreRunning) return;
+
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[MONDAY_ASSIGNMENTS_RESTORE_KEY]?.status === 'done') return;
+
+  const targets = [
+    {
+      scheduleId: 'w_msx6lkci_5vdmac9m',
+      day: 1,
+      start: '15:45',
+      durationMinutes: 40,
+      studentId: 's_msx6m5ke_yuvfl1s',
+      studentName: 'Titas'
+    },
+    {
+      scheduleId: 'w_msx6o7mt_crg9r5a0',
+      day: 1,
+      start: '16:30',
+      durationMinutes: 80,
+      studentId: 's_msx6pejo_39hmtb4',
+      studentName: 'Markas',
+      mode: 'intro',
+      date: '2026-08-17'
+    },
+    {
+      scheduleId: 'w_msx6olab_gadww3jv',
+      day: 1,
+      start: '18:00',
+      durationMinutes: 80,
+      studentId: 's_msx6pejo_39hmtb4',
+      studentName: 'Markas',
+      mode: 'intro',
+      date: '2026-08-17'
+    }
+  ];
+
+  mondayAssignmentsRestoreRunning = true;
+  try {
+    const now = Date.now();
+    const updates = {};
+    const restored = [];
+
+    for (const target of targets) {
+      const entry = teacherProfileCache.scheduleEntries?.[target.scheduleId];
+      const student = teacherProfileCache.students?.[target.studentId];
+      if (!entry || !student) throw new Error(`Trūksta ${target.studentName} arba ${target.start} tvarkaraščio įrašo`);
+
+      const actualName = cleanStudentName(student?.name).toLocaleLowerCase('lt-LT');
+      if (actualName !== target.studentName.toLocaleLowerCase('lt-LT')) {
+        throw new Error(`${target.studentName} mokinio ID nebeatitinka dabartinio profilio`);
+      }
+      if (safeScheduleDay(entry?.day) !== target.day
+          || safeScheduleTime(entry?.start) !== target.start
+          || safeScheduleDuration(entry?.durationMinutes) !== target.durationMinutes) {
+        throw new Error(`${target.start} tvarkaraščio laikas nebeatitinka saugaus atkūrimo sąlygų`);
+      }
+
+      const payload = scheduleAssignmentOnlyPayload(entry);
+      const targetMode = target.mode === 'intro' ? 'intro' : 'recurring';
+      const existing = Object.entries(payload.assignments || {}).find(([, value]) =>
+        safeStudentId(value?.studentId) === target.studentId
+      );
+
+      if (existing) {
+        const [assignmentId, value] = existing;
+        const next = {
+          ...value,
+          studentId: target.studentId,
+          mode: targetMode,
+          updatedAt: now
+        };
+        delete next.startDate;
+        delete next.dates;
+        delete next.date;
+        if (targetMode === 'intro') next.date = target.date;
+        else next.startDate = '2026-08-17';
+        payload.assignments[assignmentId] = next;
+      } else {
+        const assignmentId = newScheduleAssignmentId();
+        payload.assignments[assignmentId] = {
+          studentId: target.studentId,
+          mode: targetMode,
+          ...(targetMode === 'intro' ? { date: target.date } : { startDate: '2026-08-17' }),
+          createdAt: now,
+          updatedAt: now,
+          restoredFromConfirmedScheduleMemory: true
+        };
+      }
+
+      payload.updatedAt = now;
+      updates[`scheduleEntries/${target.scheduleId}`] = payload;
+      restored.push({
+        scheduleId: target.scheduleId,
+        studentId: target.studentId,
+        studentName: target.studentName,
+        start: target.start,
+        startDate: '2026-08-17'
+      });
+    }
+
+    updates[`meta/migrations/${MONDAY_ASSIGNMENTS_RESTORE_KEY}`] = {
+      status: 'done',
+      appliedAt: now,
+      restoredCount: restored.length,
+      restored
+    };
+
+    await update(teacherProfileRef, updates);
+    bridge.showToast?.('Pirmadienio mokinių priskyrimai atkurti: Titas 15:45, Markas 16:30 ir 18:00.');
+  } catch (error) {
+    console.error('Pirmadienio priskyrimų atkūrimo klaida', error);
+    bridge.showToast?.('Nepavyko saugiai atkurti pirmadienio mokinių priskyrimų');
+  } finally {
+    mondayAssignmentsRestoreRunning = false;
+  }
+}
+
+
+const MARKAS_INTRO_CORRECTION_KEY = 'p327101115_markas_intro_20260817_v1';
+let markasIntroCorrectionRunning = false;
+
+async function applyMarkasIntroCorrectionOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== P1756_TARGET_PROFILE_ID) return;
+  if (markasIntroCorrectionRunning) return;
+
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[MARKAS_INTRO_CORRECTION_KEY]?.status === 'done') return;
+
+  // Jei 10.11.14 dar nebuvo pritaikyta, palaukiame jos. Nauja jos versija jau
+  // kuria Marką teisingai kaip pažintinį. onValue po jos įrašo iškvies mus vėl.
+  if (migrations[MONDAY_ASSIGNMENTS_RESTORE_KEY]?.status !== 'done') return;
+
+  const studentId = 's_msx6pejo_39hmtb4';
+  const student = teacherProfileCache.students?.[studentId];
+  if (!student || cleanStudentName(student?.name).toLocaleLowerCase('lt-LT') !== 'markas') return;
+
+  const targets = [
+    { scheduleId: 'w_msx6o7mt_crg9r5a0', start: '16:30', durationMinutes: 80 },
+    { scheduleId: 'w_msx6olab_gadww3jv', start: '18:00', durationMinutes: 80 }
+  ];
+
+  markasIntroCorrectionRunning = true;
+  try {
+    const now = Date.now();
+    const updates = {};
+    const corrected = [];
+
+    for (const target of targets) {
+      const entry = teacherProfileCache.scheduleEntries?.[target.scheduleId];
+      if (!entry
+          || safeScheduleDay(entry?.day) !== 1
+          || safeScheduleTime(entry?.start) !== target.start
+          || safeScheduleDuration(entry?.durationMinutes) !== target.durationMinutes) {
+        throw new Error(`Marko ${target.start} laikas nebeatitinka saugaus taisymo sąlygų`);
+      }
+
+      const payload = scheduleAssignmentOnlyPayload(entry);
+      const matches = Object.entries(payload.assignments || {}).filter(([, value]) =>
+        safeStudentId(value?.studentId) === studentId
+      );
+      if (matches.length !== 1) throw new Error(`Marko ${target.start} priskyrimas nerastas vienareikšmiškai`);
+
+      const [assignmentId, value] = matches[0];
+      const next = {
+        ...value,
+        studentId,
+        mode: 'intro',
+        date: '2026-08-17',
+        updatedAt: now,
+        correctedFromRecurring: safeAttendanceMode(value?.mode || value?.scheduleMode) === 'recurring'
+      };
+      delete next.startDate;
+      delete next.dates;
+      delete next.scheduleMode;
+      payload.assignments[assignmentId] = next;
+      payload.updatedAt = now;
+
+      updates[`scheduleEntries/${target.scheduleId}`] = payload;
+      corrected.push({
+        scheduleId: target.scheduleId,
+        studentId,
+        studentName: 'Markas',
+        start: target.start,
+        mode: 'intro',
+        date: '2026-08-17'
+      });
+    }
+
+    updates[`meta/migrations/${MARKAS_INTRO_CORRECTION_KEY}`] = {
+      status: 'done',
+      appliedAt: now,
+      correctedCount: corrected.length,
+      corrected
+    };
+
+    await update(teacherProfileRef, updates);
+    bridge.showToast?.('Marko 16:30 ir 18:00 pamokos pataisytos į pažintines 2026-08-17.');
+  } catch (error) {
+    console.error('Marko pažintinių pamokų pataisos klaida', error);
+    bridge.showToast?.('Nepavyko saugiai pataisyti Marko pažintinių pamokų');
+  } finally {
+    markasIntroCorrectionRunning = false;
+  }
+}
+
 if (teacherProfileRef) {
   onValue(teacherProfileRef, snapshot => {
     const value = snapshot.val() || {};
@@ -2659,6 +2872,8 @@ if (teacherProfileRef) {
     applyRecurringFirstLessonMigrationOnce().catch(error => console.warn('P3.2.7.10.11.10 pirmų pamokų datų migracija neįvykdyta', error));
     applyHistoricalAttendanceBackfillOnce().catch(error => console.warn('P3.2.7.10.11.11 istorinio lankomumo migracija neįvykdyta', error));
     applyAdomas0813AttendanceRepairOnce().catch(error => console.warn('P3.2.7.10.11.12 Adomo 08-13 lankomumo pataisa neįvykdyta', error));
+    applyMondayAssignmentsRestoreOnce().catch(error => console.warn('P3.2.7.10.11.14 pirmadienio priskyrimų atkūrimas neįvykdytas', error));
+    applyMarkasIntroCorrectionOnce().catch(error => console.warn('P3.2.7.10.11.15 Marko pažintinių pamokų pataisa neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
