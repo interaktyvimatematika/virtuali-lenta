@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.1';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.7-SCHEDULE-ATTENDANCE-SEMANTICS-P1';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -181,6 +181,7 @@ function urlForRoom(targetRoom, role) {
   // mokytojo istorinis / diagnostinis režimas. Jo negalima paveldėti į
   // mokinio nuorodą ar automatinį perėjimą į kitą sesiją.
   url.searchParams.delete('stay');
+  url.searchParams.delete('preview');
   return url;
 }
 
@@ -233,6 +234,7 @@ function stable(value) {
 const roomInfo = resolveRoom();
 let roomId = roomInfo.room;
 const onlineRole = resolveAccessRole();
+const teacherStudentPreview = onlineRole === 'student' && new URL(window.location.href).searchParams.get('preview') === 'teacher';
 // P2-SPLIT-P2.4.7.19.4.5: &stay=1 yra aiškiai rankiniu būdu įjungiamas
 // istorinis / diagnostinis režimas. Jis veikia tiek mokytojo, tiek mokinio
 // rolei, kad būtų galima apžiūrėti abi seno Room puses nepaisant transition.
@@ -789,6 +791,10 @@ let remoteCache = {
 };
 let p2AssignmentCache = null;
 let p2ProgressCache = null;
+let currentRoomStudentProfile = null;
+let attendanceHeartbeatTimer = null;
+let attendanceEvidenceKey = '';
+let attendanceEvidenceFirstSeenAt = 0;
 // P1.7.9.19: mokinio pratybų UI negali pradėti rašyti, kol negauti abu
 // pradiniai Firebase snapshot'ai — assignment IR progress. Taip reload metu
 // tuščia lokali būsena nebegali aplenkti dar neatėjusio seno progreso.
@@ -1128,6 +1134,9 @@ function resetRoomRuntimeState() {
   p2AssignmentCache = null;
   p2ProgressCache = null;
   p2PracticeSyncReady = false;
+  currentRoomStudentProfile = null;
+  attendanceEvidenceKey = '';
+  attendanceEvidenceFirstSeenAt = 0;
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -1158,7 +1167,7 @@ async function activateCurrentRoomPresence(generation = roomGeneration) {
   const localPresenceRef = presenceRef;
   const localLiveRootRef = myLiveRootRef;
   try {
-    await set(localPresenceRef, { online: true, joinedAt: Date.now(), updatedAt: serverTimestamp() });
+    await set(localPresenceRef, { online: true, joinedAt: Date.now(), role: onlineRole, preview: teacherStudentPreview, updatedAt: serverTimestamp() });
     if (generation !== roomGeneration) {
       remove(localPresenceRef).catch(() => {});
       return;
@@ -2869,12 +2878,90 @@ function firebaseGetWithTimeout(targetRef, timeoutMs = 6000) {
   ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
+function scheduleAttendanceBoundsFromRoomProfile(profile) {
+  const dateKey = validScheduleDateKey(profile?.scheduleDate);
+  const start = safeScheduleTime(profile?.scheduledStart);
+  const durationMinutes = safeScheduleDuration(profile?.durationMinutes);
+  if (!dateKey || !start) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  const parts = /^(\d{2}):(\d{2})$/.exec(start);
+  if (!match || !parts) return null;
+  const startAt = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(parts[1]), Number(parts[2]), 0, 0);
+  const endAt = new Date(startAt.getTime() + durationMinutes * 60000);
+  return { dateKey, start, durationMinutes, startAt, endAt };
+}
+
+async function writeStudentAttendanceEvidence(reason = 'presence') {
+  if (onlineRole !== 'student' || teacherStudentPreview || !connectedNow) return;
+  const profile = currentRoomStudentProfile;
+  const studentId = safeStudentId(profile?.studentId);
+  const scheduleId = safeScheduleId(profile?.scheduleId);
+  const profileId = String(profile?.teacherProfileId || '').trim().toUpperCase();
+  const bounds = scheduleAttendanceBoundsFromRoomProfile(profile);
+  if (!studentId || !scheduleId || !/^T-[A-Z2-9]{12,32}$/.test(profileId) || !bounds) return;
+
+  const now = Date.now();
+  if (now < bounds.startAt.getTime() || now >= bounds.endAt.getTime()) return;
+
+  const evidenceKey = `${profileId}|${scheduleId}|${bounds.dateKey}|${studentId}|${roomId}`;
+  if (attendanceEvidenceKey !== evidenceKey) {
+    attendanceEvidenceKey = evidenceKey;
+    attendanceEvidenceFirstSeenAt = 0;
+    try {
+      const existing = (await get(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`))).val() || {};
+      attendanceEvidenceFirstSeenAt = Math.max(0, Number(existing.firstSeenAt || 0));
+    } catch (_) {}
+  }
+  if (!attendanceEvidenceFirstSeenAt) attendanceEvidenceFirstSeenAt = now;
+
+  const record = {
+    schemaVersion: 1,
+    autoDetected: true,
+    firstSeenAt: attendanceEvidenceFirstSeenAt,
+    lastSeenAt: now,
+    roomId,
+    source: String(reason || 'presence').slice(0, 40),
+    preview: false
+  };
+
+  // Room yra pirminis automatinio lankomumo įrodymo šaltinis.
+  try {
+    await update(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`), record);
+  } catch (error) {
+    console.warn('Nepavyko įrašyti Room lankomumo įrodymo', error);
+  }
+
+  // Greitam mokytojo UI atsinaujinimui bandome atspindėti ir profilyje.
+  // Jei saugumo taisyklės to neleis, Room įrašą vėliau pasiims refresh mechanizmas.
+  try {
+    await update(ref(db, `p772TeacherProfiles/${profileId}/scheduleRuns/${scheduleId}/${bounds.dateKey}`), {
+      attendanceModelVersion: 1,
+      [`attendance/${studentId}/schemaVersion`]: 1,
+      [`attendance/${studentId}/autoDetected`]: true,
+      [`attendance/${studentId}/firstSeenAt`]: attendanceEvidenceFirstSeenAt,
+      [`attendance/${studentId}/lastSeenAt`]: now,
+      [`attendance/${studentId}/roomId`]: roomId,
+      [`attendance/${studentId}/source`]: String(reason || 'presence').slice(0, 40)
+    });
+  } catch (_) {}
+}
+
+function ensureAttendanceHeartbeat() {
+  if (attendanceHeartbeatTimer) return;
+  attendanceHeartbeatTimer = setInterval(() => { writeStudentAttendanceEvidence('presence-heartbeat').catch(() => {}); }, 20000);
+}
+
 function subscribeP2StudentProfile() {
   roomOnValue(p2StudentProfileRef, snapshot => {
     const value = snapshot.val();
+    currentRoomStudentProfile = value && typeof value === 'object' ? value : null;
     window.dispatchEvent(new CustomEvent('p2:room-student-state', {
-      detail: value && typeof value === 'object' ? value : null
+      detail: currentRoomStudentProfile
     }));
+    if (onlineRole === 'student' && !teacherStudentPreview) {
+      ensureAttendanceHeartbeat();
+      writeStudentAttendanceEvidence('student-room-open').catch(() => {});
+    }
   });
 }
 
@@ -2896,6 +2983,9 @@ async function ensureScheduleRunClassSession(scheduleId, dateKey, run, entry) {
   const existingSession = teacherProfileCache.classSessions?.[classSessionId] || {};
   const time = scheduleSlotTimeForDate(entry, dateKey) || { day: run?.scheduledDay || entry?.day, start: run?.scheduledStart || entry?.start, durationMinutes: run?.durationMinutes || entry?.durationMinutes };
   const attendanceModes = run?.attendanceModes && typeof run.attendanceModes === 'object' ? run.attendanceModes : {};
+  const roomProfileBackfills = [];
+  const occurrenceBounds = scheduleOccurrenceBounds(entry, dateKey);
+  const supportsAttendanceModel = Boolean(occurrenceBounds && occurrenceBounds.endAt.getTime() > now);
   const updates = {
     [`classSessions/${classSessionId}/createdAt`]: Number(existingSession.createdAt || run?.startedAt || now) || now,
     [`classSessions/${classSessionId}/updatedAt`]: now,
@@ -2917,8 +3007,22 @@ async function ensureScheduleRunClassSession(scheduleId, dateKey, run, entry) {
     updates[`roomLinks/${item.roomId}`] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
     localStudents[item.studentId] = { roomId: item.roomId, addedAt, attendanceMode };
     localRoomLinks[item.roomId] = { studentId: item.studentId, classSessionId, scheduleId, linkedAt: Number(run?.startedAt || now) || now };
+    roomProfileBackfills.push(update(ref(db, `p772Rooms/${item.roomId}/p2/student/profile`), {
+      schemaVersion: P2_DATA_SCHEMA_VERSION,
+      studentId: item.studentId,
+      teacherProfileId,
+      classSessionId,
+      scheduleId,
+      scheduleDate: dateKey,
+      scheduledStart: safeScheduleTime(time.start),
+      durationMinutes: safeScheduleDuration(time.durationMinutes),
+      attendanceMode,
+      updatedAt: now
+    }));
   }
+  if (supportsAttendanceModel) updates[`scheduleRuns/${scheduleId}/${dateKey}/attendanceModelVersion`] = 1;
   await update(teacherProfileRef, updates);
+  await Promise.allSettled(roomProfileBackfills);
   teacherProfileCache.classSessions = {
     ...(teacherProfileCache.classSessions || {}),
     [classSessionId]: { ...existingSession, createdAt: Number(existingSession.createdAt || run?.startedAt || now) || now, updatedAt: now, scheduleId, scheduleDate: dateKey, scheduledDay: safeScheduleDay(time.day), scheduledStart: safeScheduleTime(time.start), durationMinutes: safeScheduleDuration(time.durationMinutes), label: cleanScheduleLabel(entry?.label), scheduleModelVersion: 2, students: localStudents }
@@ -3156,6 +3260,71 @@ window.addEventListener('p2:schedule-request', async event => {
       return;
     }
 
+    if (detail.action === 'attendance-set') {
+      const dateKey = validScheduleDateKey(detail.dateKey);
+      const studentId = safeStudentId(detail.studentId);
+      const status = String(detail.status || '').trim().toLowerCase();
+      if (!dateKey || !scheduleSlotOccursOnDate(existing, dateKey)) throw new Error('Šis pamokos laikas pasirinktą datą nevyksta');
+      if (!studentId || !teacherProfileCache.students?.[studentId]) throw new Error('Mokinys nerastas');
+      if (!scheduleActiveAssignmentsForDate(existing, dateKey).some(item => item.studentId === studentId)) throw new Error('Mokinys šiai datai nepriskirtas');
+      if (!['', 'present', 'absent'].includes(status)) throw new Error('Neteisinga lankomumo būsena');
+
+      const run = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey] || {};
+      const time = scheduleSlotTimeForDate(existing, dateKey);
+      const attendance = run.attendance && typeof run.attendance === 'object' ? run.attendance : {};
+      const previous = attendance[studentId] && typeof attendance[studentId] === 'object' ? attendance[studentId] : {};
+      const now = Date.now();
+      const next = { ...previous, schemaVersion: 1, manualUpdatedAt: now, manualUpdatedBy: me };
+      if (status) next.manualStatus = status;
+      else delete next.manualStatus;
+
+      const nextRun = {
+        ...run,
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        scheduleModelVersion: Number(run.scheduleModelVersion || 2),
+        attendanceModelVersion: 1,
+        scheduledDay: safeScheduleDay(run.scheduledDay || time?.day),
+        scheduledStart: safeScheduleTime(run.scheduledStart || time?.start),
+        durationMinutes: safeScheduleDuration(run.durationMinutes || time?.durationMinutes),
+        attendance: { ...attendance, [studentId]: next }
+      };
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/scheduleRuns/${scheduleId}/${dateKey}`), nextRun);
+      teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: nextRun } };
+      emitTeacherProfile();
+      return;
+    }
+
+    if (detail.action === 'attendance-mark-missing-absent') {
+      const dateKey = validScheduleDateKey(detail.dateKey);
+      if (!dateKey || !scheduleSlotOccursOnDate(existing, dateKey)) throw new Error('Šis pamokos laikas pasirinktą datą nevyksta');
+      const active = scheduleActiveAssignmentsForDate(existing, dateKey);
+      const run = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey] || {};
+      const attendance = run.attendance && typeof run.attendance === 'object' ? run.attendance : {};
+      const now = Date.now();
+      const nextAttendance = { ...attendance };
+      for (const item of active) {
+        const previous = attendance[item.studentId] && typeof attendance[item.studentId] === 'object' ? attendance[item.studentId] : {};
+        if (previous.autoDetected === true || ['present', 'absent'].includes(String(previous.manualStatus || ''))) continue;
+        nextAttendance[item.studentId] = { ...previous, schemaVersion: 1, manualStatus: 'absent', manualUpdatedAt: now, manualUpdatedBy: me };
+      }
+      const time = scheduleSlotTimeForDate(existing, dateKey);
+      const nextRun = {
+        ...run,
+        schemaVersion: P2_DATA_SCHEMA_VERSION,
+        scheduleModelVersion: Number(run.scheduleModelVersion || 2),
+        attendanceModelVersion: 1,
+        scheduledDay: safeScheduleDay(run.scheduledDay || time?.day),
+        scheduledStart: safeScheduleTime(run.scheduledStart || time?.start),
+        durationMinutes: safeScheduleDuration(run.durationMinutes || time?.durationMinutes),
+        attendance: nextAttendance
+      };
+      await set(ref(db, `p772TeacherProfiles/${teacherProfileId}/scheduleRuns/${scheduleId}/${dateKey}`), nextRun);
+      teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: nextRun } };
+      emitTeacherProfile();
+      bridge.showToast?.('Nefiksuoti mokiniai pažymėti kaip nedalyvavę');
+      return;
+    }
+
     if (detail.action === 'start') {
       const dateKey = validScheduleDateKey(detail.dateKey) || localDateKey();
       if (!scheduleSlotOccursOnDate(existing, dateKey)) throw new Error('Šis pamokos laikas pasirinktą datą nevyksta');
@@ -3215,7 +3384,7 @@ window.addEventListener('p2:schedule-request', async event => {
           await set(ref(db, `p772Rooms/${targetRoom}/p2/student/assignment`), roomAssignment);
           await set(ref(db, `p772Rooms/${targetRoom}/p2/student/progress`), { schemaVersion: P2_DATA_SCHEMA_VERSION, assignmentId: lessonId, assignmentKey, assignmentContentVersion: roomAssignment.contentVersion, status: 'not_started', currentTaskId: '', taskStates: {}, startedAt: null, updatedAt: now });
         }
-        await set(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`), { schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name: studentName, classSessionId, scheduleId, attendanceMode, updatedAt: now });
+        await set(ref(db, `p772Rooms/${targetRoom}/p2/student/profile`), { schemaVersion: P2_DATA_SCHEMA_VERSION, studentId, name: studentName, teacherProfileId, classSessionId, scheduleId, scheduleDate: dateKey, scheduledStart: safeScheduleTime(time?.start), durationMinutes, attendanceMode, updatedAt: now });
         await set(ref(db, `p772Rooms/${targetRoom}/p2/meta`), { schemaVersion: P2_DATA_SCHEMA_VERSION, createdWithBuild: BUILD, updatedAt: now });
 
         const recordTitle = practiceTitle || cleanScheduleLabel(existing.label) || (lessonId ? 'Pamoka' : 'Lentos sesija');
@@ -3235,7 +3404,7 @@ window.addEventListener('p2:schedule-request', async event => {
       }
 
       if (!Object.keys(rooms).length) throw new Error('Šiai datai nėra galiojančių mokinių');
-      updates[`scheduleRuns/${scheduleId}/${dateKey}`] = { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, classSessionId, startedAt: now, rooms, attendanceModes, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes };
+      updates[`scheduleRuns/${scheduleId}/${dateKey}`] = { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, attendanceModelVersion: 1, classSessionId, startedAt: now, rooms, attendanceModes, attendance: {}, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes };
       await update(teacherProfileRef, updates);
 
       const localSessionStudents = {};
@@ -3246,7 +3415,7 @@ window.addEventListener('p2:schedule-request', async event => {
       }
       teacherProfileCache.classSessions = { ...(teacherProfileCache.classSessions || {}), [classSessionId]: { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, createdAt: now, updatedAt: now, scheduleId, scheduleDate: dateKey, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes, label: cleanScheduleLabel(existing.label), students: localSessionStudents } };
       teacherProfileCache.roomLinks = localRoomLinks;
-      teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, classSessionId, startedAt: now, rooms, attendanceModes, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes } } };
+      teacherProfileCache.scheduleRuns = { ...(teacherProfileCache.scheduleRuns || {}), [scheduleId]: { ...(teacherProfileCache.scheduleRuns?.[scheduleId] || {}), [dateKey]: { schemaVersion: P2_DATA_SCHEMA_VERSION, scheduleModelVersion: 2, attendanceModelVersion: 1, classSessionId, startedAt: now, rooms, attendanceModes, attendance: {}, scheduledDay: safeScheduleDay(time?.day), scheduledStart: safeScheduleTime(time?.start), durationMinutes } } };
       emitTeacherProfile();
       const firstRoom = Object.values(rooms)[0] || '';
       bridge.showToast?.('Pamoka atidaryta');
@@ -3261,6 +3430,54 @@ window.addEventListener('p2:schedule-request', async event => {
   }
 });
 
+
+const scheduleAttendanceRefreshTimes = new Map();
+window.addEventListener('p2:schedule-attendance-refresh', async event => {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || !teacherProfileId) return;
+  const dateKeys = Array.from(new Set((Array.isArray(event.detail?.dateKeys) ? event.detail.dateKeys : []).map(validScheduleDateKey).filter(Boolean))).slice(0, 14);
+  if (!dateKeys.length) return;
+  const refreshKey = dateKeys.join('|');
+  const now = Date.now();
+  if (now - Number(scheduleAttendanceRefreshTimes.get(refreshKey) || 0) < 12000) return;
+  scheduleAttendanceRefreshTimes.set(refreshKey, now);
+
+  const candidates = [];
+  for (const [scheduleId, byDate] of Object.entries(teacherProfileCache.scheduleRuns || {})) {
+    if (!byDate || typeof byDate !== 'object') continue;
+    for (const dateKey of dateKeys) {
+      const run = byDate?.[dateKey];
+      if (!run || typeof run !== 'object') continue;
+      for (const { studentId, roomId: targetRoom } of scheduleRunRoomEntries(run)) {
+        candidates.push({ scheduleId, dateKey, studentId, roomId: targetRoom, run });
+      }
+    }
+  }
+  if (!candidates.length) return;
+
+  const changes = {};
+  for (const item of candidates.slice(0, 80)) {
+    try {
+      const snapshot = await get(ref(db, `p772Rooms/${item.roomId}/p2/attendance/${item.studentId}`));
+      const evidence = snapshot.val();
+      if (!evidence || evidence.autoDetected !== true) continue;
+      const current = item.run?.attendance?.[item.studentId] && typeof item.run.attendance[item.studentId] === 'object'
+        ? item.run.attendance[item.studentId]
+        : {};
+      const firstSeenAt = Math.max(0, Number(evidence.firstSeenAt || 0));
+      const lastSeenAt = Math.max(0, Number(evidence.lastSeenAt || 0));
+      if (current.autoDetected === true && Number(current.lastSeenAt || 0) >= lastSeenAt && Number(item.run.attendanceModelVersion || 0) >= 1) continue;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendanceModelVersion`] = 1;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/schemaVersion`] = 1;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/autoDetected`] = true;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/firstSeenAt`] = firstSeenAt || Date.now();
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/lastSeenAt`] = lastSeenAt || Date.now();
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/roomId`] = item.roomId;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/source`] = 'room-attendance-refresh';
+    } catch (_) {}
+  }
+  if (!Object.keys(changes).length) return;
+  try { await update(teacherProfileRef, changes); } catch (error) { console.warn('Lankomumo refresh klaida', error); }
+});
 
 window.addEventListener('p2:students-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
@@ -4057,6 +4274,7 @@ function mergeP2ProgressPreservingExisting(previousValue, nextValue, currentAssi
 
 async function persistP2PracticeProgress(event) {
   if (onlineRole !== 'student') return;
+  if (!teacherStudentPreview) writeStudentAttendanceEvidence('practice-activity').catch(() => {});
   const value = event.detail;
   if (!value || typeof value !== 'object') return;
 
@@ -4146,7 +4364,7 @@ function subscribeTransition() {
 
 function subscribePresenceList() {
   roomOnValue(presenceListRef, snapshot => {
-    const count = Object.values(snapshot.val() || {}).filter(Boolean).length;
+    const count = Object.values(snapshot.val() || {}).filter(value => value && value.preview !== true).length;
     if (usersEl) {
       usersEl.textContent = String(count);
       usersEl.title = `Prisijungę langai: ${count}`;
@@ -4327,6 +4545,7 @@ window.__p772DirectDrawingSyncReady = true;
 
 window.addEventListener('p772:live-stroke', event => {
   markSyncActivity(180);
+  if (onlineRole === 'student' && !teacherStudentPreview) writeStudentAttendanceEvidence('board-activity').catch(() => {});
   const detail = event.detail || {};
   const stroke = detail.stroke;
   if (!stroke?.id) return;
@@ -4367,7 +4586,9 @@ function studentUrlForCurrentRoom() {
 
 function openStudentPreview() {
   if (onlineRole !== 'teacher') return;
-  const studentUrl = studentUrlForCurrentRoom().toString();
+  const previewUrl = studentUrlForCurrentRoom();
+  previewUrl.searchParams.set('preview', 'teacher');
+  const studentUrl = previewUrl.toString();
   // noopener svarbus ir tam, kad naujas skirtukas negautų mokytojo lango
   // sessionStorage kopijos kaip savo identiteto. Naudojame <a>, kad
   // naršyklės nesukurtų dviejų skirtukų dėl window.open grąžinimo ypatumų.
@@ -4434,6 +4655,7 @@ if (newButton) {
 }
 
 window.addEventListener('beforeunload', () => {
+  if (attendanceHeartbeatTimer) { clearInterval(attendanceHeartbeatTimer); attendanceHeartbeatTimer = null; }
   diagnosticLog('page-unload', {}, { urgent: true });
   flushDiagnostics({ final: true }).catch(() => {});
   remove(myLiveRootRef).catch(() => {});

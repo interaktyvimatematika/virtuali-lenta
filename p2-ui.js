@@ -131,6 +131,8 @@
   // inspektoriaus dalis rodoma. Tai yra p2-ui.js būsena, ne DOM stebėtojas.
   let scheduleContextMode = 'overview'; // overview | time | assignment | add | content
   let scheduleContextAssignmentLabel = '';
+  let scheduleAttendanceRefreshLastAt = 0;
+  let scheduleAttendanceRefreshKey = '';
   // P1.7.5.6: kuriant pamoką iš mokinio kortelės atidaromas tas pats
   // scheduleEntry redaktorius, tik mokinys iš anksto pažymimas. Jokios atskiros
   // „mokinio kortelės pamokos“ struktūros nebėra.
@@ -3277,6 +3279,191 @@
     return Object.values(rooms).map(value => String(value?.roomId || value || '').trim().toUpperCase()).filter(Boolean);
   }
 
+  // P3.2.7.10.11.7: Room paruošimas ir pamokos įvykimo faktas yra atskiri dalykai.
+  // Pamoka laikoma įvykusia tik tada, kai yra realaus mokinio lankomumo įrodymas
+  // arba mokytojas lankomumą patvirtina ranka.
+  function scheduleAttendanceRecord(run, studentId) {
+    const attendance = run?.attendance && typeof run.attendance === 'object' ? run.attendance : {};
+    const value = attendance?.[studentId];
+    return value && typeof value === 'object' ? value : {};
+  }
+
+  function scheduleEffectiveAttendanceStatus(record) {
+    const manual = String(record?.manualStatus || '').trim().toLowerCase();
+    if (manual === 'present') return 'present';
+    if (manual === 'absent') return 'absent';
+    if (record?.autoDetected === true) return 'present';
+    return 'unknown';
+  }
+
+  function scheduleAttendanceSummary(run, activeAssignments, occurrenceState) {
+    const assignments = Array.isArray(activeAssignments) ? activeAssignments : [];
+    const rows = assignments.map(item => {
+      const record = scheduleAttendanceRecord(run, item.studentId);
+      return { studentId: item.studentId, record, status: scheduleEffectiveAttendanceStatus(record) };
+    });
+    const presentCount = rows.filter(item => item.status === 'present').length;
+    const absentCount = rows.filter(item => item.status === 'absent').length;
+    const unknownCount = rows.filter(item => item.status === 'unknown').length;
+    const modelKnown = Number(run?.attendanceModelVersion || 0) >= 1;
+
+    let lessonState = occurrenceState?.state || '';
+    if (lessonState === 'past') {
+      if (presentCount > 0) lessonState = 'occurred';
+      else if (modelKnown || !run) lessonState = 'not-occurred';
+      else lessonState = 'unconfirmed';
+    }
+    return { lessonState, presentCount, absentCount, unknownCount, modelKnown, rows };
+  }
+
+  function scheduleAttendanceStatusLabel(summary) {
+    if (!summary) return '';
+    if (summary.lessonState === 'running') return '● Vyksta';
+    if (summary.lessonState === 'occurred') return '✓ Įvyko';
+    if (summary.lessonState === 'not-occurred') return '○ Neįvyko';
+    if (summary.lessonState === 'unconfirmed') return '? Lankomumas nepatvirtintas';
+    return '';
+  }
+
+  function decorateScheduleAttendanceCards(weekHost) {
+    if (!weekHost) return;
+    weekHost.querySelectorAll('[data-schedule-card]').forEach(card => {
+      const scheduleId = String(card.dataset.scheduleCard || '');
+      const dateKey = String(card.dataset.scheduleDate || '');
+      const entry = teacherStudentDb.scheduleEntries?.[scheduleId];
+      if (!entry || !scheduleDateKeyValid(dateKey)) return;
+      const run = teacherStudentDb.scheduleRuns?.[scheduleId]?.[dateKey] || null;
+      const occurrenceState = scheduleOccurrenceState({ id: scheduleId, ...entry }, dateKey);
+      const activeAssignments = scheduleActiveAssignments({ id: scheduleId, ...entry }, dateKey);
+      const summary = scheduleAttendanceSummary(run, activeAssignments, occurrenceState);
+      const copy = card.querySelector('.p2-schedule-card-copy');
+      if (!copy) return;
+
+      // Pašaliname seno rendererio „Atidaryta / Įvyko HH:MM“ techninę eilutę.
+      Array.from(copy.children).forEach(child => {
+        if (child.tagName !== 'SMALL' || child.classList.contains('p2-schedule-conflict')) return;
+        const text = String(child.textContent || '');
+        if (/Atidaryta|Įvyko|Vyksta/.test(text) || /^[✓●◷○?]/.test(text.trim())) child.remove();
+      });
+
+      card.classList.remove('is-started');
+      if (summary.lessonState === 'running' || summary.lessonState === 'occurred') card.classList.add('is-started');
+
+      const label = scheduleAttendanceStatusLabel(summary);
+      if (label) {
+        const status = document.createElement('small');
+        status.className = `p2-schedule-attendance-state is-${summary.lessonState}`;
+        status.textContent = label;
+        copy.appendChild(status);
+      }
+    });
+  }
+
+  function renderScheduleAttendancePanel(editorHost, selectedDate, activeAssignments, run, occurrenceState, students) {
+    if (!editorHost || occurrenceState?.state === 'future') return;
+    const lessonSection = Array.from(editorHost.querySelectorAll('.p2-schedule-slot-editor > .p2-schedule-editor-section')).slice(-1)[0];
+    if (!lessonSection) return;
+    const summary = scheduleAttendanceSummary(run, activeAssignments, occurrenceState);
+    const panel = document.createElement('div');
+    panel.className = 'p2-schedule-attendance-panel';
+
+    const heading = document.createElement('div');
+    heading.className = 'p2-schedule-attendance-head';
+    const headingCopy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = 'Lankomumas';
+    const note = document.createElement('small');
+    note.textContent = occurrenceState.state === 'running'
+      ? 'Sistema fiksuoja tik tikrų mokinių prisijungimą pamokos laiko metu. Mokytojo peržiūra neskaičiuojama.'
+      : 'Automatinis vertinimas yra pasiūlymas. Galutinį lankomumą gali pataisyti mokytojas.';
+    headingCopy.append(title, note);
+    heading.appendChild(headingCopy);
+    panel.appendChild(heading);
+
+    if (!activeAssignments.length) {
+      const empty = document.createElement('p');
+      empty.className = 'p2-schedule-attendance-empty';
+      empty.textContent = 'Šiai datai mokinių nepriskirta.';
+      panel.appendChild(empty);
+      lessonSection.appendChild(panel);
+      return;
+    }
+
+    const rows = document.createElement('div');
+    rows.className = 'p2-schedule-attendance-rows';
+    activeAssignments.forEach(assignment => {
+      const student = studentRecord(assignment.studentId);
+      const record = scheduleAttendanceRecord(run, assignment.studentId);
+      const effective = scheduleEffectiveAttendanceStatus(record);
+      const row = document.createElement('div');
+      row.className = `p2-schedule-attendance-row is-${effective}`;
+
+      const copy = document.createElement('div');
+      const name = document.createElement('strong');
+      name.textContent = scheduleStudentTeacherLabel(student, students);
+      const evidence = document.createElement('small');
+      if (record?.autoDetected === true) evidence.textContent = 'Prisijungimas pamokos metu užfiksuotas';
+      else if (String(record?.manualStatus || '') === 'present') evidence.textContent = 'Mokytojo pažymėta: dalyvavo';
+      else if (String(record?.manualStatus || '') === 'absent') evidence.textContent = 'Mokytojo pažymėta: nedalyvavo';
+      else evidence.textContent = 'Pamokos metu veikla nefiksuota';
+      copy.append(name, evidence);
+
+      const select = document.createElement('select');
+      select.dataset.scheduleAttendanceStudent = assignment.studentId;
+      select.setAttribute('aria-label', `${name.textContent} lankomumas`);
+      const manual = String(record?.manualStatus || '');
+      const autoLabel = record?.autoDetected === true ? 'Automatiškai: dalyvavo' : 'Automatiškai: nepatvirtinta';
+      select.innerHTML = `<option value="" ${manual ? '' : 'selected'}>${escapeHtml(autoLabel)}</option><option value="present" ${manual === 'present' ? 'selected' : ''}>Dalyvavo</option><option value="absent" ${manual === 'absent' ? 'selected' : ''}>Nedalyvavo</option>`;
+
+      row.append(copy, select);
+      rows.appendChild(row);
+    });
+    panel.appendChild(rows);
+
+    if (occurrenceState.state === 'past' && summary.unknownCount > 0) {
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'p2-secondary';
+      action.dataset.scheduleAttendanceMarkMissing = '1';
+      action.textContent = `Pažymėti nefiksuotus kaip nedalyvavusius (${summary.unknownCount})`;
+      panel.appendChild(action);
+    }
+
+    lessonSection.appendChild(panel);
+  }
+
+  function updateScheduleLessonBoxState(editorHost, run, activeAssignments, occurrenceState) {
+    if (!editorHost) return;
+    const box = editorHost.querySelector('.p2-schedule-open-box');
+    const strong = box?.querySelector('strong');
+    if (!box || !strong) return;
+    const summary = scheduleAttendanceSummary(run, activeAssignments, occurrenceState);
+    box.classList.toggle('is-running', occurrenceState.state === 'running');
+
+    if (occurrenceState.state === 'future') {
+      strong.textContent = activeAssignments.length ? `${activeAssignments.length} mok. šią datą` : 'Šią datą mokinių nėra';
+    } else if (occurrenceState.state === 'running') {
+      strong.textContent = summary.presentCount > 0 ? `Pamoka vyksta · prisijungė ${summary.presentCount}` : 'Pamokos laikas vyksta · mokinių dar nefiksuota';
+    } else if (summary.lessonState === 'occurred') {
+      strong.textContent = 'Pamoka įvyko';
+    } else if (summary.lessonState === 'not-occurred') {
+      strong.textContent = 'Pamoka neįvyko';
+    } else {
+      strong.textContent = 'Lankomumas nepatvirtintas';
+    }
+  }
+
+  function requestScheduleAttendanceRefresh(weekDates) {
+    const dateKeys = (Array.isArray(weekDates) ? weekDates : []).map(item => String(item?.dateKey || '')).filter(scheduleDateKeyValid);
+    if (!dateKeys.length) return;
+    const key = dateKeys.join('|');
+    const now = Date.now();
+    if (key === scheduleAttendanceRefreshKey && now - scheduleAttendanceRefreshLastAt < 15000) return;
+    scheduleAttendanceRefreshKey = key;
+    scheduleAttendanceRefreshLastAt = now;
+    setTimeout(() => window.dispatchEvent(new CustomEvent('p2:schedule-attendance-refresh', { detail: { dateKeys } })), 0);
+  }
+
   function scheduleOccurrenceConflict(entry, dateKey) {
     if (!scheduleSlotOccursOnDate(entry, dateKey)) return null;
     const time = scheduleSlotTimeForDate(entry, dateKey);
@@ -3452,6 +3639,63 @@
         min-height: 32px;
         padding: 5px 8px;
         white-space: nowrap;
+      }
+      .p2-schedule-card-copy .p2-schedule-attendance-state {
+        display: block;
+        margin-top: 6px;
+        font-weight: 750;
+      }
+      .p2-schedule-card-copy .p2-schedule-attendance-state.is-occurred,
+      .p2-schedule-card-copy .p2-schedule-attendance-state.is-running { color: #23744a; }
+      .p2-schedule-card-copy .p2-schedule-attendance-state.is-not-occurred { color: #9a4d42; }
+      .p2-schedule-card-copy .p2-schedule-attendance-state.is-unconfirmed { color: #8a6825; }
+      #p2ScheduleEditorPane .p2-schedule-attendance-panel {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid #e0e6f0;
+        border-radius: 12px;
+        background: #f8fafd;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-head > div {
+        display: grid;
+        gap: 3px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-head small,
+      #p2ScheduleEditorPane .p2-schedule-attendance-row small {
+        color: #70798a;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-rows {
+        display: grid;
+        gap: 7px;
+        margin: 10px 0;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) minmax(145px,180px);
+        gap: 8px;
+        align-items: center;
+        padding: 8px 9px;
+        border: 1px solid #e1e6ef;
+        border-radius: 10px;
+        background: #fff;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row > div {
+        display: grid;
+        gap: 2px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row.is-present { border-color: #cce5d6; }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row.is-absent { border-color: #ead3cf; }
+      #p2ScheduleEditorPane .p2-schedule-attendance-row select {
+        min-width: 0;
+        height: 34px;
+        border: 1px solid #d6deeb;
+        border-radius: 8px;
+        background: #fff;
+        padding: 4px 7px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-attendance-empty {
+        margin: 9px 0 0;
+        color: #70798a;
       }
     `;
     document.head.appendChild(style);
@@ -3635,6 +3879,8 @@
       scheduleStudentTeacherLabel,
       escapeHtml
     });
+    decorateScheduleAttendanceCards(weekHost);
+    requestScheduleAttendanceRefresh(weekDates);
 
     if (scheduleCreateMode && !editing) {
       const preset = scheduleCreatePreset && typeof scheduleCreatePreset === 'object' ? scheduleCreatePreset : {};
@@ -3694,19 +3940,22 @@
         escapeHtml
       });
       enhanceLegacyScheduleAssignmentRows(editorHost, assignments);
+      updateScheduleLessonBoxState(editorHost, run, activeAssignments, occurrenceState);
+      renderScheduleAttendancePanel(editorHost, selectedDate, activeAssignments, run, occurrenceState, students);
 
-      // P3.2.7.10.11.4: praeities pamoka, kuri turi realiai sukurtą Room,
+      // P3.2.7.10.11.7: istorinės lentos atidarymas ir pamokos įvykimo faktas
+      // atskirti. Room gali egzistuoti net jei pamoka realiai neįvyko.
       // lieka atidaroma kaip istorinė lenta. Jei Room niekada nebuvo sukurtas,
       // vartotojui aiškiai parodome, kad nėra ko atidaryti.
       const scheduleOpenButton = editorHost.querySelector('[data-schedule-open-lesson]');
       if (scheduleOpenButton && occurrenceState.state === 'past') {
         if (runRooms.length) {
           scheduleOpenButton.disabled = false;
-          scheduleOpenButton.textContent = 'Atidaryti įvykusią pamoką';
+          scheduleOpenButton.textContent = 'Atidaryti istorinę lentą';
           scheduleOpenButton.dataset.scheduleOpenHistorical = '1';
         } else {
           scheduleOpenButton.disabled = true;
-          scheduleOpenButton.textContent = 'Lenta nebuvo atidaryta';
+          scheduleOpenButton.textContent = 'Lenta nebuvo sukurta';
           delete scheduleOpenButton.dataset.scheduleOpenHistorical;
         }
       }
@@ -3901,6 +4150,23 @@
       if (!window.confirm('Pašalinti šį mokinio priskyrimą? Jau įvykusių pamokų istorija liks.')) return;
       requestSchedule({ action: 'assignment-delete', scheduleId: editingScheduleId, assignmentId });
     }));
+
+    editorHost.querySelectorAll('[data-schedule-attendance-student]').forEach(select => select.addEventListener('change', () => {
+      if (!editingScheduleId) return;
+      const dateKey = editingScheduleDateKey || scheduleSelectedDateKey;
+      const studentId = String(select.dataset.scheduleAttendanceStudent || '').trim();
+      const status = String(select.value || '').trim();
+      if (!studentId || !scheduleDateKeyValid(dateKey)) return;
+      requestSchedule({ action: 'attendance-set', scheduleId: editingScheduleId, dateKey, studentId, status });
+    }));
+
+    editorHost.querySelector('[data-schedule-attendance-mark-missing]')?.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const dateKey = editingScheduleDateKey || scheduleSelectedDateKey;
+      if (!scheduleDateKeyValid(dateKey)) return;
+      if (!window.confirm('Pažymėti mokinius, kurių veikla pamokos metu nefiksuota, kaip nedalyvavusius? Vėliau galėsi pakeisti individualiai.')) return;
+      requestSchedule({ action: 'attendance-mark-missing-absent', scheduleId: editingScheduleId, dateKey });
+    });
 
     editorHost.querySelector('[data-schedule-open-lesson]')?.addEventListener('click', () => {
       if (!editingScheduleId) return;
