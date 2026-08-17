@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17-ASSIGNMENT-TYPE-CORRECTION';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -3699,6 +3699,23 @@ function scheduleAssignmentOnlyPayload(existing) {
   else if (existing?.studentIds && typeof existing.studentIds === 'object') payload.studentIds = { ...existing.studentIds };
   return payload;
 }
+
+function scheduleAssignmentClassificationSnapshot(assignment) {
+  const mode = safeAttendanceMode(assignment?.mode || assignment?.scheduleMode);
+  const snapshot = { mode };
+  if (mode === 'recurring') snapshot.startDate = scheduleHistoryStartDate(assignment?.startDate);
+  else if (mode === 'dates') {
+    const dates = assignment?.dates && typeof assignment.dates === 'object' ? assignment.dates : {};
+    snapshot.dates = Object.fromEntries(
+      Object.keys(dates).map(validScheduleDateKey).filter(Boolean).sort().map(dateKey => [dateKey, true])
+    );
+  } else {
+    const date = validScheduleDateKey(assignment?.date);
+    if (date) snapshot.date = date;
+  }
+  return snapshot;
+}
+
 function removeLegacyScheduleStudent(payload, studentId) {
   if (!payload || !studentId) return;
   if (Array.isArray(payload.studentIds)) {
@@ -3846,6 +3863,90 @@ window.addEventListener('p2:schedule-request', async event => {
         delete payload.assignments[assignmentId];
       }
       await saveSlot(scheduleId, payload, 'assignment', 'Mokinio priskyrimas pašalintas');
+      return;
+    }
+
+
+    if (detail.action === 'assignment-type-update') {
+      const assignmentId = String(detail.assignmentId || '').trim();
+      if (!assignmentId) throw new Error('Mokinio priskyrimas nerastas');
+
+      const payload = scheduleAssignmentOnlyPayload(existing);
+      const current = payload.assignments?.[assignmentId];
+      if (!current || typeof current !== 'object') throw new Error('Mokinio priskyrimas nerastas');
+
+      const studentId = safeStudentId(current.studentId);
+      if (!studentId || !teacherProfileCache.students?.[studentId]) throw new Error('Mokinys nerastas');
+
+      const fromMode = safeAttendanceMode(current?.mode || current?.scheduleMode);
+      const toMode = safeAttendanceMode(detail.mode);
+      const allowedModes = new Set(['recurring', 'dates', 'intro']);
+      if (!allowedModes.has(fromMode)) throw new Error('Šio pamokos tipo ši korekcija nekeičia');
+      if (!allowedModes.has(toMode)) throw new Error('Pasirink Nuolatinę, Pavienę arba Pažintinę pamoką');
+      if (fromMode === toMode) throw new Error('Pasirink kitą pamokos tipą');
+
+      const before = scheduleAssignmentClassificationSnapshot(current);
+      const now = Date.now();
+      const next = { ...current, studentId, mode: toMode, updatedAt: now };
+      delete next.scheduleMode;
+      delete next.startDate;
+      delete next.date;
+      delete next.dates;
+
+      if (toMode === 'recurring') {
+        const startDate = validScheduleDateKey(detail.startDate);
+        if (!startDate) throw new Error('Pasirink, nuo kada mokinys lanko nuolat');
+        if (startDate < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pirmas lankymas negali būti ankstesnis nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+        if (!scheduleSlotOccursOnDate(existing, startDate)) throw new Error(`${startDate} nėra šio pamokos laiko diena`);
+
+        const duplicate = Object.entries(payload.assignments || {}).find(([id, item]) =>
+          id !== assignmentId
+          && safeStudentId(item?.studentId) === studentId
+          && safeAttendanceMode(item?.mode || item?.scheduleMode) === 'recurring'
+        );
+        if (duplicate) throw new Error('Šis mokinys jau turi kitą nuolatinį priskyrimą šiam laikui');
+
+        next.startDate = startDate;
+      } else if (toMode === 'dates') {
+        let dates = Array.isArray(detail.dates) ? detail.dates.map(validScheduleDateKey).filter(Boolean) : [];
+        dates = Array.from(new Set(dates)).sort();
+        if (!dates.length) throw new Error('Nenurodyta nė viena pavienės pamokos data');
+        const beforeFloor = dates.find(dateKey => dateKey < SCHEDULE_HISTORY_MIN_DATE);
+        if (beforeFloor) throw new Error(`Pamokos data negali būti ankstesnė nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+        const invalid = dates.find(dateKey => !scheduleSlotOccursOnDate(existing, dateKey));
+        if (invalid) throw new Error(`${invalid} nėra šio pamokos laiko diena`);
+        next.dates = Object.fromEntries(dates.map(dateKey => [dateKey, true]));
+      } else {
+        const date = validScheduleDateKey(detail.date);
+        if (!date) throw new Error('Pasirink pažintinės pamokos datą');
+        if (date < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pamokos data negali būti ankstesnė nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+        if (!scheduleSlotOccursOnDate(existing, date)) throw new Error(`${date} nėra šio pamokos laiko diena`);
+        next.date = date;
+      }
+
+      const after = scheduleAssignmentClassificationSnapshot(next);
+      const correctionId = `tc_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      next.classificationCorrections = {
+        ...(current?.classificationCorrections && typeof current.classificationCorrections === 'object'
+          ? current.classificationCorrections
+          : {}),
+        [correctionId]: {
+          changedAt: now,
+          changedBy: String(me).slice(0, 80),
+          source: 'teacher-correction',
+          contextDate: validScheduleDateKey(detail.contextDate) || '',
+          before,
+          after
+        }
+      };
+
+      payload.assignments[assignmentId] = next;
+      await saveSlot(
+        scheduleId,
+        payload,
+        'assignment-type',
+        `${cleanStudentName(teacherProfileCache.students?.[studentId]?.name) || 'Mokinys'}: pamokos tipas pakeistas`
+      );
       return;
     }
 

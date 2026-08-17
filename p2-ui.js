@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16.2-DRAGGABLE-TEST-CLOCK';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17-ASSIGNMENT-TYPE-CORRECTION';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -4077,6 +4077,80 @@
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked { display:grid; gap:2px; color:#566177; }
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked strong { font-size:11px; }
       #p2ScheduleEditorPane .p2-schedule-recurring-start-locked small { color:#7a8495; line-height:1.35; }
+      #p2ScheduleEditorPane .p2-schedule-type-correction {
+        display:grid;
+        gap:7px;
+        width:100%;
+        margin-top:7px;
+        padding-top:7px;
+        border-top:1px dashed #e1e6ef;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-head strong {
+        color:#566177;
+        font-size:11px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-grid {
+        display:grid;
+        grid-template-columns:minmax(135px,.8fr) minmax(145px,1fr) auto;
+        gap:7px;
+        align-items:end;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction label {
+        display:grid;
+        gap:3px;
+        margin:0;
+        color:#687287;
+        font-size:10px;
+        font-weight:700;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction select,
+      #p2ScheduleEditorPane .p2-schedule-type-correction input {
+        min-width:0;
+        height:32px;
+        border:1px solid #dbe2ef;
+        border-radius:8px;
+        padding:4px 7px;
+        background:#fff;
+        font:inherit;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction button {
+        min-height:32px;
+        white-space:nowrap;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-correction-note {
+        color:#7a8495;
+        font-size:10px;
+        line-height:1.35;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-date-list {
+        display:grid;
+        gap:5px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-date-row {
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        gap:5px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-date-row button {
+        min-width:32px;
+        padding:4px 8px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-type-date-add {
+        justify-self:start;
+        min-height:28px !important;
+        padding:3px 8px !important;
+      }
+      @media (max-width: 760px) {
+        #p2ScheduleEditorPane .p2-schedule-type-correction-grid {
+          grid-template-columns:1fr;
+        }
+      }
       #p2ScheduleTestClockBar {
         position:fixed;
         right:24px;
@@ -4156,6 +4230,210 @@
     });
   }
 
+
+  const SCHEDULE_TYPE_CORRECTION_MODES = Object.freeze(['recurring', 'dates', 'intro']);
+
+  function scheduleTypeCorrectionReferenceDate(entry, assignment) {
+    const selected = scheduleDateKeyValid(editingScheduleDateKey) ? editingScheduleDateKey : scheduleSelectedDateKey;
+    if (selected && scheduleAssignmentOccursOnDate(entry, assignment, selected)) return selected;
+    const mode = scheduleMode(assignment);
+    if (mode === 'recurring') {
+      const first = scheduleRecurringFirstOccurrence(entry, assignment);
+      return first?.dateKey || scheduleHistoryStartDate(assignment?.startDate);
+    }
+    if (mode === 'dates') {
+      const dates = Object.keys(assignment?.dates && typeof assignment.dates === 'object' ? assignment.dates : {})
+        .filter(scheduleDateKeyValid).sort();
+      return dates[0] || selected || SCHEDULE_HISTORY_MIN_DATE;
+    }
+    const exact = String(assignment?.date || '').trim();
+    return scheduleDateKeyValid(exact) ? exact : (selected || SCHEDULE_HISTORY_MIN_DATE);
+  }
+
+  function scheduleTypeCorrectionModeLabel(mode) {
+    if (mode === 'dates') return 'Pavienė';
+    if (mode === 'intro') return 'Pažintinė';
+    return 'Nuolatinė';
+  }
+
+  function appendScheduleAssignmentTypeCorrection(row, assignment, entry) {
+    if (!row || !entry || assignment?.legacy) return;
+    const currentMode = scheduleMode(assignment);
+    if (!SCHEDULE_TYPE_CORRECTION_MODES.includes(currentMode)) return;
+
+    const referenceDate = scheduleTypeCorrectionReferenceDate(entry, assignment);
+    const tools = document.createElement('div');
+    tools.className = 'p2-schedule-type-correction';
+    tools.dataset.scheduleTypeCorrection = String(assignment.id || '');
+
+    const head = document.createElement('div');
+    head.className = 'p2-schedule-type-correction-head';
+    const title = document.createElement('strong');
+    title.textContent = 'Pamokos tipo korekcija';
+    head.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'p2-schedule-type-correction-grid';
+
+    const typeLabel = document.createElement('label');
+    const typeCaption = document.createElement('span');
+    typeCaption.textContent = 'Pamokos tipas';
+    const select = document.createElement('select');
+    select.dataset.scheduleTypeCorrectionMode = String(assignment.id || '');
+    [
+      ['recurring', 'Nuolatinė'],
+      ['dates', 'Pavienė'],
+      ['intro', 'Pažintinė']
+    ].forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.selected = value === currentMode;
+      select.appendChild(option);
+    });
+    typeLabel.append(typeCaption, select);
+
+    const dateHost = document.createElement('div');
+    dateHost.dataset.scheduleTypeCorrectionFields = String(assignment.id || '');
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'p2-secondary';
+    save.textContent = 'Keisti tipą';
+    save.dataset.scheduleTypeCorrectionSave = String(assignment.id || '');
+
+    grid.append(typeLabel, dateHost, save);
+
+    const note = document.createElement('div');
+    note.className = 'p2-schedule-type-correction-note';
+    note.textContent = 'Keičiama tik priskyrimo klasifikacija. Istorinės lentos, Room, lankomumas ir pratybų duomenys neperrašomi.';
+
+    tools.append(head, grid, note);
+    row.appendChild(tools);
+
+    const currentDates = Object.keys(assignment?.dates && typeof assignment.dates === 'object' ? assignment.dates : {})
+      .filter(scheduleDateKeyValid).sort();
+
+    const createDateInput = (value = referenceDate) => {
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.min = SCHEDULE_HISTORY_MIN_DATE;
+      input.value = scheduleDateKeyValid(value) ? value : referenceDate;
+      input.className = 'p2-schedule-type-date-input';
+      return input;
+    };
+
+    function renderFields() {
+      const targetMode = String(select.value || currentMode);
+      dateHost.replaceChildren();
+      const label = document.createElement('label');
+      const caption = document.createElement('span');
+
+      if (targetMode === 'recurring') {
+        caption.textContent = 'Lanko nuo';
+        const input = createDateInput(
+          currentMode === 'recurring'
+            ? scheduleHistoryStartDate(assignment.startDate)
+            : referenceDate
+        );
+        input.dataset.scheduleTypeCorrectionStartDate = String(assignment.id || '');
+        label.append(caption, input);
+        dateHost.appendChild(label);
+      } else if (targetMode === 'intro') {
+        caption.textContent = 'Pažintinės pamokos data';
+        const input = createDateInput(
+          currentMode === 'intro' && scheduleDateKeyValid(assignment.date)
+            ? assignment.date
+            : referenceDate
+        );
+        input.dataset.scheduleTypeCorrectionDate = String(assignment.id || '');
+        label.append(caption, input);
+        dateHost.appendChild(label);
+      } else {
+        caption.textContent = 'Pavienės pamokos datos';
+        const list = document.createElement('div');
+        list.className = 'p2-schedule-type-date-list';
+        list.dataset.scheduleTypeCorrectionDates = String(assignment.id || '');
+
+        const seedDates = currentMode === 'dates' && currentDates.length ? currentDates : [referenceDate];
+
+        const addDateRow = value => {
+          const rowEl = document.createElement('div');
+          rowEl.className = 'p2-schedule-type-date-row';
+          const input = createDateInput(value);
+          input.dataset.scheduleTypeCorrectionDateItem = String(assignment.id || '');
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'is-muted';
+          remove.textContent = '×';
+          remove.title = 'Pašalinti datą';
+          remove.addEventListener('click', () => {
+            const rows = list.querySelectorAll('.p2-schedule-type-date-row');
+            if (rows.length <= 1) return;
+            rowEl.remove();
+          });
+          rowEl.append(input, remove);
+          list.appendChild(rowEl);
+        };
+
+        seedDates.forEach(addDateRow);
+
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'is-muted p2-schedule-type-date-add';
+        add.textContent = '+ Pridėti datą';
+        add.addEventListener('click', () => addDateRow(referenceDate));
+
+        label.append(caption, list, add);
+        dateHost.appendChild(label);
+      }
+
+      save.disabled = targetMode === currentMode;
+    }
+
+    select.addEventListener('change', renderFields);
+    renderFields();
+
+    save.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const targetMode = String(select.value || '').trim();
+      if (!SCHEDULE_TYPE_CORRECTION_MODES.includes(targetMode) || targetMode === currentMode) return;
+
+      const detail = {
+        action: 'assignment-type-update',
+        scheduleId: editingScheduleId,
+        assignmentId: String(assignment.id || ''),
+        mode: targetMode,
+        contextDate: scheduleDateKeyValid(editingScheduleDateKey) ? editingScheduleDateKey : scheduleSelectedDateKey
+      };
+
+      if (targetMode === 'recurring') {
+        detail.startDate = String(dateHost.querySelector('[data-schedule-type-correction-start-date]')?.value || '').trim();
+        if (!scheduleDateKeyValid(detail.startDate)) { toast('Pasirink „Lanko nuo“ datą'); return; }
+      } else if (targetMode === 'intro') {
+        detail.date = String(dateHost.querySelector('[data-schedule-type-correction-date]')?.value || '').trim();
+        if (!scheduleDateKeyValid(detail.date)) { toast('Pasirink pažintinės pamokos datą'); return; }
+      } else {
+        detail.dates = Array.from(dateHost.querySelectorAll('[data-schedule-type-correction-date-item]'))
+          .map(input => String(input.value || '').trim())
+          .filter(scheduleDateKeyValid);
+        detail.dates = Array.from(new Set(detail.dates)).sort();
+        if (!detail.dates.length) { toast('Pridėk bent vieną pavienės pamokos datą'); return; }
+      }
+
+      const student = studentRecord(assignment.studentId);
+      const studentName = String(student?.name || 'Mokinys').trim() || 'Mokinys';
+      const fromLabel = scheduleTypeCorrectionModeLabel(currentMode);
+      const toLabel = scheduleTypeCorrectionModeLabel(targetMode);
+      if (!window.confirm(
+        `${studentName}: pakeisti pamokos tipą „${fromLabel}“ → „${toLabel}“?\n\n` +
+        'Jau sukurtos istorinės lentos, Room, lankomumas ir pratybų duomenys nebus keičiami.'
+      )) return;
+
+      requestSchedule(detail);
+    });
+  }
+
   function enhanceLegacyScheduleAssignmentRows(editorHost, assignments) {
     if (!editorHost || !Array.isArray(assignments)) return;
     const rows = Array.from(editorHost.querySelectorAll('.p2-schedule-assignment-row'));
@@ -4195,6 +4473,8 @@
         }
         row.appendChild(tools);
       }
+
+      appendScheduleAssignmentTypeCorrection(row, assignment, entry);
 
       if (!assignment?.legacy) return;
       const marker = Array.from(row.querySelectorAll('em, small, span')).find(el => String(el.textContent || '').trim() === 'Senas įrašas');
