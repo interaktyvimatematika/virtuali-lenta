@@ -348,7 +348,7 @@
     if (type === 'included-angle') return wrap('Trikampis su dviem kraštinėmis ir kampu tarp jų', `
       <path d="M30 137 L154.71 65 L210 137 Z"/><path d="M50.78 125 A24 24 0 0 1 54 137" class="guide"/>
       <text x="18" y="151">C</text><text x="151" y="59">A</text><text x="212" y="151">B</text>
-      <text x="82" y="94">8</text><text x="116" y="151">10</text><text x="51" y="131">30°</text>`);
+      <text x="82" y="94">8</text><text x="116" y="151">10</text><text x="61" y="128">30°</text>`);
     if (type === 'cosine-law') return wrap('Trikampis kosinusų teoremai', `
       <path d="M30 137 L92.5 28.75 L205 137 Z"/><path d="M42 116.22 A24 24 0 0 1 54 137" class="guide"/>
       <text x="18" y="151">C</text><text x="88" y="23">A</text><text x="207" y="151">B</text>
@@ -358,7 +358,7 @@
       <path d="M55 37 L67 37 L67 25" class="guide"/>
       <path d="M55 118 A22 22 0 0 1 66 120.95" class="guide"/>
       <text x="42" y="154">A</text><text x="42" y="20">B</text><text x="124" y="29">C</text>
-      <text x="50" y="110">30°</text><text x="84" y="17">10</text><text x="91" y="89">?</text>`);
+      <text x="57" y="113">30°</text><text x="84" y="17">10</text><text x="91" y="89">?</text>`);
     return '';
   }
 
