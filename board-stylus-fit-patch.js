@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P3.2.7.10.8 — rašiklio taškų nepraradimas + darbinis 100 % = lapas per plotį.
+  // P3.2.7.10.9 — rašiklio taškų nepraradimas + darbinis 100 % = lapas per plotį.
   // Modulis sąmoningai uždedamas ant esamų BoardCamera / BoardInput API,
   // kad nereikėtų keisti kitų stabilios lentos modulių.
   const BaseCamera = window.P772BoardCamera;

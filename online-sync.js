@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.6-FIREBASE-STRUCTURE-SETTINGS-PERSISTENCE';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.9-DEFER-REMOTE-GEOMETRY-DURING-STROKE';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -789,6 +789,11 @@ let remoteCache = {
 };
 let p2AssignmentCache = null;
 let p2ProgressCache = null;
+// P3.2.7.10.9: aktyvaus vietinio brūkšnio metu nuotolinis boardGeometry
+// negali perjungti koordinačių sistemos po rašikliu. Laikome tik naujausią
+// nuotolinę geometriją ir pritaikome ją iškart po brūkšnio pabaigos.
+let localBoardStrokeActive = false;
+let pendingRemoteBoardGeometry = null;
 // P1.7.9.19: mokinio pratybų UI negali pradėti rašyti, kol negauti abu
 // pradiniai Firebase snapshot'ai — assignment IR progress. Taip reload metu
 // tuščia lokali būsena nebegali aplenkti dar neatėjusio seno progreso.
@@ -1128,6 +1133,8 @@ function resetRoomRuntimeState() {
   p2AssignmentCache = null;
   p2ProgressCache = null;
   p2PracticeSyncReady = false;
+  localBoardStrokeActive = false;
+  pendingRemoteBoardGeometry = null;
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -1451,14 +1458,54 @@ function applyInitialWorkspace(data) {
   if (workspace.window) bridge.applySharedPart('window', workspace.window);
 }
 
+function applyRemoteBoardGeometry(value, fp = stable(value)) {
+  if (stable(bridge.getSharedSnapshot().boardGeometry || {}) === fp) {
+    remoteCache.boardGeometry = fp;
+    return;
+  }
+  remoteCache.boardGeometry = fp;
+  bridge.applySharedPart('boardGeometry', value);
+}
+
+function flushPendingRemoteBoardGeometry(reason = 'stroke-ended') {
+  if (localBoardStrokeActive || !pendingRemoteBoardGeometry) return;
+  const pending = pendingRemoteBoardGeometry;
+  pendingRemoteBoardGeometry = null;
+  if (pending.roomId && pending.roomId !== roomId) return;
+  diagnosticLog('board-geometry-deferred-applied', {
+    reason,
+    deferredMs: Math.max(0, Date.now() - Number(pending.receivedAt || Date.now()))
+  }, { urgent: true });
+  applyRemoteBoardGeometry(pending.value, pending.fp);
+}
+
 function subscribeWorkspaceParts() {
   roomOnValue(boardGeometryRef, snapshot => {
     const value = snapshot.val() || {};
     const fp = stable(value);
     const ownEcho = consumeLocalEcho('boardGeometry', fp);
-    remoteCache.boardGeometry = fp;
-    if (ownEcho) return;
-    if (stable(bridge.getSharedSnapshot().boardGeometry || {}) !== fp) bridge.applySharedPart('boardGeometry', value);
+    if (ownEcho) {
+      remoteCache.boardGeometry = fp;
+      return;
+    }
+    if (stable(bridge.getSharedSnapshot().boardGeometry || {}) === fp) {
+      remoteCache.boardGeometry = fp;
+      return;
+    }
+    if (localBoardStrokeActive) {
+      // Svarbu: remoteCache čia dar NEKEIČIAME. Kitaip bendras diff kelias
+      // galėtų palaikyti lokalią seną geometriją „pakeitimu“ ir nusiųsti ją
+      // atgal į Firebase dar nepasibaigus brūkšniui.
+      pendingRemoteBoardGeometry = {
+        value,
+        fp,
+        roomId,
+        receivedAt: Date.now()
+      };
+      diagnosticLog('board-geometry-deferred-during-stroke', {}, { urgent: true });
+      return;
+    }
+    applyRemoteBoardGeometry(value, fp);
   });
   roomOnValue(drawingRef, snapshot => {
     diagnosticSyncState.drawingPrimarySnapshotAt = Date.now();
@@ -4271,7 +4318,14 @@ window.addEventListener('p772:live-stroke', event => {
   const stroke = detail.stroke;
   if (!stroke?.id) return;
 
+  if (detail.phase === 'start') localBoardStrokeActive = true;
+
   if (detail.phase === 'end') {
+    localBoardStrokeActive = false;
+    // stopDrawing() prieš „end“ jau įdeda brūkšnį į state.drawing, todėl dabar
+    // saugu pritaikyti atidėtą geometriją: app sluoksnis remap'ins ir ką tik
+    // užbaigtą brūkšnį kartu su likusiais lentos objektais.
+    flushPendingRemoteBoardGeometry('live-stroke-end');
     // ONLINE-P1 pašalindavo gyvą brūkšnį iš karto, o nuolatinė kopija dar
     // kelias dešimtis / šimtus ms keliaudavo per Firebase. Dėl to nuotoliniame
     // ekrane brūkšnys akimirkai dingdavo ir vėl atsirasdavo.
