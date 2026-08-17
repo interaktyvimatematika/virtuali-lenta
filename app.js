@@ -483,7 +483,7 @@
     fitSideMarginScreen: BOARD_FIT_SIDE_MARGIN_SCREEN,
     legacyUser100Zoom: BOARD_LEGACY_USER_100_ZOOM,
     legacyFitPaddingX: BOARD_LEGACY_FIT_PADDING_X,
-    // P3.2.7.10.9: naujo 720 px lapo darbinis 100 % priklauso nuo
+    // P3.2.7.10.9.1: naujo 720 px lapo darbinis 100 % priklauso nuo
     // realaus lentos viewporto pločio. Senų plačių Room bazė lieka 1/3.
     modernUser100ZoomResolver: (_camera, viewportWidthOverride) => boardFitZoom(viewportWidthOverride)
   });
@@ -9192,7 +9192,7 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
     refs.boardZoomActualButton.addEventListener('click', () => {
-      // P3.2.7.10.9: naujam 720 px lapui 100 % = lapas per visą galimą plotį.
+      // P3.2.7.10.9.1: naujam 720 px lapui 100 % = lapas per visą galimą plotį.
       // Senų plačių Room 100 % suderinamumo bazė lieka 1/3.
       setBoardUserZoomPercent(100, { preserveCenter: true });
     });
@@ -11604,7 +11604,7 @@ KOKYBĖS REIKALAVIMAI:
   // užbaigiame jau surinktą brūkšnį, kad jis nedingtų.
   refs.canvas.addEventListener('lostpointercapture', boardInput.stopDrawing);
 
-  // P3.2.7.10.9: keičiantis realiam lentos viewport'ui išlaikome vartotojo
+  // P3.2.7.10.9.1: keičiantis realiam lentos viewport'ui išlaikome vartotojo
   // matomą procentą. Naujam lapui tai reiškia, kad 100 % visada vėl užpildo plotį.
   let boardLastViewportWidth = 0;
   let boardViewportResizeFrame = 0;
