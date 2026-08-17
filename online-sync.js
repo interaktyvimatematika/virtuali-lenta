@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.11-HISTORICAL-ATTENDANCE-BACKFILL';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.12-ADOMAS-0813-ATTENDANCE-REPAIR';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2070,6 +2070,125 @@ async function applyHistoricalAttendanceBackfillOnce() {
   }
 }
 
+
+const ADOMAS_0813_ATTENDANCE_REPAIR_KEY = 'p327101112_adomas_20260813_attendance_v1';
+let adomas0813AttendanceRepairRunning = false;
+
+async function applyAdomas0813AttendanceRepairOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== P1756_TARGET_PROFILE_ID) return;
+  if (adomas0813AttendanceRepairRunning) return;
+
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[ADOMAS_0813_ATTENDANCE_REPAIR_KEY]?.status === 'done') return;
+
+  const base = migrations[P1756_SCHEDULE_MIGRATION_KEY];
+  if (!base || base.status !== 'done') return;
+
+  const studentId = safeStudentId(base.studentId || P1756_TARGET_STUDENT_ID);
+  const scheduleId = safeScheduleId(base.scheduleId);
+  const student = teacherProfileCache.students?.[studentId];
+  const entry = teacherProfileCache.scheduleEntries?.[scheduleId];
+  const dateKey = '2026-08-13';
+
+  if (!studentId || !scheduleId || !student || !entry) return;
+  if (normalizedStudentLookupName(student?.name) !== 'adomas') return;
+  if (!scheduleSlotOccursOnDate(entry, dateKey)) {
+    console.warn('Adomo 08-13 lankomumo pataisa nepritaikyta: tvarkaraščio laikas tą dieną nevyksta.');
+    return;
+  }
+
+  adomas0813AttendanceRepairRunning = true;
+  try {
+    const now = Date.now();
+    const updates = {};
+    const payload = scheduleAssignmentOnlyPayload(entry);
+
+    // Užtikriname, kad 2026-08-13 tikrai yra Adomo nuolatinio priskyrimo
+    // pirmoji data. Tai nekeičia jokio Room ar scheduleRun istorijos.
+    const recurringAssignments = Object.entries(payload.assignments || {})
+      .filter(([, value]) => safeStudentId(value?.studentId) === studentId
+        && safeAttendanceMode(value?.mode || value?.scheduleMode) === 'recurring');
+
+    if (recurringAssignments.length === 1) {
+      const [assignmentId, assignment] = recurringAssignments[0];
+      payload.assignments[assignmentId] = {
+        ...assignment,
+        studentId,
+        mode: 'recurring',
+        startDate: dateKey,
+        updatedAt: now
+      };
+    } else if (recurringAssignments.length === 0) {
+      // Jei Adomas dar likęs legacy studentIds formatu, konvertuojame tik jį.
+      const legacyRaw = payload.studentIds;
+      const legacyPresent = Array.isArray(legacyRaw)
+        ? legacyRaw.map(safeStudentId).includes(studentId)
+        : Boolean(legacyRaw && typeof legacyRaw === 'object' && legacyRaw[studentId]);
+      if (!legacyPresent) {
+        throw new Error('Adomo nuolatinis priskyrimas šiame tvarkaraštyje nerastas');
+      }
+      const assignmentId = newScheduleAssignmentId();
+      payload.assignments[assignmentId] = {
+        studentId,
+        mode: 'recurring',
+        startDate: dateKey,
+        createdAt: Math.max(0, Number(entry.createdAt || now)) || now,
+        updatedAt: now,
+        migratedFromLegacy: true
+      };
+      removeLegacyScheduleStudent(payload, studentId);
+    } else {
+      throw new Error('Rasti keli Adomo nuolatiniai priskyrimai tame pačiame tvarkaraščio laike');
+    }
+
+    payload.updatedAt = now;
+    updates[`scheduleEntries/${scheduleId}`] = payload;
+
+    const run = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey] || {};
+    const time = scheduleSlotTimeForDate(entry, dateKey);
+    const attendance = run.attendance && typeof run.attendance === 'object' ? run.attendance : {};
+    const previous = attendance[studentId] && typeof attendance[studentId] === 'object' ? attendance[studentId] : {};
+
+    // Vartotojo aiškiai patvirtintas istorinis faktas: rankinis "Dalyvavo".
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/schemaVersion`] =
+      Number(run.schemaVersion || P2_DATA_SCHEMA_VERSION);
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/scheduleModelVersion`] =
+      Number(run.scheduleModelVersion || 2);
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendanceModelVersion`] = 1;
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/scheduledDay`] =
+      safeScheduleDay(run.scheduledDay || time?.day);
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/scheduledStart`] =
+      safeScheduleTime(run.scheduledStart || time?.start);
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/durationMinutes`] =
+      safeScheduleDuration(run.durationMinutes || time?.durationMinutes);
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${studentId}/schemaVersion`] = 1;
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${studentId}/manualStatus`] = 'present';
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${studentId}/manualUpdatedAt`] = now;
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${studentId}/manualUpdatedBy`] = me;
+    updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${studentId}/source`] =
+      String(previous.source || 'historical-user-confirmed').slice(0, 40);
+
+    updates[`meta/migrations/${ADOMAS_0813_ATTENDANCE_REPAIR_KEY}`] = {
+      status: 'done',
+      appliedAt: now,
+      scheduleId,
+      studentId,
+      dateKey,
+      startDate: dateKey,
+      attendance: 'present'
+    };
+
+    await update(teacherProfileRef, updates);
+    bridge.showToast?.('Adomo 08-13 lankomumas sutvarkytas: Dalyvavo.');
+  } catch (error) {
+    console.error('Adomo 08-13 lankomumo pataisos klaida', error);
+    bridge.showToast?.('Nepavyko sutvarkyti Adomo 08-13 lankomumo');
+  } finally {
+    adomas0813AttendanceRepairRunning = false;
+  }
+}
+
 async function applyRecurringFirstLessonMigrationOnce() {
   if (onlineRole !== 'teacher' || !teacherProfileRef || recurringFirstLessonMigrationRunning) return;
   const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
@@ -2539,6 +2658,7 @@ if (teacherProfileRef) {
     applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.18 istorinio Room pataisa neįvykdyta', error));
     applyRecurringFirstLessonMigrationOnce().catch(error => console.warn('P3.2.7.10.11.10 pirmų pamokų datų migracija neįvykdyta', error));
     applyHistoricalAttendanceBackfillOnce().catch(error => console.warn('P3.2.7.10.11.11 istorinio lankomumo migracija neįvykdyta', error));
+    applyAdomas0813AttendanceRepairOnce().catch(error => console.warn('P3.2.7.10.11.12 Adomo 08-13 lankomumo pataisa neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
