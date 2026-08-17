@@ -2993,6 +2993,13 @@
     { id: 6, short: 'Št', label: 'Šeštadienis' },
     { id: 7, short: 'Sk', label: 'Sekmadienis' }
   ]);
+  const SCHEDULE_HISTORY_MIN_DATE = '2026-08-13';
+
+  function scheduleHistoryStartDate(value) {
+    const date = scheduleDateKeyValid(value) ? String(value) : SCHEDULE_HISTORY_MIN_DATE;
+    return date < SCHEDULE_HISTORY_MIN_DATE ? SCHEDULE_HISTORY_MIN_DATE : date;
+  }
+
   const SCHEDULE_ATTENDANCE_META = Object.freeze({
     recurring: { label: 'Nuolatinis', long: 'Nuolatinis laikas' },
     dates: { label: 'Pavienės', long: 'Pavienės pamokos' },
@@ -3132,9 +3139,9 @@
     const raw = entry?.timeVersions && typeof entry.timeVersions === 'object' ? entry.timeVersions : {};
     const list = Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
       .filter(item => scheduleDateKeyValid(item.effectiveFrom) && Number(item.day) >= 1 && Number(item.day) <= 7 && scheduleTimeToMinutes(item.start) !== null)
-      .map(item => ({ ...item, durationMinutes: Math.max(15, Math.min(180, Math.round(Number(item.durationMinutes) || 40))) }));
+      .map(item => ({ ...item, effectiveFrom: scheduleHistoryStartDate(item.effectiveFrom), durationMinutes: Math.max(15, Math.min(180, Math.round(Number(item.durationMinutes) || 40))) }));
     if (!list.length || Number(entry?.slotModelVersion || 0) < 2) {
-      const legacyDate = scheduleDateKeyValid(entry?.startDate) ? String(entry.startDate) : (scheduleDateKeyValid(entry?.date) ? String(entry.date) : '2000-01-01');
+      const legacyDate = scheduleHistoryStartDate(scheduleDateKeyValid(entry?.startDate) ? entry.startDate : entry?.date);
       const legacyDay = Math.max(1, Math.min(7, Math.round(Number(entry?.day) || scheduleDateDayIndex(entry?.date) || 1)));
       const legacyStart = scheduleTimeToMinutes(entry?.start) === null ? '16:00' : String(entry.start);
       const legacy = { id: '__legacy__', effectiveFrom: legacyDate, day: legacyDay, start: legacyStart, durationMinutes: Math.max(15, Math.min(180, Math.round(Number(entry?.durationMinutes) || 40))), createdAt: Number(entry?.createdAt || 0) };
@@ -3181,7 +3188,9 @@
       if (!value || typeof value !== 'object') return;
       const studentId = String(value.studentId || '').trim();
       if (!studentId || !teacherStudentDb.students?.[studentId]) return;
-      result.push({ id, ...value, studentId, mode: scheduleMode(value) });
+      const item = { id, ...value, studentId, mode: scheduleMode(value) };
+      if (item.mode === 'recurring') item.startDate = scheduleHistoryStartDate(item.startDate);
+      result.push(item);
     });
     const explicitStudents = new Set(result.map(item => item.studentId));
     const legacyRaw = entry?.studentIds;
@@ -3192,7 +3201,7 @@
     for (const studentId of legacyIds) {
       if (!teacherStudentDb.students?.[studentId] || explicitStudents.has(studentId)) continue;
       const date = scheduleDateKeyValid(entry?.date) ? String(entry.date) : '';
-      const startDate = scheduleDateKeyValid(entry?.startDate) ? String(entry.startDate) : '2000-01-01';
+      const startDate = scheduleHistoryStartDate(entry?.startDate);
       const item = { id: `__legacy__${studentId}`, studentId, mode: legacyMode, createdAt: Number(entry?.createdAt || 0), legacy: true };
       if (legacyMode === 'recurring') item.startDate = startDate;
       else if (legacyMode === 'dates') item.dates = date ? { [date]: true } : {};
@@ -3223,7 +3232,7 @@
     const cutoff = mode === 'final' ? '' : scheduleFinalCutoffForStudent(assignment.studentId, assignment);
     if (cutoff && dateKey >= cutoff) return false;
     if (mode === 'recurring') {
-      const from = scheduleDateKeyValid(assignment.startDate) ? String(assignment.startDate) : '2000-01-01';
+      const from = scheduleHistoryStartDate(assignment.startDate);
       return dateKey >= from;
     }
     if (mode === 'dates') {
@@ -3306,7 +3315,7 @@
 
   function scheduleAssignmentSummary(assignment) {
     const mode = scheduleMode(assignment);
-    if (mode === 'recurring') return `nuo ${String(assignment.startDate || '—')}`;
+    if (mode === 'recurring') return `nuo ${scheduleHistoryStartDate(assignment.startDate)}`;
     if (mode === 'dates') {
       const dates = Object.keys(assignment?.dates && typeof assignment.dates === 'object' ? assignment.dates : {}).filter(scheduleDateKeyValid).sort();
       if (!dates.length) return 'datos nenurodytos';
@@ -3411,6 +3420,39 @@
         box-shadow: 0 0 0 2px rgba(74,103,214,.13);
         border-radius: 12px;
       }
+      #p2ScheduleEditorPane .p2-schedule-legacy-tools {
+        display: grid;
+        grid-template-columns: minmax(150px,1fr) auto;
+        align-items: end;
+        gap: 8px;
+        min-width: 250px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-legacy-tools label {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        color: #687287;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      #p2ScheduleEditorPane .p2-schedule-legacy-tools input {
+        min-width: 0;
+        height: 32px;
+        border: 1px solid #dbe2ef;
+        border-radius: 8px;
+        padding: 4px 7px;
+        background: #fff;
+        font: inherit;
+      }
+      #p2ScheduleEditorPane .p2-schedule-legacy-actions {
+        display: flex;
+        gap: 5px;
+      }
+      #p2ScheduleEditorPane .p2-schedule-legacy-actions button {
+        min-height: 32px;
+        padding: 5px 8px;
+        white-space: nowrap;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -3439,6 +3481,50 @@
         zone.classList.add('p2-schedule-context-zone');
         zone.classList.toggle('is-context-active', Boolean(selected && scheduleContextMode === mode && (mode !== 'assignment' || scheduleContextLabelsMatch(zone.textContent, scheduleContextAssignmentLabel))));
       });
+    });
+  }
+
+  function enhanceLegacyScheduleAssignmentRows(editorHost, assignments) {
+    if (!editorHost || !Array.isArray(assignments)) return;
+    const rows = Array.from(editorHost.querySelectorAll('.p2-schedule-assignment-row'));
+    assignments.forEach((assignment, index) => {
+      if (!assignment?.legacy) return;
+      const row = rows[index];
+      if (!row) return;
+      const marker = Array.from(row.querySelectorAll('em, small, span')).find(el => String(el.textContent || '').trim() === 'Senas įrašas');
+      if (!marker) return;
+
+      const tools = document.createElement('div');
+      tools.className = 'p2-schedule-legacy-tools';
+
+      const label = document.createElement('label');
+      const caption = document.createElement('span');
+      caption.textContent = 'Pirmas lankymas';
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.min = SCHEDULE_HISTORY_MIN_DATE;
+      input.value = scheduleHistoryStartDate(assignment.startDate);
+      input.dataset.scheduleLegacyStart = String(assignment.id || '');
+      label.append(caption, input);
+
+      const actions = document.createElement('div');
+      actions.className = 'p2-schedule-legacy-actions';
+
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'p2-secondary';
+      save.textContent = 'Išsaugoti';
+      save.dataset.scheduleLegacyMigrate = String(assignment.id || '');
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'is-muted';
+      remove.textContent = 'Pašalinti';
+      remove.dataset.scheduleAssignmentDelete = String(assignment.id || '');
+
+      actions.append(save, remove);
+      tools.append(label, actions);
+      marker.replaceWith(tools);
     });
   }
 
@@ -3607,6 +3693,7 @@
         scheduleAddDays,
         escapeHtml
       });
+      enhanceLegacyScheduleAssignmentRows(editorHost, assignments);
 
       // P3.2.7.10.11.4: praeities pamoka, kuri turi realiai sukurtą Room,
       // lieka atidaroma kaip istorinė lenta. Jei Room niekada nebuvo sukurtas,
@@ -3728,6 +3815,14 @@
     timeManageSelect?.addEventListener('change', syncTimeManageAction);
     syncTimeManageAction();
 
+    const normalRecurringStart = editorHost.querySelector('#p2ScheduleAssignStartDate');
+    if (normalRecurringStart) {
+      normalRecurringStart.min = SCHEDULE_HISTORY_MIN_DATE;
+      if (normalRecurringStart.value && normalRecurringStart.value < SCHEDULE_HISTORY_MIN_DATE) {
+        normalRecurringStart.value = SCHEDULE_HISTORY_MIN_DATE;
+      }
+    }
+
     const modeSelect = editorHost.querySelector('#p2ScheduleAssignMode');
     const syncAssignmentMode = () => {
       const mode = String(modeSelect?.value || 'recurring');
@@ -3769,6 +3864,7 @@
       if (mode === 'recurring') {
         detail.startDate = String(editorHost.querySelector('#p2ScheduleAssignStartDate')?.value || '').trim();
         if (!scheduleDateKeyValid(detail.startDate)) { toast('Pasirink, nuo kada mokinys lanko nuolat'); return; }
+        if (detail.startDate < SCHEDULE_HISTORY_MIN_DATE) { toast(`Tvarkaraščio istorija prasideda ${SCHEDULE_HISTORY_MIN_DATE}`); return; }
       } else if (mode === 'dates') {
         const method = String(editorHost.querySelector('#p2ScheduleDatesMethod')?.value || 'exact');
         if (method === 'exact') {
@@ -3786,6 +3882,17 @@
       }
       requestSchedule(detail);
     });
+
+    editorHost.querySelectorAll('[data-schedule-legacy-migrate]').forEach(button => button.addEventListener('click', () => {
+      if (!editingScheduleId) return;
+      const assignmentId = String(button.dataset.scheduleLegacyMigrate || '').trim();
+      const input = Array.from(editorHost.querySelectorAll('[data-schedule-legacy-start]'))
+        .find(el => String(el.dataset.scheduleLegacyStart || '') === assignmentId);
+      const startDate = String(input?.value || '').trim();
+      if (!assignmentId || !scheduleDateKeyValid(startDate)) { toast('Pasirink pirmą mokinio lankymo datą'); return; }
+      if (startDate < SCHEDULE_HISTORY_MIN_DATE) { toast(`Tvarkaraščio istorija prasideda ${SCHEDULE_HISTORY_MIN_DATE}`); return; }
+      requestSchedule({ action: 'assignment-legacy-migrate', scheduleId: editingScheduleId, assignmentId, startDate });
+    }));
 
     editorHost.querySelectorAll('[data-schedule-assignment-delete]').forEach(button => button.addEventListener('click', () => {
       if (!editingScheduleId) return;

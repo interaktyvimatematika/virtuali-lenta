@@ -1694,6 +1694,11 @@ function validScheduleDateKey(value) {
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
   return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3]) ? text : '';
 }
+const SCHEDULE_HISTORY_MIN_DATE = '2026-08-13';
+function scheduleHistoryStartDate(value) {
+  const date = validScheduleDateKey(value) || SCHEDULE_HISTORY_MIN_DATE;
+  return date < SCHEDULE_HISTORY_MIN_DATE ? SCHEDULE_HISTORY_MIN_DATE : date;
+}
 function scheduleDateFromKey(value) {
   const text = validScheduleDateKey(value);
   if (!text) return null;
@@ -1722,9 +1727,9 @@ function scheduleTimeVersionsForEntry(entry) {
   const raw = entry?.timeVersions && typeof entry.timeVersions === 'object' ? entry.timeVersions : {};
   const list = Object.entries(raw).map(([id, value]) => ({ id, ...(value && typeof value === 'object' ? value : {}) }))
     .filter(item => validScheduleDateKey(item.effectiveFrom) && Number(item.day) >= 1 && Number(item.day) <= 7)
-    .map(item => ({ ...item, day: safeScheduleDay(item.day), start: safeScheduleTime(item.start), durationMinutes: safeScheduleDuration(item.durationMinutes), effectiveFrom: validScheduleDateKey(item.effectiveFrom), createdAt: Math.max(0, Number(item.createdAt || 0)) }));
+    .map(item => ({ ...item, day: safeScheduleDay(item.day), start: safeScheduleTime(item.start), durationMinutes: safeScheduleDuration(item.durationMinutes), effectiveFrom: scheduleHistoryStartDate(item.effectiveFrom), createdAt: Math.max(0, Number(item.createdAt || 0)) }));
   if (!list.length || Number(entry?.slotModelVersion || 0) < 2) {
-    const legacyDate = validScheduleDateKey(entry?.startDate) || validScheduleDateKey(entry?.date) || '2000-01-01';
+    const legacyDate = scheduleHistoryStartDate(validScheduleDateKey(entry?.startDate) || validScheduleDateKey(entry?.date));
     const legacy = {
       id: '__legacy__', effectiveFrom: legacyDate,
       day: safeScheduleDay(entry?.day || scheduleDayFromDateKey(entry?.date)),
@@ -1787,6 +1792,7 @@ function scheduleAssignmentsForEntry(entry) {
     if (!studentId) continue;
     const mode = safeAttendanceMode(value.mode || value.scheduleMode);
     const assignment = { id, ...value, studentId, mode, createdAt: Math.max(0, Number(value.createdAt || 0)) };
+    if (mode === 'recurring') assignment.startDate = scheduleHistoryStartDate(assignment.startDate);
     result.push(assignment);
   }
   const explicit = new Set(result.map(item => item.studentId));
@@ -1798,7 +1804,7 @@ function scheduleAssignmentsForEntry(entry) {
     if (explicit.has(studentId)) continue;
     const date = validScheduleDateKey(entry?.date);
     const assignment = { id: `__legacy__${studentId}`, studentId, mode: legacyMode, createdAt: Math.max(0, Number(entry?.createdAt || 0)), legacy: true };
-    if (legacyMode === 'recurring') assignment.startDate = validScheduleDateKey(entry?.startDate) || '2000-01-01';
+    if (legacyMode === 'recurring') assignment.startDate = scheduleHistoryStartDate(entry?.startDate);
     else if (legacyMode === 'dates') assignment.dates = date ? { [date]: true } : {};
     else assignment.date = date;
     result.push(assignment);
@@ -1826,7 +1832,7 @@ function scheduleAssignmentOccursOnDate(entry, assignment, dateKeyRaw) {
   const mode = safeAttendanceMode(assignment.mode);
   const cutoff = mode === 'final' ? '' : scheduleFinalCutoffForStudent(assignment.studentId, assignment);
   if (cutoff && dateKey >= cutoff) return false;
-  if (mode === 'recurring') return dateKey >= (validScheduleDateKey(assignment.startDate) || '2000-01-01');
+  if (mode === 'recurring') return dateKey >= scheduleHistoryStartDate(assignment.startDate);
   if (mode === 'dates') return Boolean(assignment?.dates && typeof assignment.dates === 'object' && assignment.dates[dateKey]);
   return validScheduleDateKey(assignment.date) === dateKey;
 }
@@ -1886,7 +1892,7 @@ function explicitScheduleSlotPayload(existing = {}) {
     const id = String(item.id || '').startsWith('__legacy__') ? newScheduleAssignmentId() : String(item.id || newScheduleAssignmentId());
     const mode = safeAttendanceMode(item.mode);
     const value = { studentId: safeStudentId(item.studentId), mode, createdAt: Math.max(0, Number(item.createdAt || existing.createdAt || now)) || now, updatedAt: now };
-    if (mode === 'recurring') value.startDate = validScheduleDateKey(item.startDate) || '2000-01-01';
+    if (mode === 'recurring') value.startDate = scheduleHistoryStartDate(item.startDate);
     else if (mode === 'dates') value.dates = Object.fromEntries(Object.keys(item.dates && typeof item.dates === 'object' ? item.dates : {}).map(validScheduleDateKey).filter(Boolean).map(date => [date, true]));
     else value.date = validScheduleDateKey(item.date);
     assignments[id] = value;
@@ -2923,6 +2929,30 @@ async function ensureScheduleRunClassSession(scheduleId, dateKey, run, entry) {
   return { classSessionId, roomEntries };
 }
 
+function legacyScheduleStudentIdFromAssignmentId(value) {
+  const id = String(value || '').trim();
+  return id.startsWith('__legacy__') ? safeStudentId(id.slice('__legacy__'.length)) : '';
+}
+function scheduleAssignmentOnlyPayload(existing) {
+  const payload = { ...(existing && typeof existing === 'object' ? existing : {}) };
+  payload.assignments = { ...(existing?.assignments && typeof existing.assignments === 'object' ? existing.assignments : {}) };
+  if (Array.isArray(existing?.studentIds)) payload.studentIds = existing.studentIds.slice();
+  else if (existing?.studentIds && typeof existing.studentIds === 'object') payload.studentIds = { ...existing.studentIds };
+  return payload;
+}
+function removeLegacyScheduleStudent(payload, studentId) {
+  if (!payload || !studentId) return;
+  if (Array.isArray(payload.studentIds)) {
+    payload.studentIds = payload.studentIds.map(safeStudentId).filter(id => id && id !== studentId);
+    if (!payload.studentIds.length) delete payload.studentIds;
+  } else if (payload.studentIds && typeof payload.studentIds === 'object') {
+    const next = { ...payload.studentIds };
+    delete next[studentId];
+    if (Object.keys(next).some(id => next[id])) payload.studentIds = next;
+    else delete payload.studentIds;
+  }
+}
+
 window.addEventListener('p2:schedule-request', async event => {
   if (onlineRole !== 'teacher' || !teacherProfileRef) return;
   const detail = event.detail || {};
@@ -2943,6 +2973,7 @@ window.addEventListener('p2:schedule-request', async event => {
     if (detail.action === 'slot-add') {
       const effectiveFrom = validScheduleDateKey(detail.effectiveFrom);
       if (!effectiveFrom) throw new Error('Pasirink, nuo kada galioja pamokos laikas');
+      if (effectiveFrom < SCHEDULE_HISTORY_MIN_DATE) throw new Error('Tvarkaraščio istorija prasideda 2026-08-13');
       const day = safeScheduleDay(detail.day);
       const start = safeScheduleTime(detail.start);
       const durationMinutes = safeScheduleDuration(detail.durationMinutes);
@@ -3044,10 +3075,42 @@ window.addEventListener('p2:schedule-request', async event => {
 
     if (detail.action === 'assignment-delete') {
       const assignmentId = String(detail.assignmentId || '').trim();
-      const payload = explicitScheduleSlotPayload(existing);
-      if (!assignmentId || !payload.assignments?.[assignmentId]) throw new Error('Mokinio priskyrimas nerastas');
-      delete payload.assignments[assignmentId];
+      if (!assignmentId) throw new Error('Mokinio priskyrimas nerastas');
+      const legacyStudentId = legacyScheduleStudentIdFromAssignmentId(assignmentId);
+      const payload = scheduleAssignmentOnlyPayload(existing);
+      if (legacyStudentId) {
+        const exists = scheduleAssignmentsForEntry(existing).some(item => item.legacy && item.studentId === legacyStudentId);
+        if (!exists) throw new Error('Mokinio priskyrimas nerastas');
+        removeLegacyScheduleStudent(payload, legacyStudentId);
+      } else {
+        if (!payload.assignments?.[assignmentId]) throw new Error('Mokinio priskyrimas nerastas');
+        delete payload.assignments[assignmentId];
+      }
       await saveSlot(scheduleId, payload, 'assignment', 'Mokinio priskyrimas pašalintas');
+      return;
+    }
+
+    if (detail.action === 'assignment-legacy-migrate') {
+      const assignmentId = String(detail.assignmentId || '').trim();
+      const studentId = legacyScheduleStudentIdFromAssignmentId(assignmentId);
+      const startDate = validScheduleDateKey(detail.startDate);
+      if (!studentId || !teacherProfileCache.students?.[studentId]) throw new Error('Senas mokinio priskyrimas nerastas');
+      if (!startDate || startDate < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pirmas lankymas negali būti ankstesnis nei ${SCHEDULE_HISTORY_MIN_DATE}`);
+      const legacy = scheduleAssignmentsForEntry(existing).find(item => item.legacy && item.studentId === studentId);
+      if (!legacy) throw new Error('Senas mokinio priskyrimas nerastas');
+
+      const payload = scheduleAssignmentOnlyPayload(existing);
+      const newId = newScheduleAssignmentId();
+      const now = Date.now();
+      payload.assignments[newId] = {
+        studentId,
+        mode: 'recurring',
+        startDate,
+        createdAt: Math.max(0, Number(legacy.createdAt || existing.createdAt || now)) || now,
+        updatedAt: now
+      };
+      removeLegacyScheduleStudent(payload, studentId);
+      await saveSlot(scheduleId, payload, 'assignment', 'Senas priskyrimas atnaujintas');
       return;
     }
 
@@ -3055,7 +3118,7 @@ window.addEventListener('p2:schedule-request', async event => {
       const studentId = safeStudentId(detail.studentId);
       if (!studentId || !teacherProfileCache.students?.[studentId]) throw new Error('Pasirink mokinį');
       const mode = safeAttendanceMode(detail.mode);
-      const payload = explicitScheduleSlotPayload(existing);
+      const payload = scheduleAssignmentOnlyPayload(existing);
       if (mode === 'recurring') {
         const duplicate = Object.values(payload.assignments || {}).find(item => safeStudentId(item?.studentId) === studentId && safeAttendanceMode(item?.mode) === 'recurring');
         if (duplicate) throw new Error('Šis mokinys jau turi nuolatinį priskyrimą šiam laikui');
@@ -3066,6 +3129,7 @@ window.addEventListener('p2:schedule-request', async event => {
       if (mode === 'recurring') {
         assignment.startDate = validScheduleDateKey(detail.startDate);
         if (!assignment.startDate) throw new Error('Pasirink, nuo kada mokinys lanko nuolat');
+        if (assignment.startDate < SCHEDULE_HISTORY_MIN_DATE) throw new Error(`Pirmas lankymas negali būti ankstesnis nei ${SCHEDULE_HISTORY_MIN_DATE}`);
       } else if (mode === 'dates') {
         let dates = Array.isArray(detail.dates) ? detail.dates.map(validScheduleDateKey).filter(Boolean) : [];
         if (!dates.length && validScheduleDateKey(detail.rangeStart) && validScheduleDateKey(detail.rangeEnd)) {
