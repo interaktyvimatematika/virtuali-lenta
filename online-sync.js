@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.10-RECURRING-FIRST-LESSON-MIGRATION';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.11-HISTORICAL-ATTENDANCE-BACKFILL';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -1943,6 +1943,133 @@ function normalizedRecurringFirstLessonDate(scheduleId, entry, assignment) {
   return firstScheduleOccurrenceOnOrAfter(entry, baseDate) || scheduleHistoryStartDate(baseDate);
 }
 
+
+const HISTORICAL_ATTENDANCE_BACKFILL_KEY = 'p327101111_historical_attendance_20260813_14_v1';
+let historicalAttendanceBackfillRunning = false;
+
+const HISTORICAL_ATTENDANCE_BACKFILL = Object.freeze([
+  { dateKey: '2026-08-13', studentName: 'Adomas' },
+  { dateKey: '2026-08-14', studentName: 'Viltė' },
+  { dateKey: '2026-08-14', studentName: 'Arijelis' },
+  { dateKey: '2026-08-14', studentName: 'Austėja' }
+]);
+
+function normalizedStudentLookupName(value) {
+  return cleanStudentName(value).trim().toLocaleLowerCase('lt-LT');
+}
+
+function findUniqueStudentByNameForMigration(studentName) {
+  const target = normalizedStudentLookupName(studentName);
+  const matches = Object.entries(teacherProfileCache.students || {})
+    .filter(([, student]) => normalizedStudentLookupName(student?.name) === target)
+    .map(([studentId, student]) => ({ studentId: safeStudentId(studentId), student }))
+    .filter(item => item.studentId);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function findUniqueScheduleForHistoricalAttendance(studentId, dateKey) {
+  const matches = [];
+  for (const [scheduleId, entryRaw] of Object.entries(teacherProfileCache.scheduleEntries || {})) {
+    if (!entryRaw || typeof entryRaw !== 'object') continue;
+    const entry = { ...entryRaw };
+    if (!scheduleSlotOccursOnDate(entry, dateKey)) continue;
+    const active = scheduleActiveAssignmentsForDate(entry, dateKey);
+    if (!active.some(item => safeStudentId(item.studentId) === studentId)) continue;
+    matches.push({ scheduleId, entry });
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function applyHistoricalAttendanceBackfillOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || historicalAttendanceBackfillRunning) return;
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  const previous = migrations[HISTORICAL_ATTENDANCE_BACKFILL_KEY];
+  if (previous?.status === 'done' || previous?.status === 'partial') return;
+
+  historicalAttendanceBackfillRunning = true;
+  try {
+    const updates = {};
+    const applied = [];
+    const skipped = [];
+    const now = Date.now();
+
+    for (const target of HISTORICAL_ATTENDANCE_BACKFILL) {
+      const studentMatch = findUniqueStudentByNameForMigration(target.studentName);
+      if (!studentMatch) {
+        skipped.push(`${target.dateKey} ${target.studentName}: mokinys nerastas vienareikšmiškai`);
+        continue;
+      }
+
+      const scheduleMatch = findUniqueScheduleForHistoricalAttendance(studentMatch.studentId, target.dateKey);
+      if (!scheduleMatch) {
+        skipped.push(`${target.dateKey} ${target.studentName}: pamoka nerasta vienareikšmiškai`);
+        continue;
+      }
+
+      const { scheduleId, entry } = scheduleMatch;
+      const time = scheduleSlotTimeForDate(entry, target.dateKey);
+      const existingRun = teacherProfileCache.scheduleRuns?.[scheduleId]?.[target.dateKey] || {};
+      const existingAttendance = existingRun.attendance?.[studentMatch.studentId] || {};
+
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/schemaVersion`] =
+        Number(existingRun.schemaVersion || P2_DATA_SCHEMA_VERSION);
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/scheduleModelVersion`] =
+        Number(existingRun.scheduleModelVersion || 2);
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendanceModelVersion`] = 1;
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/scheduledDay`] =
+        safeScheduleDay(existingRun.scheduledDay || time?.day);
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/scheduledStart`] =
+        safeScheduleTime(existingRun.scheduledStart || time?.start);
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/durationMinutes`] =
+        safeScheduleDuration(existingRun.durationMinutes || time?.durationMinutes);
+
+      // Tai vartotojo dabar patvirtintas istorinis faktas, todėl žymime kaip
+      // manualStatus=present, o ne kuriame netikrą autoDetected įrodymą.
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendance/${studentMatch.studentId}/schemaVersion`] = 1;
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendance/${studentMatch.studentId}/manualStatus`] = 'present';
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendance/${studentMatch.studentId}/manualUpdatedAt`] = now;
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendance/${studentMatch.studentId}/manualUpdatedBy`] = me;
+      updates[`scheduleRuns/${scheduleId}/${target.dateKey}/attendance/${studentMatch.studentId}/source`] =
+        String(existingAttendance.source || 'historical-user-confirmed').slice(0, 40);
+
+      applied.push({
+        dateKey: target.dateKey,
+        studentName: target.studentName,
+        studentId: studentMatch.studentId,
+        scheduleId
+      });
+    }
+
+    updates[`meta/migrations/${HISTORICAL_ATTENDANCE_BACKFILL_KEY}`] = {
+      status: skipped.length ? 'partial' : 'done',
+      appliedAt: now,
+      requestedCount: HISTORICAL_ATTENDANCE_BACKFILL.length,
+      appliedCount: applied.length,
+      skippedCount: skipped.length,
+      targets: applied,
+      skipped
+    };
+
+    await update(teacherProfileRef, updates);
+
+    if (!skipped.length) {
+      bridge.showToast?.('Istorinis lankomumas sutvarkytas: pažymėti 4 dalyvavę mokiniai.');
+    } else if (applied.length) {
+      bridge.showToast?.(`Istorinis lankomumas sutvarkytas iš dalies: ${applied.length}/4.`);
+      console.warn('Istorinio lankomumo migracijoje praleista:', skipped);
+    } else {
+      bridge.showToast?.('Istorinio lankomumo nepavyko susieti vienareikšmiškai.');
+      console.warn('Istorinio lankomumo migracijoje niekas nepritaikyta:', skipped);
+    }
+  } catch (error) {
+    console.error('Istorinio lankomumo migracijos klaida', error);
+    bridge.showToast?.('Nepavyko įrašyti istorinio lankomumo');
+  } finally {
+    historicalAttendanceBackfillRunning = false;
+  }
+}
+
 async function applyRecurringFirstLessonMigrationOnce() {
   if (onlineRole !== 'teacher' || !teacherProfileRef || recurringFirstLessonMigrationRunning) return;
   const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
@@ -2411,6 +2538,7 @@ if (teacherProfileRef) {
     applyP1756RequestedScheduleOnce().catch(error => console.warn('P1.7.5.6 tvarkaraščio migracija neįvykdyta', error));
     applyP17913LegacyScheduleRoomRepairOnce().catch(error => console.warn('P1.7.9.18 istorinio Room pataisa neįvykdyta', error));
     applyRecurringFirstLessonMigrationOnce().catch(error => console.warn('P3.2.7.10.11.10 pirmų pamokų datų migracija neįvykdyta', error));
+    applyHistoricalAttendanceBackfillOnce().catch(error => console.warn('P3.2.7.10.11.11 istorinio lankomumo migracija neįvykdyta', error));
   }, error => {
     console.error('P2-SPLIT-P2.5-P2 mokinių bazės skaitymo klaida', error);
     bridge.showToast?.('Nepavyko atidaryti mokinių bazės');
