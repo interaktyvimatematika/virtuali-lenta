@@ -3607,6 +3607,22 @@
         scheduleAddDays,
         escapeHtml
       });
+
+      // P3.2.7.10.11.4: praeities pamoka, kuri turi realiai sukurtą Room,
+      // lieka atidaroma kaip istorinė lenta. Jei Room niekada nebuvo sukurtas,
+      // vartotojui aiškiai parodome, kad nėra ko atidaryti.
+      const scheduleOpenButton = editorHost.querySelector('[data-schedule-open-lesson]');
+      if (scheduleOpenButton && occurrenceState.state === 'past') {
+        if (runRooms.length) {
+          scheduleOpenButton.disabled = false;
+          scheduleOpenButton.textContent = 'Atidaryti įvykusią pamoką';
+          scheduleOpenButton.dataset.scheduleOpenHistorical = '1';
+        } else {
+          scheduleOpenButton.disabled = true;
+          scheduleOpenButton.textContent = 'Lenta nebuvo atidaryta';
+          delete scheduleOpenButton.dataset.scheduleOpenHistorical;
+        }
+      }
     }
 
     ensureScheduleContextStyles();
@@ -3784,10 +3800,28 @@
       const dateKey = editingScheduleDateKey || scheduleSelectedDateKey;
       const entry = teacherStudentDb.scheduleEntries?.[editingScheduleId];
       if (!entry || !scheduleSlotOccursOnDate({ id: editingScheduleId, ...entry }, dateKey)) { toast('Šis pamokos laikas pasirinktą datą nevyksta'); return; }
+
       const run = teacherStudentDb.scheduleRuns?.[editingScheduleId]?.[dateKey] || null;
+      const rooms = scheduleRunRooms(run);
       const active = scheduleActiveAssignments({ id: editingScheduleId, ...entry }, dateKey);
-      if (!scheduleRunRooms(run).length && !active.length) { toast('Šiai datai nėra priskirtų mokinių'); return; }
+      const occurrenceState = scheduleOccurrenceState({ id: editingScheduleId, ...entry }, dateKey);
       const button = editorHost.querySelector('[data-schedule-open-lesson]');
+
+      // Istorinės pamokos neperleidžiame per „start“ veiksmą: naujas Room
+      // praeities datai nekuriamas. Atidarome tik jau egzistuojantį Room ir
+      // pridedame stay=1, kad senas transition nenukreiptų į naujesnę sesiją.
+      if (occurrenceState.state === 'past') {
+        if (!rooms.length) {
+          toast('Šiai įvykusiai pamokai lenta nebuvo sukurta');
+          return;
+        }
+        if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
+        if (scheduleModal) scheduleModal.hidden = true;
+        location.assign(historicalRoomUrl(rooms[0], 'teacher', true));
+        return;
+      }
+
+      if (!rooms.length && !active.length) { toast('Šiai datai nėra priskirtų mokinių'); return; }
       if (button) { button.disabled = true; button.textContent = 'Atidaroma…'; }
       requestSchedule({ action: 'start', scheduleId: editingScheduleId, dateKey });
     });
