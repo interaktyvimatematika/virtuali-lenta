@@ -316,8 +316,8 @@
     const wrap = (label, body) => `<figure class="p2-task-diagram" aria-label="${escapeHtml(label)}"><svg viewBox="0 0 240 160" role="img" aria-hidden="true">${body}</svg></figure>`;
     if (type === 'angle-bisector') return wrap('Trikampio kampo pusiaukampinės schema', `
       <path d="M88 61.5 L30 138 L210 138 Z"/><path d="M88 61.5 L102 138" class="guide"/>
-      <path d="M77.13 75.84 A18 18 0 0 0 91.24 79.21" class="guide"/>
-      <path d="M91.24 79.21 A18 18 0 0 0 103.25 71.06" class="guide"/>
+      <path d="M77.12 75.84 A18 18 0 0 0 90.19 79.37" class="guide"/>
+      <path d="M92.29 78.98 A18 18 0 0 0 103.25 71.06" class="guide"/>
       <text x="84" y="55">A</text><text x="18" y="151">B</text><text x="212" y="151">C</text><text x="97" y="153">D</text>
       <text x="55" y="132">6</text><text x="151" y="132">9</text><text x="48" y="96">8</text><text x="151" y="96">?</text>`);
     if (type === 'incircle') return wrap('Trikampis ir į jį įbrėžtas apskritimas', `
@@ -348,17 +348,17 @@
     if (type === 'included-angle') return wrap('Trikampis su dviem kraštinėmis ir kampu tarp jų', `
       <path d="M30 137 L154.71 65 L210 137 Z"/><path d="M50.78 125 A24 24 0 0 1 54 137" class="guide"/>
       <text x="18" y="151">C</text><text x="151" y="59">A</text><text x="212" y="151">B</text>
-      <text x="82" y="94">8</text><text x="116" y="151">10</text><text x="57" y="124">30°</text>`);
+      <text x="82" y="94">8</text><text x="116" y="151">10</text><text x="51" y="131">30°</text>`);
     if (type === 'cosine-law') return wrap('Trikampis kosinusų teoremai', `
       <path d="M30 137 L92.5 28.75 L205 137 Z"/><path d="M42 116.22 A24 24 0 0 1 54 137" class="guide"/>
       <text x="18" y="151">C</text><text x="88" y="23">A</text><text x="207" y="151">B</text>
-      <text x="52" y="78">5</text><text x="116" y="151">7</text><text x="54" y="115">60°</text><text x="151" y="79">?</text>`);
+      <text x="52" y="78">5</text><text x="116" y="151">7</text><text x="51" y="125">60°</text><text x="151" y="79">?</text>`);
     if (type === 'sine-law') return wrap('Trikampis sinusų teoremai', `
       <path d="M55 140 L55 25 L121.40 25 Z"/>
       <path d="M55 37 L67 37 L67 25" class="guide"/>
       <path d="M55 118 A22 22 0 0 1 66 120.95" class="guide"/>
       <text x="42" y="154">A</text><text x="42" y="20">B</text><text x="124" y="29">C</text>
-      <text x="59" y="110">30°</text><text x="84" y="17">10</text><text x="91" y="89">?</text>`);
+      <text x="50" y="110">30°</text><text x="84" y="17">10</text><text x="91" y="89">?</text>`);
     return '';
   }
 
