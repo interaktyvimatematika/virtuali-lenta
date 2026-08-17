@@ -482,7 +482,10 @@
     worldDefaultHeight: BOARD_STRIP_INITIAL_HEIGHT,
     fitSideMarginScreen: BOARD_FIT_SIDE_MARGIN_SCREEN,
     legacyUser100Zoom: BOARD_LEGACY_USER_100_ZOOM,
-    legacyFitPaddingX: BOARD_LEGACY_FIT_PADDING_X
+    legacyFitPaddingX: BOARD_LEGACY_FIT_PADDING_X,
+    // P3.2.7.10.8: naujo 720 px lapo darbinis 100 % priklauso nuo
+    // realaus lentos viewporto pločio. Senų plačių Room bazė lieka 1/3.
+    modernUser100ZoomResolver: (_camera, viewportWidthOverride) => boardFitZoom(viewportWidthOverride)
   });
 
   const boardPracticeUI = BoardPracticeUI.createController({
@@ -535,12 +538,12 @@
     return BoardCamera.usesLegacyReadableScale(state?.camera || {}, BOARD_CAMERA_CONFIG);
   }
 
-  function boardUser100Zoom() {
-    return BoardCamera.user100Zoom(state?.camera || {}, BOARD_CAMERA_CONFIG);
+  function boardUser100Zoom(viewportWidthOverride = null) {
+    return BoardCamera.user100Zoom(state?.camera || {}, BOARD_CAMERA_CONFIG, viewportWidthOverride);
   }
 
-  function boardZoomForUserPercent(percent) {
-    return BoardCamera.zoomForUserPercent(state?.camera || {}, percent, BOARD_CAMERA_CONFIG);
+  function boardZoomForUserPercent(percent, viewportWidthOverride = null) {
+    return BoardCamera.zoomForUserPercent(state?.camera || {}, percent, BOARD_CAMERA_CONFIG, viewportWidthOverride);
   }
 
   function boardLegacyContentFitZoom(viewportWidthOverride = null) {
@@ -554,8 +557,8 @@
     return BoardCamera.initialFitZoom(state?.camera || {}, bounds, viewportWidth, BOARD_CAMERA_CONFIG);
   }
 
-  function boardUserZoomPercent(actualZoom = currentBoardZoom()) {
-    return BoardCamera.userZoomPercent(state?.camera || {}, actualZoom, BOARD_CAMERA_CONFIG);
+  function boardUserZoomPercent(actualZoom = currentBoardZoom(), viewportWidthOverride = null) {
+    return BoardCamera.userZoomPercent(state?.camera || {}, actualZoom, BOARD_CAMERA_CONFIG, viewportWidthOverride);
   }
 
   function setBoardUserZoomPercent(percent, options = {}) {
@@ -9189,7 +9192,8 @@ KOKYBĖS REIKALAVIMAI:
     refs.boardZoomOutButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() - 10, { preserveCenter: true }));
     refs.boardZoomInButton.addEventListener('click', () => setBoardUserZoomPercent(boardUserZoomPercent() + 10, { preserveCenter: true }));
     refs.boardZoomActualButton.addEventListener('click', () => {
-      // 100 % nuo P1.7.9.43 reiškia vienodą VIZUALŲ mastelį; senam 2400 px Room tai camera.zoom = 1/3.
+      // P3.2.7.10.8: naujam 720 px lapui 100 % = lapas per visą galimą plotį.
+      // Senų plačių Room 100 % suderinamumo bazė lieka 1/3.
       setBoardUserZoomPercent(100, { preserveCenter: true });
     });
     refs.boardFocusObjectButton.addEventListener('click', focusActiveBoardObject);
@@ -11596,10 +11600,12 @@ KOKYBĖS REIKALAVIMAI:
   refs.canvas.addEventListener('pointermove', boardInput.continueDrawing);
   refs.canvas.addEventListener('pointerup', boardInput.stopDrawing);
   refs.canvas.addEventListener('pointercancel', boardInput.stopDrawing);
+  // Jei naršyklė / planšetės tvarkyklė netikėtai atima pointer capture,
+  // užbaigiame jau surinktą brūkšnį, kad jis nedingtų.
+  refs.canvas.addEventListener('lostpointercapture', boardInput.stopDrawing);
 
-  // P1.7.9.43: keičiantis realiam lentos viewport'ui (planšetės pasukimas,
-  // Padalintas/Lenta režimas, naršyklės dydis) išlaikome tą patį vartotojo mastelį.
-  // 100 % bazė priklauso tik nuo Room koordinačių kartos, o ne nuo viewport'o pločio.
+  // P3.2.7.10.8: keičiantis realiam lentos viewport'ui išlaikome vartotojo
+  // matomą procentą. Naujam lapui tai reiškia, kad 100 % visada vėl užpildo plotį.
   let boardLastViewportWidth = 0;
   let boardViewportResizeFrame = 0;
   const boardViewportObserver = new ResizeObserver(() => {
@@ -11612,8 +11618,11 @@ KOKYBĖS REIKALAVIMAI:
       if (nextWidth < 80 || nextHeight < 80) return;
 
       const oldZoom = currentBoardZoom();
-      // P1.7.9.43: keičiantis viewport'ui mastelio bazės nekeičiame.
-      // Naujam Room 100 % = zoom 1; senam 2400 px Room 100 % = zoom 1/3.
+      const previousWidth = boardLastViewportWidth >= 80 ? boardLastViewportWidth : nextWidth;
+      const userPercent = boardUserZoomPercent(oldZoom, previousWidth);
+      if (Math.abs(nextWidth - previousWidth) > 0.5) {
+        state.camera.zoom = boardZoomForUserPercent(userPercent, nextWidth);
+      }
       boardLastViewportWidth = nextWidth;
       applyBoardCamera({ preserveCenter: true, oldZoom });
       resizeCanvas({ force: true });
