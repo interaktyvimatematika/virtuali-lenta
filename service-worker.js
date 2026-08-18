@@ -1,5 +1,5 @@
 /* Virtuali lenta – GitHub outage protection / offline application shell.
-   Build: P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL
+   Build: P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE
 
    Principai:
    - pagrindinis tos pačios kilmės HTML/CSS/JS komplektas išsaugomas atominiu būdu;
@@ -8,7 +8,7 @@
    - versijuoti statiniai failai imami iš tiksliai tos pačios cache kartos;
    - MathLive/Firebase CDN resursai papildomai kaupiami runtime cache, bet nėra būtini SW aktyvacijai. */
 
-const SHELL_BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL';
+const SHELL_BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE';
 const SHELL_PREFIX = 'virtuali-lenta-shell-';
 const SHELL_CACHE = SHELL_PREFIX + SHELL_BUILD;
 const RUNTIME_CACHE = 'virtuali-lenta-runtime-v1';
@@ -26,7 +26,7 @@ const PRECACHE_RELATIVE = [
   './board-camera.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './board-drawing.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './board-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
-  './board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL',
+  './board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE',
   './board-objects.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './board-object-factory.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './board-text-editor.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
@@ -34,7 +34,7 @@ const PRECACHE_RELATIVE = [
   './board-math-toolbar.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './board-practice-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './math-semantic-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.9.1-BOARD-STYLUS-FIT-WIDTH-GEOMETRY-HARDENING',
-  './app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL',
+  './app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE',
   './p2-lessons.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK',
   './grade10-review-v6-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK',
   './grade11b-review-v2-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.3-GRADE11B-REVIEW-V2-LATEX',
@@ -47,7 +47,7 @@ const PRECACHE_RELATIVE = [
   './p2-schedule-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './p2-progress-draft.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2',
   './p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5.1-SAMANTA-UNWORKED-V1-CLEANUP',
-  './online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL'
+  './online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE'
 ];
 
 const EXTERNAL_SEED_URLS = [

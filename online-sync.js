@@ -38,7 +38,8 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE';
+window.__P772OnlineSyncLoadedBuild = BUILD;
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -202,6 +203,11 @@ function setUi(kind, text) {
   sessionBox.classList.toggle('is-online', kind === 'online');
   sessionBox.classList.toggle('is-error', kind === 'error');
   statusEl.textContent = text;
+  const boardPresence = document.getElementById('p2BoardPresenceText');
+  if (boardPresence) {
+    boardPresence.textContent = kind === 'online' ? 'Prisijungta' : (kind === 'loading' ? 'Jungiamasi…' : 'Offline');
+    boardPresence.closest?.('.p2-board-live')?.classList.toggle('is-offline', kind !== 'online');
+  }
 }
 
 function toMap(items) {
@@ -660,6 +666,16 @@ onAuthStateChanged(auth, async user => {
     requestWorkspaceBootstrap('teacher-auth-required');
     return;
   }
+  // Firebase Auth vartotojas iš browserLocalPersistence gali būti atkurtas ir
+  // visiškai be interneto. Tokiu atveju nesiunčiame bereikalingo binding get(),
+  // o iškart paleidžiame patikimą vietinę Room kopiją. Prisijungus prie Firebase
+  // binding/profile paslaugos bus atnaujintos per .info/connected kelią.
+  if (!navigator.onLine) {
+    setTeacherAuthStatus('Offline režimas · naudojama šiame įrenginyje išsaugota paskyra ir lentos kopija.');
+    renderTeacherAuthUi();
+    requestWorkspaceBootstrap('teacher-auth-offline-cached');
+    return;
+  }
   await reconcileSignedInTeacher(user);
   if (teacherAuthReloading) return;
   subscribeTeacherProfileIfReady();
@@ -795,6 +811,191 @@ function myLiveStrokeRef(strokeId) {
 // svarbią eigą. Langų dydžiai, split santykis ir scroll pozicijos čia nepatenka.
 
 let bootstrapped = false;
+
+// P3.2.7.10.11.17.13: tikras offline cold-start. AppState jau saugo paskutinę
+// vietinę lentos būseną localStorage. Čia tik pažymime, kuriam Room ta kopija
+// priklauso, kad be tinklo niekada neparodytume kito mokinio lentos. Offline
+// pakeitimai nesiunčiami į Firebase aklai: grįžus ryšiui atliekamas trijų būsenų
+// (baseline / local / remote) sutikrinimas ir į nuotolį keliauja tik realiai
+// offline pakeisti objektai.
+const LOCAL_WORKSPACE_ROOM_KEY = 'p772-local-workspace-room-v1';
+let offlineColdStartActive = false;
+let offlineColdStartDirty = false;
+let offlineColdStartBaseline = null;
+let offlineColdStartReadyDispatched = false;
+
+function localWorkspaceSnapshot() {
+  const snap = bridge.getSharedSnapshot({ includeDrawing: true }) || {};
+  return {
+    drawing: toMap(snap.drawing),
+    notes: toMap(snap.notes),
+    boardImages: toMap(snap.boardImages),
+    boardTasks: toMap(snap.boardTasks),
+    boardPractices: toMap(snap.boardPractices),
+    window: snap.window && typeof snap.window === 'object' ? snap.window : {},
+    boardGeometry: snap.boardGeometry && typeof snap.boardGeometry === 'object' ? snap.boardGeometry : {}
+  };
+}
+
+function normalizedWorkspaceFromBridgeSnapshot(snapRaw) {
+  const snap = snapRaw && typeof snapRaw === 'object' ? snapRaw : {};
+  return {
+    drawing: toMap(snap.drawing),
+    notes: toMap(snap.notes),
+    boardImages: toMap(snap.boardImages),
+    boardTasks: toMap(snap.boardTasks),
+    boardPractices: toMap(snap.boardPractices),
+    window: snap.window && typeof snap.window === 'object' ? snap.window : {},
+    boardGeometry: snap.boardGeometry && typeof snap.boardGeometry === 'object' ? snap.boardGeometry : {}
+  };
+}
+
+function adoptStandaloneOfflineBootstrap() {
+  const handoff = window.__P772OfflineBootstrap;
+  if (!handoff?.active || safeRoom(handoff.roomId) !== safeRoom(roomId)) return false;
+  try {
+    offlineColdStartActive = true;
+    offlineColdStartDirty = Boolean(handoff.dirty);
+    offlineColdStartBaseline = normalizedWorkspaceFromBridgeSnapshot(handoff.baseline);
+    offlineColdStartReadyDispatched = Boolean(handoff.readyDispatched);
+    diagnosticLog('offline-bootstrap-handoff-adopted', { dirty: offlineColdStartDirty }, { urgent: true });
+    return true;
+  } catch (error) {
+    diagnosticLog('offline-bootstrap-handoff-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
+    return false;
+  }
+}
+
+function rememberLocalWorkspaceRoom(targetRoom = roomId) {
+  try { localStorage.setItem(LOCAL_WORKSPACE_ROOM_KEY, safeRoom(targetRoom)); } catch (_) {}
+}
+
+function localWorkspaceMatchesRoom(targetRoom = roomId) {
+  try { return safeRoom(localStorage.getItem(LOCAL_WORKSPACE_ROOM_KEY)) === safeRoom(targetRoom); }
+  catch (_) { return false; }
+}
+
+function markOfflineColdStartDirty(reason = 'local-change') {
+  if (!offlineColdStartActive) return;
+  offlineColdStartDirty = true;
+  if (window.__P772OfflineBootstrap?.active) window.__P772OfflineBootstrap.dirty = true;
+  diagnosticLog('offline-local-dirty', { reason: String(reason || '') });
+}
+
+function dispatchOfflineWorkspaceReady(reason = 'offline-cold-start') {
+  if (offlineColdStartReadyDispatched) return;
+  offlineColdStartReadyDispatched = true;
+  diagnosticSyncState.workspaceReadyAt = Date.now();
+  window.dispatchEvent(new CustomEvent('p2:workspace-ready', {
+    detail: { roomId, startsBlank: false, switched: false, offline: true, localOnly: true, reason }
+  }));
+}
+
+function activateOfflineColdStart(reason = 'offline-cold-start') {
+  if (navigator.onLine || roomInfo.startsBlank) return false;
+  offlineColdStartActive = true;
+  syncWorkspaceReady = false;
+  syncErrorMessage = '';
+  connectionStateKnown = true;
+  connectedNow = false;
+
+  // Jei nepriklausomas index.html offline shim jau paleido lentą (tai būtina,
+  // kai Firebase CDN moduliai cold-start metu dar nebuvo cache), jo baseline ir
+  // dirty būsenos neperrašome nauja kopija.
+  const handoff = window.__P772OfflineBootstrap;
+  if (offlineColdStartBaseline && handoff?.active && safeRoom(handoff.roomId) === safeRoom(roomId)) {
+    offlineColdStartDirty = Boolean(handoff.dirty || offlineColdStartDirty);
+    setUi('offline', 'Nėra ryšio · vietinė lentos kopija');
+    renderP2SyncIndicator();
+    if (!offlineColdStartReadyDispatched) dispatchOfflineWorkspaceReady(reason);
+    return true;
+  }
+
+  if (!localWorkspaceMatchesRoom(roomId)) {
+    setUi('offline', 'Nėra ryšio · vietinė šio Room kopija dar neparuošta');
+    renderP2SyncIndicator();
+    diagnosticLog('offline-cold-start-no-room-cache', { reason, roomId }, { urgent: true });
+    return true;
+  }
+
+  try {
+    offlineColdStartBaseline = localWorkspaceSnapshot();
+    offlineColdStartDirty = false;
+    setUi('offline', 'Nėra ryšio · vietinė lentos kopija');
+    renderP2SyncIndicator();
+    dispatchOfflineWorkspaceReady(reason);
+    diagnosticLog('offline-cold-start-ready', { reason, roomId }, { urgent: true });
+  } catch (error) {
+    offlineColdStartBaseline = null;
+    setUi('offline', 'Nėra ryšio · vietinės kopijos nepavyko atkurti');
+    renderP2SyncIndicator();
+    diagnosticLog('offline-cold-start-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
+  }
+  return true;
+}
+
+function sameStable(a, b) { return stable(a) === stable(b); }
+
+function reconcileMapPart(prefix, baselineRaw, localRaw, remoteRaw, updates) {
+  const baseline = baselineRaw && typeof baselineRaw === 'object' ? baselineRaw : {};
+  const local = localRaw && typeof localRaw === 'object' ? localRaw : {};
+  const remote = remoteRaw && typeof remoteRaw === 'object' ? remoteRaw : {};
+  const merged = { ...remote };
+  const keys = new Set([...Object.keys(baseline), ...Object.keys(local), ...Object.keys(remote)]);
+  let localChanges = 0;
+
+  for (const key of keys) {
+    const hadBaseline = Object.prototype.hasOwnProperty.call(baseline, key);
+    const hasLocal = Object.prototype.hasOwnProperty.call(local, key);
+    const baselineValue = hadBaseline ? baseline[key] : undefined;
+    const localValue = hasLocal ? local[key] : undefined;
+    if (sameStable(localValue, baselineValue)) continue;
+
+    localChanges += 1;
+    if (hasLocal) {
+      merged[key] = localValue;
+      updates[`${prefix}/${key}`] = localValue;
+    } else {
+      delete merged[key];
+      updates[`${prefix}/${key}`] = null;
+    }
+  }
+  return { merged, localChanges };
+}
+
+function buildOfflineReconciliation(baselineRaw, localRaw, remoteRaw) {
+  const baseline = baselineRaw || emptyWorkspace();
+  const local = localRaw || emptyWorkspace();
+  const remote = remoteRaw || emptyWorkspace();
+  const updates = {};
+  const merged = { ...remote };
+  let localChanges = 0;
+
+  for (const part of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices']) {
+    const result = reconcileMapPart(`workspace/${part}`, baseline[part], local[part], remote[part], updates);
+    merged[part] = result.merged;
+    localChanges += result.localChanges;
+  }
+
+  for (const part of ['window', 'boardGeometry']) {
+    const baselineValue = baseline[part] || {};
+    const localValue = local[part] || {};
+    if (!sameStable(localValue, baselineValue)) {
+      merged[part] = localValue;
+      updates[`workspace/${part}`] = localValue;
+      localChanges += 1;
+    } else {
+      merged[part] = remote[part] || {};
+    }
+  }
+
+  if (localChanges > 0) {
+    updates['workspace/meta/updatedAt'] = serverTimestamp();
+    updates['workspace/meta/updatedBy'] = me;
+  }
+  return { merged, updates, localChanges };
+}
+
 let liveTimer = null;
 let pendingLive = null;
 let liveWriteInFlight = null;
@@ -1014,6 +1215,9 @@ document.addEventListener('visibilitychange', () => diagnosticLog('visibility-ch
 window.addEventListener('online', () => {
   diagnosticLog('browser-online', {}, { urgent: true });
   renderP2SyncIndicator();
+  if (offlineColdStartActive && !workspaceBootstrapStarted) {
+    setTimeout(() => requestWorkspaceBootstrap('browser-online-after-offline-cold-start'), 0);
+  }
 });
 window.addEventListener('offline', () => {
   connectionStateKnown = true;
@@ -1199,6 +1403,10 @@ function clearRoomSubscriptions() {
 
 function resetRoomRuntimeState() {
   bootstrapped = false;
+  offlineColdStartActive = false;
+  offlineColdStartDirty = false;
+  offlineColdStartBaseline = null;
+  offlineColdStartReadyDispatched = false;
   drawingKnownIds = new Set();
   diagnosticSyncState.drawingKnownCount = 0;
   workspaceMetaCache = {};
@@ -1697,7 +1905,8 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     const snapshot = await get(localWorkspaceRef);
     if (generation !== roomGeneration || targetRoom !== roomId) return;
 
-    if (startsBlank || !snapshot.exists()) {
+    const recoverMissingRemoteFromOffline = Boolean(!startsBlank && !snapshot.exists() && offlineColdStartActive && offlineColdStartBaseline && localWorkspaceMatchesRoom(targetRoom));
+    if ((startsBlank || !snapshot.exists()) && !recoverMissingRemoteFromOffline) {
       const blank = emptyWorkspace();
       await set(localWorkspaceRef, {
         ...blank,
@@ -1707,6 +1916,30 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
       applyInitialWorkspace(blank);
     } else {
       let workspaceValue = snapshot.val() || {};
+
+      // Jei puslapis startavo visiškai offline ir vartotojas per tą laiką rašė,
+      // nuotolinio snapshot'o aklai nepritaikome. Išsaugome nuotolinius pakeitimus,
+      // o lokaliai pakeistus objektus uždedame virš jų ir tik tą delta įrašome atgal.
+      if (offlineColdStartActive && offlineColdStartBaseline && localWorkspaceMatchesRoom(targetRoom)) {
+        const localNow = localWorkspaceSnapshot();
+        const reconciliation = buildOfflineReconciliation(offlineColdStartBaseline, localNow, workspaceValue);
+        workspaceValue = reconciliation.merged;
+        if (offlineColdStartDirty && reconciliation.localChanges > 0 && Object.keys(reconciliation.updates).length) {
+          const syncWrite = beginSyncWrite('Offline pakeitimų sutikrinimas');
+          try {
+            await update(roomRef, reconciliation.updates);
+            syncWrite.ok();
+            diagnosticLog('offline-reconcile-uploaded', { changes: reconciliation.localChanges }, { urgent: true });
+          } catch (error) {
+            syncWrite.fail(error);
+            diagnosticLog('offline-reconcile-upload-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
+            throw error;
+          }
+          if (generation !== roomGeneration || targetRoom !== roomId) return;
+        } else {
+          diagnosticLog('offline-reconcile-no-local-delta', { dirty: Boolean(offlineColdStartDirty) });
+        }
+      }
       // P1.7.9.19: kai senesnė online-sync versija buvo sukūrusi visiškai tuščią
       // 2400 px Room, jį saugu pataisyti iki dabartinio 720 px lapo. Room su bent
       // vienu realiu brūkšniu / objektu neliečiame, kad neišjudintume istorinio darbo.
@@ -1732,6 +1965,16 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     }
 
     bootstrapped = true;
+    rememberLocalWorkspaceRoom(targetRoom);
+    offlineColdStartActive = false;
+    offlineColdStartDirty = false;
+    offlineColdStartBaseline = null;
+    offlineColdStartReadyDispatched = false;
+    if (window.__P772OfflineBootstrap) {
+      window.__P772OfflineBootstrap.active = false;
+      window.__P772OfflineBootstrap.dirty = false;
+      window.__P772OfflineBootstrap.syncedAt = Date.now();
+    }
     syncWorkspaceReady = true;
     renderP2SyncIndicator();
     subscribeRoomRealtimeListeners(generation);
@@ -1753,6 +1996,17 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
     console.error('P2-SPLIT-P2.5-P4-P1.2 workspace inicijavimo klaida', error);
     diagnosticLog('workspace-init-error', { message: String(error?.message || error || '').slice(0, 180) }, { urgent: true });
     syncWorkspaceReady = false;
+    if (offlineColdStartActive) {
+      // Firebase gali grįžti vėliau nei navigator.onLine. Vietinės lentos dėl to
+      // neuždarome ir leidžiame bootstrap pakartoti gavus realų .info/connected.
+      workspaceBootstrapStarted = false;
+      syncErrorMessage = '';
+      setUi('offline', 'Firebase nepasiekiama · dirbama vietinėje kopijoje');
+      renderP2SyncIndicator();
+      dispatchOfflineWorkspaceReady('firebase-retry-wait');
+      diagnosticLog('offline-reconcile-waiting-retry', {}, { urgent: true });
+      return;
+    }
     syncErrorMessage = `Pamokos sinchronizacija: ${String(error?.message || error || 'nežinoma klaida').slice(0, 180)}`;
     setUi('error', 'Firebase Rules klaida');
     renderP2SyncIndicator();
@@ -1767,8 +2021,11 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
 // klaidos atveriame prisijungimą, o tą patį Room pradedame krauti tik po auth.
 let workspaceBootstrapStarted = false;
 let teacherAuthGateShown = false;
+adoptStandaloneOfflineBootstrap();
+
 function requestWorkspaceBootstrap(reason = 'initial') {
   if (workspaceBootstrapStarted) return;
+  if (!navigator.onLine && activateOfflineColdStart(reason)) return;
   if (onlineRole === 'teacher' && !activeNonAnonymousTeacherUser()) {
     syncWorkspaceReady = false;
     setUi('loading', 'Prisijunk prie mokytojo paskyros');
@@ -5728,6 +5985,16 @@ onValue(connectedRef, snapshot => {
   diagnosticSyncState.connected = connectedNow;
   diagnosticLog(connectedNow ? 'firebase-connected' : 'firebase-disconnected', {}, { urgent: true });
   if (connectedNow) {
+    if (onlineRole === 'teacher' && activeNonAnonymousTeacherUser() && !teacherProfileUnsubscribe) {
+      reconcileSignedInTeacher(activeNonAnonymousTeacherUser())
+        .then(() => {
+          if (!teacherAuthReloading) subscribeTeacherProfileIfReady();
+        })
+        .catch(error => console.warn('Offline starto mokytojo paskyros atkūrimas nepavyko', error));
+    }
+    if (offlineColdStartActive && !workspaceBootstrapStarted) {
+      setTimeout(() => requestWorkspaceBootstrap('firebase-connected-after-offline-cold-start'), 0);
+    }
     if (bootstrapped) activateCurrentRoomPresence(roomGeneration);
     const localNote = location.protocol === 'file:' ? 'Prisijungta · lokalus failas' : 'Prisijungta · bendra lenta';
     setUi('online', localNote);
@@ -5809,10 +6076,18 @@ window.addEventListener('p772:shared-notes-live', () => {
   // UI „Siunčiama…“ būseną pažymi pats realus Firebase write; klavišo hot-path čia nebeliečiame.
   // Throttle, ne debounce: net jei mokinys rašo be jokios pauzės kelias sekundes,
   // mokytojo lenta gauna tarpines teksto būsenas maždaug kas 55 ms.
+  if (offlineColdStartActive && !connectedNow) {
+    markOfflineColdStartDirty('notes-live');
+    return;
+  }
   queueNotesLivePublish();
 });
 
 window.addEventListener('p772:shared-state-changed', () => {
+  if (offlineColdStartActive && !connectedNow) {
+    markOfflineColdStartDirty('shared-state');
+    return;
+  }
   markSyncActivity(260);
   clearTimeout(window.__p772OnlinePublishTimer);
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
@@ -5981,6 +6256,18 @@ window.addEventListener('p772:live-stroke', event => {
   const detail = event.detail || {};
   const stroke = detail.stroke;
   if (!stroke?.id) return;
+
+  // Cold-start metu dar neturime patikimo nuotolinio baseline, todėl Firebase SDK
+  // eiles sąmoningai apeiname. Pats app.js brūkšnį jau įrašė į vietinį state ir
+  // localStorage; grįžus ryšiui jis bus sutikrintas pagal ID.
+  if (offlineColdStartActive && !connectedNow) {
+    if (detail.phase === 'end') {
+      pendingLive = null;
+      if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+      markOfflineColdStartDirty('drawing');
+    }
+    return;
+  }
 
   if (detail.phase === 'end') {
     // ONLINE-P1 pašalindavo gyvą brūkšnį iš karto, o nuolatinė kopija dar

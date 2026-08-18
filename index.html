@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL</title>
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE</title>
 
   <script id="p2OfflineShellBootstrap">
     (() => {
@@ -141,6 +141,10 @@
       background:#f6f8fb;
     }
   </style>
+  <style id="p2OfflinePresenceStyles">
+    .p2-board-live.is-offline{background:#f2f4f7!important;color:#667085!important;border-color:#d9dee8!important}
+    .p2-board-live.is-offline i{background:#98a2b3!important;box-shadow:none!important}
+  </style>
 </head>
 <body>
   <div class="app" id="app">
@@ -149,7 +153,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE</span>
         </div>
       </div>
 
@@ -854,7 +858,7 @@
   <script src="board-camera.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-drawing.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
-  <script src="board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
+  <script src="board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE"></script>
   <script src="board-objects.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-object-factory.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-text-editor.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
@@ -862,7 +866,7 @@
   <script src="board-math-toolbar.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-practice-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="math-semantic-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.9.1-BOARD-STYLUS-FIT-WIDTH-GEOMETRY-HARDENING"></script>
-  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
+  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE"></script>
   <script src="p2-lessons.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK"></script>
   <script src="grade10-review-v6-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK"></script>
   <script src="grade11b-review-v2-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.3-GRADE11B-REVIEW-V2-LATEX"></script>
@@ -875,6 +879,85 @@
   <script src="p2-schedule-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="p2-progress-draft.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5.1-SAMANTA-UNWORKED-V1-CLEANUP"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
+  <script>
+    // 17.13: nepriklausomas offline cold-start shim. Jis sąmoningai neturi
+    // Firebase importų, todėl veikia net tada, kai visiškai nėra interneto ir
+    // gstatic Firebase moduliai šiame įrenginyje dar nebuvo HTTP cache.
+    (() => {
+      const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE';
+      const ROOM_KEY = 'p772-local-workspace-room-v1';
+      const params = new URL(location.href).searchParams;
+      const safeRoom = value => String(value || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+      const roomId = safeRoom(params.get('room'));
+      const role = params.get('role') === 'student' ? 'student' : 'teacher';
+      const startsBlank = params.get('new') === '1';
+
+      const setOfflineUi = (message) => {
+        const session = document.getElementById('onlineSession');
+        if (session) {
+          session.classList.remove('is-online', 'is-sync-connecting', 'is-sync-sending', 'is-sync-synced', 'is-sync-error');
+          session.classList.add('is-sync-disconnected');
+        }
+        const sync = document.getElementById('p2SyncStatus');
+        if (sync) { sync.textContent = 'Ryšys nutrūko'; sync.title = 'Dirbama vietinėje kopijoje; pakeitimai bus sutikrinti grįžus ryšiui'; sync.dataset.syncState = 'disconnected'; }
+        const status = document.getElementById('onlineStatus');
+        if (status) status.textContent = message;
+        const presence = document.getElementById('p2BoardPresenceText');
+        if (presence) presence.textContent = 'Offline · vietinė kopija';
+        const room = document.getElementById('onlineRoomCode');
+        if (room && roomId) room.textContent = roomId;
+        const badge = document.getElementById('onlineRoleBadge');
+        if (badge) badge.textContent = role === 'teacher' ? 'Mokytojas' : 'Mokinys';
+      };
+
+      if (navigator.onLine) return;
+
+      let cachedRoom = '';
+      try { cachedRoom = safeRoom(localStorage.getItem(ROOM_KEY)); } catch (_) {}
+      const roomMatches = Boolean(roomId && cachedRoom === roomId && !startsBlank);
+      setOfflineUi(roomMatches ? 'Nėra ryšio · vietinė lentos kopija' : 'Nėra ryšio · vietinė šio Room kopija dar neparuošta');
+
+      const handoff = window.__P772OfflineBootstrap = {
+        active: roomMatches, roomId, build: BUILD, baseline: null, dirty: false, readyDispatched: false, startedAt: Date.now()
+      };
+
+      if (roomMatches && window.P772OnlineBridge?.getSharedSnapshot) {
+        try {
+          handoff.baseline = window.P772OnlineBridge.getSharedSnapshot({ includeDrawing: true });
+          handoff.readyDispatched = true;
+          window.dispatchEvent(new CustomEvent('p2:workspace-ready', {
+            detail: { roomId, startsBlank: false, switched: false, offline: true, localOnly: true, standaloneBootstrap: true }
+          }));
+        } catch (error) {
+          handoff.active = false;
+          console.warn('[P2 offline cold-start] Vietinės lentos kopijos nepavyko paruošti:', error);
+        }
+      }
+
+      const markDirty = () => { if (handoff.active) handoff.dirty = true; };
+      window.addEventListener('p772:shared-state-changed', markDirty);
+      window.addEventListener('p772:shared-notes-live', markDirty);
+      window.addEventListener('p772:board-world-resized', markDirty);
+      window.addEventListener('p772:live-stroke', event => { if (event?.detail?.phase === 'end') markDirty(); });
+
+      // Jei static online-sync module cold-start metu nepasileido dėl neprieinamų
+      // Firebase CDN importų, grįžus internetui jį pakartotinai paleidžiame iš
+      // Service Worker saugomos vietinės kopijos. Baseline/dirty perduodami per
+      // __P772OfflineBootstrap, todėl jis gali atlikti saugų 3-way reconcile.
+      window.addEventListener('online', () => {
+        if (!handoff.active) return;
+        setTimeout(async () => {
+          if (window.__P772OnlineSyncLoadedBuild) return;
+          try {
+            await import(`./online-sync.js?v=${encodeURIComponent(BUILD)}&offlineRetry=${Date.now()}`);
+          } catch (error) {
+            console.warn('[P2 offline cold-start] Sinchronizacijos modulio pakartotinis paleidimas nepavyko:', error);
+            setOfflineUi('Ryšys grįžo · sinchronizacija dar neatkurta');
+          }
+        }, 900);
+      });
+    })();
+  </script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.13-OFFLINE-COLD-START-RECONCILE"></script>
 </body>
 </html>
