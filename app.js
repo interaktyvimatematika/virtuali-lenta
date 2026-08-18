@@ -932,19 +932,23 @@
     saveIdleHandle = null;
   }
 
+  function setSaveStateText(text) {
+    if (refs.saveState.textContent !== text) refs.saveState.textContent = text;
+  }
+
   function performLocalStateSave() {
     try {
       state.packageData = practicePackage;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      refs.saveState.textContent = 'Išsaugota';
+      setSaveStateText('Išsaugota');
     } catch (error) {
-      refs.saveState.textContent = 'Neišsaugota vietoje';
+      setSaveStateText('Neišsaugota vietoje');
       console.error('Nepavyko išsaugoti vietinės kopijos:', error);
     }
   }
 
   function scheduleSave(options = {}) {
-    refs.saveState.textContent = 'Saugoma…';
+    setSaveStateText('Saugoma…');
     if (options.notifyShared !== false) saveShouldNotifyShared = true;
     clearTimeout(saveTimer);
     cancelPendingIdleSave();
@@ -9643,7 +9647,7 @@ KOKYBĖS REIKALAVIMAI:
     drawStrokeSegment,
     drawStrokePointsBatch,
     paintCommittedStroke,
-    commitStroke: stroke => state.drawing.push(stroke),
+    commitStroke: stroke => commitLocalDrawingStroke(stroke),
     // Jei nuotolinė geometrija atkeliavo aktyvaus brūkšnio metu, pritaikome ją
     // po lokalaus commit, bet DAR PRIEŠ p772:live-stroke(end). Tada į Firebase
     // iškeliauja jau į naują koordinačių bazę perskaičiuotas brūkšnys.
@@ -11513,11 +11517,42 @@ KOKYBĖS REIKALAVIMAI:
   }
 
   let drawingRebuildTimer = null;
+  let onlineDrawingRedrawFrame = null;
+  let drawingStrokeIndexMap = new Map();
+
+  function rebuildDrawingStrokeIndex() {
+    const next = new Map();
+    for (let index = 0; index < state.drawing.length; index += 1) {
+      const id = String(state.drawing[index]?.id || '').trim();
+      if (id) next.set(id, index);
+    }
+    drawingStrokeIndexMap = next;
+  }
 
   function drawingStrokeIndexById(strokeId) {
-    const id = String(strokeId || '');
+    const id = String(strokeId || '').trim();
     if (!id) return -1;
-    return state.drawing.findIndex(stroke => String(stroke?.id || '') === id);
+    const cached = drawingStrokeIndexMap.get(id);
+    if (Number.isInteger(cached) && cached >= 0 && String(state.drawing[cached]?.id || '') === id) return cached;
+    // Apsauginis fallback senai / migruotai būsenai. Radus vieną kartą indeksą įsimename.
+    const found = state.drawing.findIndex(stroke => String(stroke?.id || '') === id);
+    if (found >= 0) drawingStrokeIndexMap.set(id, found);
+    return found;
+  }
+
+  function commitLocalDrawingStroke(stroke) {
+    const index = state.drawing.length;
+    state.drawing.push(stroke);
+    const id = String(stroke?.id || '').trim();
+    if (id) drawingStrokeIndexMap.set(id, index);
+  }
+
+  function queueOnlineDrawingRedraw() {
+    if (onlineDrawingRedrawFrame !== null) return;
+    onlineDrawingRedrawFrame = requestAnimationFrame(() => {
+      onlineDrawingRedrawFrame = null;
+      redrawCanvas();
+    });
   }
 
   function queueCommittedDrawingRebuild() {
@@ -11528,6 +11563,9 @@ KOKYBĖS REIKALAVIMAI:
       redrawCanvas();
     }, 70);
   }
+
+  // Scriptui užsikrovus indeksuojame ir jau localStorage / Firebase initial state esančius brūkšnius.
+  rebuildDrawingStrokeIndex();
 
   function drawingStrokeSignature(stroke) {
     const points = Array.isArray(stroke?.points) ? stroke.points : [];
@@ -11554,6 +11592,7 @@ KOKYBĖS REIKALAVIMAI:
       const current = state.drawing[index];
       if (drawingStrokeSignature(current) === drawingStrokeSignature(stroke)) return { changed: false, existing: true };
       state.drawing[index] = stroke;
+      drawingStrokeIndexMap.set(id, index);
       // ChildChanged yra retas; pasikeitus jau nupieštam brūkšniui saugiausia
       // vieną kartą perskaičiuoti dabartinį viewport cache.
       queueCommittedDrawingRebuild();
@@ -11561,11 +11600,13 @@ KOKYBĖS REIKALAVIMAI:
       return { changed: true, replaced: true };
     }
 
+    const newIndex = state.drawing.length;
     state.drawing.push(stroke);
+    drawingStrokeIndexMap.set(id, newIndex);
     // Naujas nuotolinis brūkšnys įdedamas tik į statinį bitmap cache.
-    // Nebeperpiešiame visų ankstesnių 100k+ taškų.
+    // Kelis tuo pačiu kadru atėjusius Firebase child įvykius sujungiame į vieną redraw.
     paintCommittedStroke(stroke);
-    redrawCanvas();
+    queueOnlineDrawingRedraw();
     scheduleSave({ notifyShared: false, passive: true });
     return { changed: true, added: true };
   }
@@ -11574,6 +11615,7 @@ KOKYBĖS REIKALAVIMAI:
     const index = drawingStrokeIndexById(strokeId);
     if (index < 0) return false;
     state.drawing.splice(index, 1);
+    rebuildDrawingStrokeIndex();
     // Iš bitmap vieno istorinio brūkšnio saugiai „atimti“ negalima (dėl trintuko
     // composite režimo), todėl removals sugrupuojame į vieną rebuild.
     queueCommittedDrawingRebuild();
@@ -11590,6 +11632,7 @@ KOKYBĖS REIKALAVIMAI:
     if (part === 'drawing') {
       state.drawing = Array.isArray(value) ? value.filter(Boolean) : [];
       ensureSharedIds();
+      rebuildDrawingStrokeIndex();
       rebuildCommittedCanvas();
       redrawCanvas();
       return;

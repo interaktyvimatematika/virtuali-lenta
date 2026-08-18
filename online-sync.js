@@ -38,7 +38,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.10-BOARD-INITIAL-LOADING-MASK';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -797,6 +797,7 @@ function myLiveStrokeRef(strokeId) {
 let bootstrapped = false;
 let liveTimer = null;
 let pendingLive = null;
+let liveWriteInFlight = null;
 const pendingLiveCommits = new Map();
 let drawingKnownIds = new Set();
 let workspaceMetaCache = {};
@@ -812,6 +813,14 @@ let currentRoomStudentProfile = null;
 let attendanceHeartbeatTimer = null;
 let attendanceEvidenceKey = '';
 let attendanceEvidenceFirstSeenAt = 0;
+// 10.11.17.11: lankomumas yra presence signalas, o ne pieštuko telemetrija.
+// Vienas Room įrašas kas 15 s yra daugiau nei pakankamas ir neapkrauna progress/profile hot-path.
+const ATTENDANCE_WRITE_MIN_INTERVAL_MS = 15000;
+let attendanceLastWriteStartedAt = 0;
+let attendanceWriteInFlight = null;
+let attendanceTeacherMirrorKey = '';
+let drawingMetaLastTouchAt = 0;
+const DRAWING_META_TOUCH_INTERVAL_MS = 10000;
 // P1.7.9.19: mokinio pratybų UI negali pradėti rašyti, kol negauti abu
 // pradiniai Firebase snapshot'ai — assignment IR progress. Taip reload metu
 // tuščia lokali būsena nebegali aplenkti dar neatėjusio seno progreso.
@@ -847,7 +856,8 @@ let diagnosticSyncState = {
   progressWriteSkippedAt: 0, lastProgressStatus: '', lastCurrentTaskId: '',
   roomSubscriptionCount: 0, drawingKnownCount: 0, drawingAddedEvents: 0,
   drawingChangedEvents: 0, drawingRemovedEvents: 0, drawingInitialDuplicates: 0,
-  drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0
+  drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0,
+  attendanceWrites: 0, attendanceWriteSuppressed: 0, attendanceTeacherMirrors: 0, attendanceTeacherMirrorErrors: 0, drawingMetaTouches: 0, liveStrokeCoalesced: 0
 };
 
 function diagnosticSafeData(value, depth = 0) {
@@ -984,7 +994,8 @@ function beginDiagnosticSession(reason = 'room-open') {
     lastProgressStatus: '', lastCurrentTaskId: '',
     roomSubscriptionCount: roomSubscriptions.length, drawingKnownCount: drawingKnownIds.size, drawingAddedEvents: 0,
     drawingChangedEvents: 0, drawingRemovedEvents: 0, drawingInitialDuplicates: 0,
-    drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0
+    drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0,
+    attendanceWrites: 0, attendanceWriteSuppressed: 0, attendanceTeacherMirrors: 0, attendanceTeacherMirrorErrors: 0, drawingMetaTouches: 0, liveStrokeCoalesced: 0
   };
   diagnosticLog(reason, { startsBlank: Boolean(roomInfo.startsBlank) }, { urgent: true });
   const pruneRoom = diagnosticSessionRoom;
@@ -1024,6 +1035,8 @@ let syncWorkspaceReady = false;
 let syncPendingWrites = 0;
 let syncActivityUntil = 0;
 let syncActivityTimer = null;
+let syncIndicatorFrame = null;
+let syncIndicatorLastSignature = '';
 let syncErrorMessage = '';
 let presenceDisconnectHandle = null;
 let liveDisconnectHandle = null;
@@ -1038,13 +1051,25 @@ const P2_SYNC_STATE_CLASSES = ['is-sync-connecting', 'is-sync-sending', 'is-sync
 
 function setP2SyncIndicator(mode, text, title = '') {
   if (!sessionBox) return;
+  const resolvedTitle = title || text;
+  const signature = `${mode}|${text}|${resolvedTitle}`;
+  if (signature === syncIndicatorLastSignature) return;
+  syncIndicatorLastSignature = signature;
   for (const cls of P2_SYNC_STATE_CLASSES) sessionBox.classList.remove(cls);
   sessionBox.classList.add(`is-sync-${mode}`);
   if (p2SyncStatusEl) {
     p2SyncStatusEl.textContent = text;
-    p2SyncStatusEl.title = title || text;
+    p2SyncStatusEl.title = resolvedTitle;
     p2SyncStatusEl.dataset.syncState = mode;
   }
+}
+
+function requestSyncIndicatorRender() {
+  if (syncIndicatorFrame !== null) return;
+  syncIndicatorFrame = requestAnimationFrame(() => {
+    syncIndicatorFrame = null;
+    renderP2SyncIndicator();
+  });
 }
 
 function scheduleSyncIndicatorRefresh() {
@@ -1086,11 +1111,14 @@ function renderP2SyncIndicator() {
 function markSyncActivity(durationMs = 260) {
   syncErrorMessage = '';
   syncActivityUntil = Math.max(syncActivityUntil, Date.now() + Math.max(80, Number(durationMs) || 260));
-  renderP2SyncIndicator();
+  // Pointermove gali generuoti šimtus live-stroke įvykių/s. UI indikatorių
+  // atnaujiname ne dažniau kaip kartą per animation frame ir nedarome identiškų DOM mutacijų.
+  requestSyncIndicatorRender();
 }
 
 function beginSyncWrite(label = 'sync') {
   let settled = false;
+  const generation = roomGeneration;
   syncPendingWrites += 1;
   syncErrorMessage = '';
   markSyncActivity(180);
@@ -1098,15 +1126,18 @@ function beginSyncWrite(label = 'sync') {
     ok() {
       if (settled) return;
       settled = true;
+      // Seno Room pavėlavęs promise po perjungimo nebegali sumažinti naujo Room pending skaitiklio.
+      if (generation !== roomGeneration) return;
       syncPendingWrites = Math.max(0, syncPendingWrites - 1);
-      renderP2SyncIndicator();
+      requestSyncIndicatorRender();
     },
     fail(error) {
       if (settled) return;
       settled = true;
+      if (generation !== roomGeneration) return;
       syncPendingWrites = Math.max(0, syncPendingWrites - 1);
       syncErrorMessage = `${label}: ${String(error?.message || error || 'nežinoma klaida').slice(0, 180)}`;
-      renderP2SyncIndicator();
+      requestSyncIndicatorRender();
     }
   };
 }
@@ -1120,6 +1151,11 @@ function resetSyncIndicatorRuntime() {
     clearTimeout(syncActivityTimer);
     syncActivityTimer = null;
   }
+  if (syncIndicatorFrame !== null) {
+    cancelAnimationFrame(syncIndicatorFrame);
+    syncIndicatorFrame = null;
+  }
+  syncIndicatorLastSignature = '';
   renderP2SyncIndicator();
 }
 
@@ -1169,6 +1205,7 @@ function resetRoomRuntimeState() {
   drawingFullFallbackRunning = false;
   drawingFullFallbackQueuedReason = '';
   pendingLive = null;
+  liveWriteInFlight = null;
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
   if (notesLiveTimer) { clearTimeout(notesLiveTimer); notesLiveTimer = null; }
   clearTimeout(window.__p772OnlinePublishTimer);
@@ -1184,6 +1221,10 @@ function resetRoomRuntimeState() {
   currentRoomStudentProfile = null;
   attendanceEvidenceKey = '';
   attendanceEvidenceFirstSeenAt = 0;
+  attendanceLastWriteStartedAt = 0;
+  attendanceWriteInFlight = null;
+  attendanceTeacherMirrorKey = '';
+  drawingMetaLastTouchAt = 0;
   for (const bucket of Object.values(pendingLocalEchoes)) bucket.splice(0);
   for (const timer of pendingLiveCommits.values()) if (timer) clearTimeout(timer);
   pendingLiveCommits.clear();
@@ -3978,81 +4019,122 @@ async function diagnosticStudentAttendanceEvidence(roomIdValue, entry, dateKey) 
 }
 
 async function writeStudentAttendanceEvidence(reason = 'presence') {
-  if (onlineRole !== 'student' || teacherStudentPreview || !connectedNow) return;
+  if (onlineRole !== 'student' || teacherStudentPreview || !connectedNow) return false;
   const profile = currentRoomStudentProfile;
   const studentId = safeStudentId(profile?.studentId);
   const scheduleId = safeScheduleId(profile?.scheduleId);
   const profileId = String(profile?.teacherProfileId || '').trim().toUpperCase();
   const bounds = scheduleAttendanceBoundsFromRoomProfile(profile);
-  if (!studentId || !scheduleId || !/^T-[A-Z2-9]{12,32}$/.test(profileId) || !bounds) return;
+  if (!studentId || !scheduleId || !/^T-[A-Z2-9]{12,32}$/.test(profileId) || !bounds) return false;
 
   const now = Date.now();
-  if (now < bounds.startAt.getTime() || now >= bounds.endAt.getTime()) return;
+  if (now < bounds.startAt.getTime() || now >= bounds.endAt.getTime()) return false;
 
   const evidenceKey = `${profileId}|${scheduleId}|${bounds.dateKey}|${studentId}|${roomId}`;
   if (attendanceEvidenceKey !== evidenceKey) {
     attendanceEvidenceKey = evidenceKey;
     attendanceEvidenceFirstSeenAt = 0;
-
-    const existingCandidates = [];
-    try {
-      const existing = (await get(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`))).val() || {};
-      const first = Math.max(0, Number(existing.firstSeenAt || 0));
-      if (first) existingCandidates.push(first);
-    } catch (_) {}
-    try {
-      const existing = (await get(ref(db, `p772Rooms/${roomId}/p2/student/progress/attendanceEvidence`))).val() || {};
-      const first = Math.max(0, Number(existing.firstSeenAt || 0));
-      if (first) existingCandidates.push(first);
-    } catch (_) {}
-    if (existingCandidates.length) attendanceEvidenceFirstSeenAt = Math.min(...existingCandidates);
+    attendanceLastWriteStartedAt = 0;
   }
-  if (!attendanceEvidenceFirstSeenAt) attendanceEvidenceFirstSeenAt = now;
 
-  const record = {
-    schemaVersion: 1,
-    autoDetected: true,
-    firstSeenAt: attendanceEvidenceFirstSeenAt,
-    lastSeenAt: now,
-    roomId,
-    source: String(reason || 'presence').slice(0, 40),
-    preview: false
-  };
-
-  const roomWrites = await Promise.allSettled([
-    update(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`), record),
-    update(ref(db, `p772Rooms/${roomId}/p2/student/progress/attendanceEvidence`), record)
-  ]);
-  const roomWriteOk = roomWrites.some(result => result.status === 'fulfilled');
-
-  if (roomWriteOk) {
-    diagnosticSyncState.attendanceWriteAt = now;
-    diagnosticSyncState.attendanceWriteErrorAt = 0;
-    diagnosticLog('attendance-write-ok', {
-      reason: String(reason || 'presence').slice(0, 40),
-      primary: roomWrites[0].status,
-      progressFallback: roomWrites[1].status
-    });
-  } else {
-    diagnosticSyncState.attendanceWriteErrorAt = now;
-    const messages = roomWrites.map(result =>
-      result.status === 'rejected' ? String(result.reason?.message || result.reason || '').slice(0, 120) : ''
-    );
-    diagnosticLog('attendance-write-error', { messages }, { urgent: true });
-    console.warn('Nepavyko įrašyti automatinio lankomumo nė vienu Room keliu', messages);
+  // Vienu metu leidžiame tik vieną attendance operaciją. Ankstesnėje versijoje
+  // keli pointer įvykiai galėjo paleisti kelis lygiagrečius get/update ciklus.
+  if (attendanceWriteInFlight) {
+    diagnosticSyncState.attendanceWriteSuppressed += 1;
+    return attendanceWriteInFlight;
   }
+  if (attendanceLastWriteStartedAt && now - attendanceLastWriteStartedAt < ATTENDANCE_WRITE_MIN_INTERVAL_MS) {
+    diagnosticSyncState.attendanceWriteSuppressed += 1;
+    return false;
+  }
+  attendanceLastWriteStartedAt = now;
+
+  const targetRoom = roomId;
+  const generation = roomGeneration;
+  const operation = (async () => {
+    // firstSeenAt skaitome tik pirmą kartą šiai pamokos occurrence. Pirminis kelias
+    // yra p2/attendance; seną progress fallback tik perskaitome migraciniam suderinamumui.
+    // Reikšmę laikome lokaliai, kad senas Room asinchroninis get() po persijungimo
+    // negalėtų užteršti naujo Room attendance būsenos.
+    let firstSeenAt = attendanceEvidenceFirstSeenAt;
+    if (!firstSeenAt) {
+      const existingCandidates = [];
+      try {
+        const existing = (await get(ref(db, `p772Rooms/${targetRoom}/p2/attendance/${studentId}`))).val() || {};
+        const first = Math.max(0, Number(existing.firstSeenAt || 0));
+        if (first) existingCandidates.push(first);
+      } catch (_) {}
+      try {
+        const existingLegacy = (await get(ref(db, `p772Rooms/${targetRoom}/p2/student/progress/attendanceEvidence`))).val() || {};
+        const first = Math.max(0, Number(existingLegacy.firstSeenAt || 0));
+        if (first) existingCandidates.push(first);
+      } catch (_) {}
+      if (existingCandidates.length) firstSeenAt = Math.min(...existingCandidates);
+      if (!firstSeenAt) firstSeenAt = now;
+    }
+
+    if (generation !== roomGeneration || targetRoom !== roomId || attendanceEvidenceKey !== evidenceKey) return false;
+    attendanceEvidenceFirstSeenAt = firstSeenAt;
+    const record = {
+      schemaVersion: 1,
+      autoDetected: true,
+      firstSeenAt,
+      lastSeenAt: now,
+      roomId: targetRoom,
+      source: String(reason || 'presence').slice(0, 40),
+      preview: false
+    };
+
+    try {
+      // 10.11.17.11: rašome tik į specialų attendance mazgą. Nebejudiname
+      // p2/student/progress ir nebandome iš mokinio rašyti viso mokytojo profilio.
+      // Mokytojo tvarkaraštis attendance duomenis pasiima per esamą refresh mechanizmą.
+      await update(ref(db, `p772Rooms/${targetRoom}/p2/attendance/${studentId}`), record);
+      diagnosticSyncState.attendanceWriteAt = now;
+      diagnosticSyncState.attendanceWriteErrorAt = 0;
+      diagnosticSyncState.attendanceWrites += 1;
+      diagnosticLog('attendance-write-ok', {
+        reason: String(reason || 'presence').slice(0, 40),
+        path: 'p2/attendance'
+      });
+
+      // Vieną kartą per occurrence bandome atnaujinti ir tvarkaraščio attendance cache,
+      // kad mokytojo UI dalyvavimą pamatytų iš karto. Heartbeat šio didelio profilio
+      // daugiau nebejudina; jei Firebase taisyklės mokiniui šį kelią draudžia,
+      // klaidą tik užfiksuojame ir toje pamokoje nebekartojame.
+      if (attendanceTeacherMirrorKey !== evidenceKey) {
+        attendanceTeacherMirrorKey = evidenceKey;
+        try {
+          await update(ref(db, `p772TeacherProfiles/${profileId}/scheduleRuns/${scheduleId}/${bounds.dateKey}`), {
+            attendanceModelVersion: 1,
+            [`attendance/${studentId}/schemaVersion`]: 1,
+            [`attendance/${studentId}/autoDetected`]: true,
+            [`attendance/${studentId}/firstSeenAt`]: firstSeenAt,
+            [`attendance/${studentId}/lastSeenAt`]: now,
+            [`attendance/${studentId}/roomId`]: targetRoom,
+            [`attendance/${studentId}/source`]: String(reason || 'presence').slice(0, 40)
+          });
+          diagnosticSyncState.attendanceTeacherMirrors += 1;
+        } catch (_) {
+          diagnosticSyncState.attendanceTeacherMirrorErrors += 1;
+        }
+      }
+      return true;
+    } catch (error) {
+      diagnosticSyncState.attendanceWriteErrorAt = now;
+      const message = String(error?.message || error || '').slice(0, 160);
+      diagnosticLog('attendance-write-error', { message }, { urgent: true });
+      console.warn('Nepavyko įrašyti automatinio lankomumo į Room attendance mazgą', message);
+      return false;
+    }
+  })();
+  attendanceWriteInFlight = operation;
 
   try {
-    await update(ref(db, `p772TeacherProfiles/${profileId}/scheduleRuns/${scheduleId}/${bounds.dateKey}`), {
-      attendanceModelVersion: 1,
-      [`attendance/${studentId}/schemaVersion`]: 1,
-      [`attendance/${studentId}/autoDetected`]: true,
-      [`attendance/${studentId}/firstSeenAt`]: attendanceEvidenceFirstSeenAt,
-      [`attendance/${studentId}/lastSeenAt`]: now,
-      [`attendance/${studentId}/roomId`]: roomId,
-      [`attendance/${studentId}/source`]: String(reason || 'presence').slice(0, 40)
-    });
-  } catch (_) {}
+    return await operation;
+  } finally {
+    if (attendanceWriteInFlight === operation) attendanceWriteInFlight = null;
+  }
 }
 
 function ensureAttendanceHeartbeat() {
@@ -5531,7 +5613,7 @@ function mergeP2ProgressPreservingExisting(previousValue, nextValue, currentAssi
 
 async function persistP2PracticeProgress(event) {
   if (onlineRole !== 'student') return;
-  if (!teacherStudentPreview) writeStudentAttendanceEvidence('practice-activity').catch(() => {});
+  // Lankomumą palaiko room-open + 20 s presence heartbeat; pratybų įvykiai nebegeneruoja papildomų write'ų.
   const value = event.detail;
   if (!value || typeof value !== 'object') return;
 
@@ -5724,7 +5806,7 @@ window.addEventListener('p2:room-switch-request', event => {
 
 
 window.addEventListener('p772:shared-notes-live', () => {
-  markSyncActivity(240);
+  // UI „Siunčiama…“ būseną pažymi pats realus Firebase write; klavišo hot-path čia nebeliečiame.
   // Throttle, ne debounce: net jei mokinys rašo be jokios pauzės kelias sekundes,
   // mokytojo lenta gauna tarpines teksto būsenas maždaug kas 55 ms.
   queueNotesLivePublish();
@@ -5845,11 +5927,16 @@ async function commitDrawingStroke(stroke) {
   const payload = drawingStrokePayload(stroke);
   if (!payload) return;
   const safeId = payload.id.replace(/[.#$\[\]/]/g, '-');
-  const updates = {
-    [`workspace/drawing/${safeId}`]: payload,
-    'workspace/meta/updatedAt': serverTimestamp(),
-    'workspace/meta/updatedBy': me
-  };
+  const now = Date.now();
+  const updates = { [`workspace/drawing/${safeId}`]: payload };
+  // `workspace/meta` turi atskirą onValue listenerį. Jo nebežadiname kiekvienu
+  // brūkšniu; bendrą workspace aktyvumo timestamp'ą paliečiame daugiausia kas 10 s.
+  if (!drawingMetaLastTouchAt || now - drawingMetaLastTouchAt >= DRAWING_META_TOUCH_INTERVAL_MS) {
+    drawingMetaLastTouchAt = now;
+    updates['workspace/meta/updatedAt'] = serverTimestamp();
+    updates['workspace/meta/updatedBy'] = me;
+    diagnosticSyncState.drawingMetaTouches += 1;
+  }
   const syncWrite = beginSyncWrite('Brūkšnys');
   try {
     // Baigtą brūkšnį įrašome tiesiai į jo Firebase mazgą. Ankstesnė versija
@@ -5871,16 +5958,26 @@ async function commitDrawingStroke(stroke) {
 async function sendLive() {
   liveTimer = null;
   if (!pendingLive) return;
+  // Lėtas tinklas neturi sukurti neribotos tarpinių liveStroke write'ų eilės.
+  // Kol vienas set() vyksta, paliekame tik naujausią pendingLive būseną.
+  if (liveWriteInFlight) return;
   const payload = pendingLive;
   pendingLive = null;
-  await writeLiveStroke(payload);
+  const operation = writeLiveStroke(payload);
+  liveWriteInFlight = operation;
+  try {
+    await operation;
+  } finally {
+    if (liveWriteInFlight === operation) liveWriteInFlight = null;
+    if (pendingLive && !liveTimer) liveTimer = setTimeout(sendLive, 40);
+  }
 }
 
 window.__p772DirectDrawingSyncReady = true;
 
 window.addEventListener('p772:live-stroke', event => {
-  markSyncActivity(180);
-  if (onlineRole === 'student' && !teacherStudentPreview) writeStudentAttendanceEvidence('board-activity').catch(() => {});
+  // Pieštuko pointer hot-path sąmoningai nesiejamas nei su lankomumo write'ais,
+  // nei su DOM sinchronizacijos indikatoriumi; juos pažymi tik realūs Firebase write'ai.
   const detail = event.detail || {};
   const stroke = detail.stroke;
   if (!stroke?.id) return;
@@ -5907,6 +6004,7 @@ window.addEventListener('p772:live-stroke', event => {
     return;
   }
 
+  if (pendingLive || liveWriteInFlight) diagnosticSyncState.liveStrokeCoalesced += 1;
   pendingLive = stroke;
   if (!liveTimer) liveTimer = setTimeout(sendLive, 40);
 });
