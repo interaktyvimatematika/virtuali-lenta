@@ -98,6 +98,10 @@
     let drawingActive = false;
     let activeStroke = null;
     let activePointerId = null;
+    // 10.11.17.7: vieno pointerdown→pointerup metu koordinačių sistema nekinta.
+    // Net jei UI / nuotolinė lenta tarp pointermove įvykių pakeistų viewport geometriją,
+    // visas brūkšnys lieka susietas su tuo pačiu pradžios kadru.
+    let activeCoordinateFrame = null;
 
     function emitDiagnostic(type, detail = {}, throttleMs = 0) {
       try { options.emitBoardDiagnostic?.(type, detail, throttleMs); } catch (_) { /* diagnostika negali trukdyti lentai */ }
@@ -176,7 +180,7 @@
       if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return 0;
       const startedAt = performance.now();
       const samples = pointerSamples(event);
-      const frame = pointerCoordinateFrame();
+      const frame = activeCoordinateFrame || pointerCoordinateFrame();
       if (!frame) return 0;
 
       const firstPrevious = activeStroke.points[activeStroke.points.length - 1];
@@ -235,8 +239,9 @@
       if (!['pen', 'eraser'].includes(activeTool) || drawingActive) return;
       event.preventDefault();
       if (!options.ensureCanvasReadyForDrawing()) return;
-      const startPoint = pointFromEvent(event);
-      if (!startPoint) {
+      const startFrame = pointerCoordinateFrame();
+      const startPoint = pointFromEvent(event, startFrame);
+      if (!startFrame || !startPoint) {
         options.scheduleCanvasViewportRefresh?.({ force: true });
         return;
       }
@@ -246,6 +251,7 @@
       }
       drawingActive = true;
       activePointerId = event.pointerId ?? null;
+      activeCoordinateFrame = startFrame;
       activeStroke = BoardDrawing.createStroke({
         tool: activeTool,
         point: startPoint,
@@ -275,8 +281,13 @@
       drawingActive = false;
       activeStroke = null;
       activePointerId = null;
+      activeCoordinateFrame = null;
       options.commitStroke(committedStroke);
-      options.paintCommittedStroke(committedStroke);
+      // App gali čia pritaikyti per aktyvų brūkšnį atidėtą boardGeometry. Jei dėl
+      // to canvas buvo perstatytas ir visas committed bitmap jau perpieštas, antro
+      // inkrementinio paint nebedarome.
+      const committedCanvasRebuilt = options.beforeStrokePublish?.(committedStroke) === true;
+      if (!committedCanvasRebuilt) options.paintCommittedStroke(committedStroke);
       emitLiveStroke('end', committedStroke);
       try {
         if (pointerId !== null && refs.canvas.hasPointerCapture?.(pointerId)) refs.canvas.releasePointerCapture(pointerId);

@@ -669,7 +669,17 @@
     resizeCanvas({ force: true });
     layoutBoardObjects();
     initializePracticeWindow();
-    if (options.save !== false) scheduleSave();
+
+    // Inkrementiniame drawing kanale įprasti brūkšniai yra nekintami, tačiau lapo
+    // pailginimas perskaičiuoja VISŲ senų brūkšnių normalizuotas Y koordinates.
+    // Pranešame online sluoksniui apie šį retą struktūrinį pakeitimą, kad jis vieną
+    // kartą išsaugotų perskaičiuotą piešinių bazę būsimiems prisijungimams.
+    if (options.save !== false) {
+      window.dispatchEvent(new CustomEvent('p772:board-world-resized', {
+        detail: { oldWidth, oldHeight, newWidth, newHeight, bottom }
+      }));
+      scheduleSave();
+    }
     return { left: 0, right: 0, top: 0, bottom, oldWidth, oldHeight, newWidth, newHeight };
   }
 
@@ -707,17 +717,41 @@
     }, 90);
   }
 
-  function applyIncomingBoardGeometry(rawGeometry) {
+  let pendingIncomingBoardGeometry = null;
+
+  function applyIncomingBoardGeometry(rawGeometry, { force = false } = {}) {
     const next = normalizeBoardGeometry(rawGeometry || {});
+
+    // 10.11.17.7: nuotolinis lapo pailgėjimas / geometrijos pakeitimas negali
+    // perkonfigūruoti canvas viduryje aktyvaus pointer brūkšnio. Pasiliekame tik
+    // naujausią geometriją ir pritaikome ją vos tik pointerup užbaigia brūkšnį.
+    if (!force && boardInput?.isDrawingActive()) {
+      pendingIncomingBoardGeometry = next;
+      emitBoardDiagnostic('board-geometry-deferred-during-stroke', {
+        worldWidth: next.worldWidth, worldHeight: next.worldHeight
+      }, 800);
+      return false;
+    }
+
+    pendingIncomingBoardGeometry = null;
     state.camera = normalizeCamera(state.camera);
     const previous = boardGeometrySnapshot();
     if (previous.worldWidth === next.worldWidth && previous.worldHeight === next.worldHeight
-      && previous.worldOriginX === next.worldOriginX && previous.worldOriginY === next.worldOriginY) return;
+      && previous.worldOriginX === next.worldOriginX && previous.worldOriginY === next.worldOriginY) return false;
 
     const deltaOriginX = next.worldOriginX - previous.worldOriginX;
     const deltaOriginY = next.worldOriginY - previous.worldOriginY;
     const oldScrollLeft = refs.board.scrollLeft;
     const oldScrollTop = refs.board.scrollTop;
+
+    // Brūkšniai ir lentos objektai saugomi normalizuotomis koordinatėmis.
+    // Keičiantis pasaulio dydžiui perskaičiuojame jau turimą būseną taip pat, kaip
+    // tai daro vietinis expandBoardWorld(), kad fizinė vieta ekrane nepasikeistų.
+    remapBoardStateForWorldResize(
+      previous.worldWidth, previous.worldHeight, next.worldWidth, next.worldHeight,
+      previous.worldOriginX - next.worldOriginX, previous.worldOriginY - next.worldOriginY
+    );
+
     state.camera.worldWidth = next.worldWidth;
     state.camera.worldHeight = next.worldHeight;
     state.camera.worldOriginX = next.worldOriginX;
@@ -728,7 +762,16 @@
     resizeCanvas({ force: true });
     layoutBoardObjects();
     initializePracticeWindow();
+    return true;
   }
+
+  function flushPendingIncomingBoardGeometry() {
+    if (!pendingIncomingBoardGeometry || boardInput?.isDrawingActive()) return false;
+    const pending = pendingIncomingBoardGeometry;
+    pendingIncomingBoardGeometry = null;
+    return applyIncomingBoardGeometry(pending, { force: true });
+  }
+
 
   function taskRequiresMixedNumber(task) {
     if (task?.response?.options?.requiredAnswerForm === 'mixed-number') return true;
@@ -9502,7 +9545,8 @@ KOKYBĖS REIKALAVIMAI:
       drawing: {
         strokeCount: Array.isArray(state.drawing) ? state.drawing.length : 0,
         active: Boolean(boardInput?.isDrawingActive()),
-        activePointCount: boardInput?.getActiveStroke()?.points?.length || 0
+        activePointCount: boardInput?.getActiveStroke()?.points?.length || 0,
+        pendingIncomingGeometry: Boolean(pendingIncomingBoardGeometry)
       }
     };
   }
@@ -9586,6 +9630,10 @@ KOKYBĖS REIKALAVIMAI:
     drawStrokePointsBatch,
     paintCommittedStroke,
     commitStroke: stroke => state.drawing.push(stroke),
+    // Jei nuotolinė geometrija atkeliavo aktyvaus brūkšnio metu, pritaikome ją
+    // po lokalaus commit, bet DAR PRIEŠ p772:live-stroke(end). Tada į Firebase
+    // iškeliauja jau į naują koordinačių bazę perskaičiuotas brūkšnys.
+    beforeStrokePublish: () => flushPendingIncomingBoardGeometry(),
     emitBoardDiagnostic,
     scheduleSave,
     shouldNotifyShared: () => !window.__p772DirectDrawingSyncReady
@@ -11722,28 +11770,47 @@ KOKYBĖS REIKALAVIMAI:
   // matomą procentą. Naujam lapui tai reiškia, kad 100 % visada vėl užpildo plotį.
   let boardLastViewportWidth = 0;
   let boardViewportResizeFrame = 0;
-  const boardViewportObserver = new ResizeObserver(() => {
-    cancelAnimationFrame(boardViewportResizeFrame);
-    boardViewportResizeFrame = requestAnimationFrame(() => {
-      const nextWidth = Math.max(0, refs.board?.clientWidth || 0);
-      const nextHeight = Math.max(0, refs.board?.clientHeight || 0);
-      // Paslėptos panelės plotis gali trumpam būti 0 — tokio tarpinio dydžio
-      // nelaikome tikru viewport'u ir pagal jį mastelio nekeičiame.
-      if (nextWidth < 80 || nextHeight < 80) return;
+  let boardViewportResizePendingDuringStroke = false;
 
-      const oldZoom = currentBoardZoom();
-      const previousWidth = boardLastViewportWidth >= 80 ? boardLastViewportWidth : nextWidth;
-      const userPercent = boardUserZoomPercent(oldZoom, previousWidth);
-      if (Math.abs(nextWidth - previousWidth) > 0.5) {
-        state.camera.zoom = boardZoomForUserPercent(userPercent, nextWidth);
-      }
-      boardLastViewportWidth = nextWidth;
-      applyBoardCamera({ preserveCenter: true, oldZoom });
-      resizeCanvas({ force: true });
-      layoutBoardObjects();
-    });
-  });
+  function applyBoardViewportResize() {
+    boardViewportResizeFrame = 0;
+    if (boardInput?.isDrawingActive()) {
+      boardViewportResizePendingDuringStroke = true;
+      emitBoardDiagnostic('viewport-resize-deferred-during-stroke', {}, 800);
+      return;
+    }
+
+    const nextWidth = Math.max(0, refs.board?.clientWidth || 0);
+    const nextHeight = Math.max(0, refs.board?.clientHeight || 0);
+    // Paslėptos panelės plotis gali trumpam būti 0 — tokio tarpinio dydžio
+    // nelaikome tikru viewport'u ir pagal jį mastelio nekeičiame.
+    if (nextWidth < 80 || nextHeight < 80) return;
+
+    boardViewportResizePendingDuringStroke = false;
+    const oldZoom = currentBoardZoom();
+    const previousWidth = boardLastViewportWidth >= 80 ? boardLastViewportWidth : nextWidth;
+    const userPercent = boardUserZoomPercent(oldZoom, previousWidth);
+    if (Math.abs(nextWidth - previousWidth) > 0.5) {
+      state.camera.zoom = boardZoomForUserPercent(userPercent, nextWidth);
+    }
+    boardLastViewportWidth = nextWidth;
+    applyBoardCamera({ preserveCenter: true, oldZoom });
+    resizeCanvas({ force: true });
+    layoutBoardObjects();
+  }
+
+  function scheduleBoardViewportResize() {
+    cancelAnimationFrame(boardViewportResizeFrame);
+    boardViewportResizeFrame = requestAnimationFrame(applyBoardViewportResize);
+  }
+
+  const boardViewportObserver = new ResizeObserver(scheduleBoardViewportResize);
   boardViewportObserver.observe(refs.board);
+  window.addEventListener('p772:live-stroke', event => {
+    if (event?.detail?.phase === 'end' && boardViewportResizePendingDuringStroke) {
+      scheduleBoardViewportResize();
+    }
+  });
   window.addEventListener('beforeunload', () => {
     try {
       state.packageData = practicePackage;

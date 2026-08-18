@@ -38,7 +38,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.6-BOARD-PERFORMANCE-INCREMENTAL-SYNC';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.7-BOARD-PERFORMANCE-GEOMETRY-LOCK';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -794,6 +794,7 @@ const pendingLiveCommits = new Map();
 let drawingKnownIds = new Set();
 let workspaceMetaCache = {};
 let drawingFullFallbackRunning = false;
+let drawingFullFallbackQueuedReason = '';
 
 let remoteCache = {
   drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: ''
@@ -836,7 +837,10 @@ let diagnosticLastFlushAt = 0;
 let diagnosticSyncState = {
   connected: false, workspaceReadyAt: 0, assignmentSnapshotAt: 0, progressSnapshotAt: 0,
   practiceSyncReadyAt: 0, progressWriteAt: 0, progressWriteErrorAt: 0,
-  progressWriteSkippedAt: 0, lastProgressStatus: '', lastCurrentTaskId: ''
+  progressWriteSkippedAt: 0, lastProgressStatus: '', lastCurrentTaskId: '',
+  roomSubscriptionCount: 0, drawingKnownCount: 0, drawingAddedEvents: 0,
+  drawingChangedEvents: 0, drawingRemovedEvents: 0, drawingInitialDuplicates: 0,
+  drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0
 };
 
 function diagnosticSafeData(value, depth = 0) {
@@ -970,7 +974,10 @@ function beginDiagnosticSession(reason = 'room-open') {
   diagnosticSyncState = {
     connected: Boolean(connectedNow), workspaceReadyAt: 0, assignmentSnapshotAt: 0, progressSnapshotAt: 0,
     practiceSyncReadyAt: 0, progressWriteAt: 0, progressWriteErrorAt: 0, progressWriteSkippedAt: 0,
-    lastProgressStatus: '', lastCurrentTaskId: ''
+    lastProgressStatus: '', lastCurrentTaskId: '',
+    roomSubscriptionCount: roomSubscriptions.length, drawingKnownCount: drawingKnownIds.size, drawingAddedEvents: 0,
+    drawingChangedEvents: 0, drawingRemovedEvents: 0, drawingInitialDuplicates: 0,
+    drawingDirectCommits: 0, drawingFullFallbacks: 0, drawingGeometryResyncs: 0, liveStrokeWrites: 0
   };
   diagnosticLog(reason, { startsBlank: Boolean(roomInfo.startsBlank) }, { urgent: true });
   const pruneRoom = diagnosticSessionRoom;
@@ -1119,6 +1126,7 @@ function roomOnValue(targetRef, callback, errorCallback) {
     if (errorCallback) errorCallback(error);
   });
   roomSubscriptions.push(unsubscribe);
+  diagnosticSyncState.roomSubscriptionCount = roomSubscriptions.length;
   return unsubscribe;
 }
 
@@ -1135,6 +1143,7 @@ function roomOnChild(kind, targetRef, callback, errorCallback) {
     if (errorCallback) errorCallback(error);
   });
   roomSubscriptions.push(unsubscribe);
+  diagnosticSyncState.roomSubscriptionCount = roomSubscriptions.length;
   return unsubscribe;
 }
 
@@ -1142,13 +1151,16 @@ function clearRoomSubscriptions() {
   for (const unsubscribe of roomSubscriptions.splice(0)) {
     try { unsubscribe?.(); } catch (_) {}
   }
+  diagnosticSyncState.roomSubscriptionCount = 0;
 }
 
 function resetRoomRuntimeState() {
   bootstrapped = false;
   drawingKnownIds = new Set();
+  diagnosticSyncState.drawingKnownCount = 0;
   workspaceMetaCache = {};
   drawingFullFallbackRunning = false;
+  drawingFullFallbackQueuedReason = '';
   pendingLive = null;
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
   if (notesLiveTimer) { clearTimeout(notesLiveTimer); notesLiveTimer = null; }
@@ -1469,6 +1481,7 @@ function cacheWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
   // Drawing yra nekintamų brūkšnių rinkinys; jo kelių MB fingerprinto nebesaugome.
   drawingKnownIds = new Set(Object.keys(workspace.drawing || {}));
+  diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
   workspaceMetaCache = workspace.meta && typeof workspace.meta === 'object' ? workspace.meta : {};
   remoteCache.drawing = '';
   remoteCache.notes = stable(workspace.notes || {});
@@ -1508,6 +1521,7 @@ function subscribeWorkspaceParts() {
   // ar lentoje yra 20, ar 2000 ankstesnių brūkšnių.
   roomOnChild('added', drawingRef, snapshot => {
     diagnosticSyncState.drawingPrimarySnapshotAt = Date.now();
+    diagnosticSyncState.drawingAddedEvents += 1;
     const key = String(snapshot.key || '');
     const raw = snapshot.val();
     const stroke = raw && typeof raw === 'object'
@@ -1517,30 +1531,36 @@ function subscribeWorkspaceParts() {
     // onChildAdded po subscribe pakartoja jau initial get() matytus vaikus.
     // Juos praleidžiame be renderio / deepClone.
     if (drawingKnownIds.has(key)) {
+      diagnosticSyncState.drawingInitialDuplicates += 1;
       settleCommittedLiveStroke(String(stroke?.id || key));
       return;
     }
     drawingKnownIds.add(key);
+    diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
     if (stroke) bridge.upsertSharedDrawingStroke?.(stroke);
     settleCommittedLiveStroke(String(stroke?.id || key));
   });
 
   roomOnChild('changed', drawingRef, snapshot => {
+    diagnosticSyncState.drawingChangedEvents += 1;
     const key = String(snapshot.key || '');
     const raw = snapshot.val();
     const stroke = raw && typeof raw === 'object'
       ? { ...raw, id: String(raw.id || key) }
       : null;
     drawingKnownIds.add(key);
+    diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
     if (stroke) bridge.upsertSharedDrawingStroke?.(stroke);
     settleCommittedLiveStroke(String(stroke?.id || key));
   });
 
   roomOnChild('removed', drawingRef, snapshot => {
+    diagnosticSyncState.drawingRemovedEvents += 1;
     const key = String(snapshot.key || '');
     const raw = snapshot.val();
     const strokeId = String(raw?.id || key);
     drawingKnownIds.delete(key);
+    diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
     bridge.removeSharedDrawingStroke?.(strokeId);
     settleCommittedLiveStroke(strokeId);
   });
@@ -5678,6 +5698,26 @@ window.addEventListener('p772:shared-state-changed', () => {
   window.__p772OnlinePublishTimer = setTimeout(publishLocalChanges, 90);
 });
 
+window.addEventListener('p772:board-world-resized', event => {
+  if (!bootstrapped) return;
+  const generation = roomGeneration;
+  const targetRoom = roomId;
+  const detail = event.detail || {};
+  markSyncActivity(500);
+  diagnosticLog('board-world-resized-local', {
+    oldHeight: Number(detail.oldHeight || 0), newHeight: Number(detail.newHeight || 0)
+  }, { urgent: true });
+
+  // Pirmiausia paskelbiame naują boardGeometry ir perskaičiuotus objektus, tik tada
+  // retai sutikriname visus perskaičiuotus brūkšnius. Taip kitas klientas negauna
+  // naujos koordinačių bazės ir senų taškų ilgalaikėje būsenoje.
+  (async () => {
+    await publishLocalChanges();
+    if (generation !== roomGeneration || targetRoom !== roomId) return;
+    await publishDrawingFullFallback('world-resize');
+  })().catch(error => console.warn('Lentos dydžio piešinių sutikrinimas nepavyko', error));
+});
+
 function drawingStrokePayload(stroke) {
   if (!stroke?.id || !Array.isArray(stroke.points) || !stroke.points.length) return null;
   const color = /^#[0-9a-f]{6}$/i.test(String(stroke.color || '')) ? String(stroke.color) : undefined;
@@ -5702,6 +5742,7 @@ async function writeLiveStroke(stroke) {
   try {
     // Kopiją darome tik čia (daugiausia kas ~40 ms), o ne per kiekvieną pointermove.
     await set(myLiveStrokeRef(payload.id), { ...payload, updatedAt: Date.now(), clientId: me });
+    diagnosticSyncState.liveStrokeWrites += 1;
     syncWrite.ok();
   } catch (error) {
     syncWrite.fail(error);
@@ -5709,28 +5750,56 @@ async function writeLiveStroke(stroke) {
   }
 }
 
-async function publishDrawingFullFallback() {
-  if (!bootstrapped || drawingFullFallbackRunning) return;
+async function publishDrawingFullFallback(reason = 'commit-error') {
+  if (!bootstrapped) return false;
+  if (drawingFullFallbackRunning) {
+    drawingFullFallbackQueuedReason = String(reason || 'queued');
+    return false;
+  }
+
   drawingFullFallbackRunning = true;
-  const syncWrite = beginSyncWrite('Piešimo atsarginė sinchronizacija');
+  const generation = roomGeneration;
+  const targetRoom = roomId;
+  const targetRoomRef = roomRef;
+  const targetDrawingRef = drawingRef;
+  diagnosticSyncState.drawingFullFallbacks += 1;
+  if (reason === 'world-resize') diagnosticSyncState.drawingGeometryResyncs += 1;
+  diagnosticLog('drawing-full-reconcile', { reason: String(reason || '') });
+  const syncWrite = beginSyncWrite(reason === 'world-resize' ? 'Lentos dydžio piešinių sutikrinimas' : 'Piešimo atsarginė sinchronizacija');
   try {
     const local = toMap(bridge.getSharedSnapshot({ includeDrawing: true }).drawing);
-    const remoteSnap = await get(drawingRef);
+    const remoteSnap = await get(targetDrawingRef);
+    if (generation !== roomGeneration || targetRoom !== roomId) {
+      syncWrite.ok();
+      return false;
+    }
     const remote = remoteSnap.val() && typeof remoteSnap.val() === 'object' ? remoteSnap.val() : {};
     const updates = {};
     diffMap('workspace/drawing', local, remote, updates);
     if (Object.keys(updates).length) {
       updates['workspace/meta/updatedAt'] = serverTimestamp();
       updates['workspace/meta/updatedBy'] = me;
-      await update(roomRef, updates);
+      await update(targetRoomRef, updates);
+      if (generation !== roomGeneration || targetRoom !== roomId) {
+        syncWrite.ok();
+        return false;
+      }
     }
     drawingKnownIds = new Set(Object.keys(local));
+    diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
     syncWrite.ok();
+    return true;
   } catch (error) {
     syncWrite.fail(error);
     console.warn('Pilna piešimo fallback sinchronizacija nepavyko', error);
+    return false;
   } finally {
     drawingFullFallbackRunning = false;
+    const queuedReason = drawingFullFallbackQueuedReason;
+    drawingFullFallbackQueuedReason = '';
+    if (queuedReason && generation === roomGeneration && targetRoom === roomId) {
+      setTimeout(() => publishDrawingFullFallback(queuedReason).catch(() => {}), 0);
+    }
   }
 }
 
@@ -5748,13 +5817,16 @@ async function commitDrawingStroke(stroke) {
     // Baigtą brūkšnį įrašome tiesiai į jo Firebase mazgą. Ankstesnė versija
     // pointerup metu serializuodavo ir diff'indavo visą sukauptą lentą.
     await update(roomRef, updates);
+    diagnosticSyncState.drawingDirectCommits += 1;
+    drawingKnownIds.add(safeId);
+    diagnosticSyncState.drawingKnownCount = drawingKnownIds.size;
     syncWrite.ok();
   } catch (error) {
     syncWrite.fail(error);
     console.warn('P2-SPLIT-P2.5-P2 brūkšnio persistavimo klaida', error);
     // Tik realios tiesioginio drawing įrašo klaidos atveju leidžiame vieną brangų
     // pilnos lentos palyginimą. Įprastame pointer / tekstų kelyje jis niekada nevyksta.
-    publishDrawingFullFallback().catch(() => {});
+    publishDrawingFullFallback('commit-error').catch(() => {});
   }
 }
 
