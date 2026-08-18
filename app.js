@@ -317,6 +317,7 @@
 
   let state = loadState(savedSnapshot);
   let saveTimer = null;
+  let saveIdleHandle = null;
   let toastTimer = null;
   let drawingContext = null;
   let committedCanvas = null;
@@ -879,25 +880,58 @@
 
   let saveShouldNotifyShared = false;
 
+  function cancelPendingIdleSave() {
+    if (saveIdleHandle === null) return;
+    try {
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(saveIdleHandle);
+      else clearTimeout(saveIdleHandle);
+    } catch (_) {}
+    saveIdleHandle = null;
+  }
+
+  function performLocalStateSave() {
+    try {
+      state.packageData = practicePackage;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      refs.saveState.textContent = 'Išsaugota';
+    } catch (error) {
+      refs.saveState.textContent = 'Neišsaugota vietoje';
+      console.error('Nepavyko išsaugoti vietinės kopijos:', error);
+    }
+  }
+
   function scheduleSave(options = {}) {
     refs.saveState.textContent = 'Saugoma…';
     if (options.notifyShared !== false) saveShouldNotifyShared = true;
     clearTimeout(saveTimer);
+    cancelPendingIdleSave();
+
+    // 10.11.17.6: piešimo / nuotolinio pritaikymo metu kelių MB state JSON.stringify
+    // negali konkuruoti su pointermove. Laukiame realaus rašymo tarpo ir, jei
+    // naršyklė palaiko, darbą atliekame idle metu. beforeunload vis tiek daro
+    // sinchroninę paskutinę kopiją, todėl offline saugumas neprarandamas.
+    const passive = Boolean(options.drawingOnly || options.passive);
+    const delay = passive ? 900 : 180;
+
     saveTimer = setTimeout(() => {
+      saveTimer = null;
       const notifyShared = saveShouldNotifyShared;
       saveShouldNotifyShared = false;
-      try {
-        state.packageData = practicePackage;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        refs.saveState.textContent = 'Išsaugota';
-      } catch (error) {
-        refs.saveState.textContent = 'Neišsaugota vietoje';
-        console.error('Nepavyko išsaugoti vietinės kopijos:', error);
+
+      const finish = () => {
+        saveIdleHandle = null;
+        performLocalStateSave();
+        if (notifyShared) window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
+      };
+
+      if (passive && typeof window.requestIdleCallback === 'function') {
+        saveIdleHandle = window.requestIdleCallback(finish, { timeout: 1800 });
+      } else if (passive) {
+        saveIdleHandle = setTimeout(finish, 0);
+      } else {
+        finish();
       }
-      // Piešimo brūkšniai online režime siunčiami tiesiogiai per p772:live-stroke/end,
-      // todėl vien dėl jų nebeskanuojame ir neserializuojame visos bendros lentos būsenos.
-      if (notifyShared) window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
-    }, 180);
+    }, delay);
   }
 
   function showToast(message) {
@@ -9502,6 +9536,20 @@ KOKYBĖS REIKALAVIMAI:
     BoardDrawing.drawStrokeSegment(context, stroke, fromPoint, toPoint, rect, boardDrawingRenderOptions());
   }
 
+  function drawStrokePointsBatch(context, stroke, points, rect = getBoardWorldRect()) {
+    if (!context || !stroke || !Array.isArray(points) || points.length < 2) return;
+    // Viena canvas path operacija visam coalesced paketui vietoje dešimčių / šimtų
+    // save+beginPath+stroke ciklų. Pats activeStroke lieka nepakeistas.
+    BoardDrawing.drawStrokeToContext(context, {
+      id: stroke.id,
+      mode: stroke.mode,
+      width: stroke.width,
+      widthModel: stroke.widthModel,
+      color: stroke.color,
+      points
+    }, rect, boardDrawingRenderOptions());
+  }
+
   function drawStrokePoint(context, stroke, point, rect = getBoardWorldRect()) {
     BoardDrawing.drawStrokePoint(context, stroke, point, rect, boardDrawingRenderOptions());
   }
@@ -9535,6 +9583,7 @@ KOKYBĖS REIKALAVIMAI:
     getDrawingContext: () => drawingContext,
     drawStrokePoint,
     drawStrokeSegment,
+    drawStrokePointsBatch,
     paintCommittedStroke,
     commitStroke: stroke => state.drawing.push(stroke),
     emitBoardDiagnostic,
@@ -11326,11 +11375,12 @@ KOKYBĖS REIKALAVIMAI:
     });
   }
 
-  function onlineSharedSnapshot() {
-    ensureSharedIds();
+  function onlineSharedSnapshot(options = {}) {
+    const includeDrawing = options?.includeDrawing !== false;
+    if (includeDrawing) ensureSharedIds();
     return {
       schemaVersion: 1,
-      drawing: deepClone(state.drawing),
+      drawing: includeDrawing ? deepClone(state.drawing) : [],
       notes: deepClone(state.notes),
       boardImages: deepClone(state.boardImages),
       boardTasks: deepClone(state.boardTasks),
@@ -11400,13 +11450,79 @@ KOKYBĖS REIKALAVIMAI:
     return true;
   }
 
+  let drawingRebuildTimer = null;
+
+  function drawingStrokeIndexById(strokeId) {
+    const id = String(strokeId || '');
+    if (!id) return -1;
+    return state.drawing.findIndex(stroke => String(stroke?.id || '') === id);
+  }
+
+  function queueCommittedDrawingRebuild() {
+    clearTimeout(drawingRebuildTimer);
+    drawingRebuildTimer = setTimeout(() => {
+      drawingRebuildTimer = null;
+      rebuildCommittedCanvas();
+      redrawCanvas();
+    }, 70);
+  }
+
+  function drawingStrokeSignature(stroke) {
+    const points = Array.isArray(stroke?.points) ? stroke.points : [];
+    const first = points[0] || {};
+    const last = points[points.length - 1] || {};
+    return [
+      String(stroke?.mode || ''),
+      Number(stroke?.width || 0),
+      String(stroke?.widthModel || ''),
+      String(stroke?.color || ''),
+      points.length,
+      Number(first.x || 0), Number(first.y || 0),
+      Number(last.x || 0), Number(last.y || 0)
+    ].join('|');
+  }
+
+  function upsertOnlineDrawingStroke(value) {
+    const stroke = value && typeof value === 'object' ? deepClone(value) : null;
+    const id = String(stroke?.id || '').trim();
+    if (!stroke || !id || !Array.isArray(stroke.points) || !stroke.points.length) return { changed: false };
+
+    const index = drawingStrokeIndexById(id);
+    if (index >= 0) {
+      const current = state.drawing[index];
+      if (drawingStrokeSignature(current) === drawingStrokeSignature(stroke)) return { changed: false, existing: true };
+      state.drawing[index] = stroke;
+      // ChildChanged yra retas; pasikeitus jau nupieštam brūkšniui saugiausia
+      // vieną kartą perskaičiuoti dabartinį viewport cache.
+      queueCommittedDrawingRebuild();
+      scheduleSave({ notifyShared: false, passive: true });
+      return { changed: true, replaced: true };
+    }
+
+    state.drawing.push(stroke);
+    // Naujas nuotolinis brūkšnys įdedamas tik į statinį bitmap cache.
+    // Nebeperpiešiame visų ankstesnių 100k+ taškų.
+    paintCommittedStroke(stroke);
+    redrawCanvas();
+    scheduleSave({ notifyShared: false, passive: true });
+    return { changed: true, added: true };
+  }
+
+  function removeOnlineDrawingStroke(strokeId) {
+    const index = drawingStrokeIndexById(strokeId);
+    if (index < 0) return false;
+    state.drawing.splice(index, 1);
+    // Iš bitmap vieno istorinio brūkšnio saugiai „atimti“ negalima (dėl trintuko
+    // composite režimo), todėl removals sugrupuojame į vieną rebuild.
+    queueCommittedDrawingRebuild();
+    scheduleSave({ notifyShared: false, passive: true });
+    return true;
+  }
+
   function applyOnlineSharedPart(part, value) {
     if (part === 'boardGeometry') {
       applyIncomingBoardGeometry(value && typeof value === 'object' ? value : {});
-      try {
-        state.packageData = practicePackage;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (_) {}
+      scheduleSave({ notifyShared: false, passive: true });
       return;
     }
     if (part === 'drawing') {
@@ -11443,11 +11559,7 @@ KOKYBĖS REIKALAVIMAI:
     } else {
       return;
     }
-    try {
-      state.packageData = practicePackage;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      refs.saveState.textContent = 'Išsaugota';
-    } catch (_) { /* vietinė kopija nėra kritinė online sinchronizacijai */ }
+    scheduleSave({ notifyShared: false, passive: true });
   }
 
   function applyOnlineAccessRole(role) {
@@ -11514,6 +11626,8 @@ KOKYBĖS REIKALAVIMAI:
     getSharedSnapshot: onlineSharedSnapshot,
     getDiagnosticSnapshot: boardDiagnosticSnapshot,
     applySharedPart: applyOnlineSharedPart,
+    upsertSharedDrawingStroke: upsertOnlineDrawingStroke,
+    removeSharedDrawingStroke: removeOnlineDrawingStroke,
     isSharedNoteEditing: sharedNoteEditingActive,
     setRemoteLiveStrokes(strokes) {
       remoteLiveStrokes = Array.isArray(strokes) ? strokes.filter(Boolean) : [];

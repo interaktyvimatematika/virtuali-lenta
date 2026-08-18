@@ -6,6 +6,9 @@ import {
   update,
   remove,
   onValue,
+  onChildAdded,
+  onChildChanged,
+  onChildRemoved,
   get,
   onDisconnect,
   serverTimestamp
@@ -35,7 +38,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5.1-SAMANTA-UNWORKED-V1-CLEANUP';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.6-BOARD-PERFORMANCE-INCREMENTAL-SYNC';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -735,6 +738,7 @@ async function ensureKnownTeacherRoomAccess() {
 
 let roomRef;
 let workspaceRef;
+let workspaceMetaRef;
 let drawingRef;
 let notesRef;
 let boardImagesRef;
@@ -755,6 +759,7 @@ const connectedRef = ref(db, '.info/connected');
 function bindRoomRefs(targetRoom) {
   roomRef = ref(db, `p772Rooms/${targetRoom}`);
   workspaceRef = ref(db, `p772Rooms/${targetRoom}/workspace`);
+  workspaceMetaRef = ref(db, `p772Rooms/${targetRoom}/workspace/meta`);
   drawingRef = ref(db, `p772Rooms/${targetRoom}/workspace/drawing`);
   notesRef = ref(db, `p772Rooms/${targetRoom}/workspace/notes`);
   boardImagesRef = ref(db, `p772Rooms/${targetRoom}/workspace/boardImages`);
@@ -786,6 +791,10 @@ let bootstrapped = false;
 let liveTimer = null;
 let pendingLive = null;
 const pendingLiveCommits = new Map();
+let drawingKnownIds = new Set();
+let workspaceMetaCache = {};
+let drawingFullFallbackRunning = false;
+
 let remoteCache = {
   drawing: '', notes: '', boardImages: '', boardTasks: '', boardPractices: '', window: '', boardGeometry: ''
 };
@@ -1113,6 +1122,22 @@ function roomOnValue(targetRef, callback, errorCallback) {
   return unsubscribe;
 }
 
+function roomOnChild(kind, targetRef, callback, errorCallback) {
+  const generation = roomGeneration;
+  const subscribe = kind === 'added'
+    ? onChildAdded
+    : (kind === 'changed' ? onChildChanged : onChildRemoved);
+  const unsubscribe = subscribe(targetRef, snapshot => {
+    if (generation !== roomGeneration) return;
+    callback(snapshot);
+  }, error => {
+    if (generation !== roomGeneration) return;
+    if (errorCallback) errorCallback(error);
+  });
+  roomSubscriptions.push(unsubscribe);
+  return unsubscribe;
+}
+
 function clearRoomSubscriptions() {
   for (const unsubscribe of roomSubscriptions.splice(0)) {
     try { unsubscribe?.(); } catch (_) {}
@@ -1121,6 +1146,9 @@ function clearRoomSubscriptions() {
 
 function resetRoomRuntimeState() {
   bootstrapped = false;
+  drawingKnownIds = new Set();
+  workspaceMetaCache = {};
+  drawingFullFallbackRunning = false;
   pendingLive = null;
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
   if (notesLiveTimer) { clearTimeout(notesLiveTimer); notesLiveTimer = null; }
@@ -1220,10 +1248,10 @@ function forgetLocalEcho(part, fp) {
   if (index >= 0) bucket.splice(index, 1);
 }
 
-function localParts() {
-  const snap = bridge.getSharedSnapshot();
+function localParts({ includeDrawing = false } = {}) {
+  const snap = bridge.getSharedSnapshot({ includeDrawing });
   return {
-    drawing: toMap(snap.drawing),
+    drawing: includeDrawing ? toMap(snap.drawing) : null,
     notes: toMap(snap.notes),
     boardImages: toMap(snap.boardImages),
     boardTasks: toMap(snap.boardTasks),
@@ -1246,11 +1274,12 @@ function diffMap(prefix, localMap, remoteMap, updates) {
 
 async function publishLocalChanges() {
   if (!bootstrapped) return;
-  const parts = localParts();
+  // 10.11.17.6: committed drawing turi atskirą granularų kanalą.
+  // Teksto / objektų pakeitimas nebegali deepClone + stringify visos kelių MB lentos.
+  const parts = localParts({ includeDrawing: false });
   const updates = {};
 
   const currentRemote = {
-    drawing: JSON.parse(remoteCache.drawing || '{}'),
     notes: JSON.parse(remoteCache.notes || '{}'),
     boardImages: JSON.parse(remoteCache.boardImages || '{}'),
     boardTasks: JSON.parse(remoteCache.boardTasks || '{}'),
@@ -1258,7 +1287,6 @@ async function publishLocalChanges() {
   };
 
   const changed = {
-    drawing: stable(parts.drawing) !== remoteCache.drawing,
     notes: stable(parts.notes) !== remoteCache.notes,
     boardImages: stable(parts.boardImages) !== remoteCache.boardImages,
     boardTasks: stable(parts.boardTasks) !== remoteCache.boardTasks,
@@ -1267,7 +1295,6 @@ async function publishLocalChanges() {
     boardGeometry: stable(parts.boardGeometry) !== remoteCache.boardGeometry
   };
 
-  diffMap('workspace/drawing', parts.drawing, currentRemote.drawing, updates);
   diffMap('workspace/notes', parts.notes, currentRemote.notes, updates);
   diffMap('workspace/boardImages', parts.boardImages, currentRemote.boardImages, updates);
   diffMap('workspace/boardTasks', parts.boardTasks, currentRemote.boardTasks, updates);
@@ -1290,7 +1317,7 @@ async function publishLocalChanges() {
   }
 
   const echoes = {};
-  for (const part of ['drawing', 'notes', 'boardImages', 'boardTasks', 'boardPractices', 'window', 'boardGeometry']) {
+  for (const part of ['notes', 'boardImages', 'boardTasks', 'boardPractices', 'window', 'boardGeometry']) {
     if (changed[part]) echoes[part] = rememberLocalEcho(part, parts[part]);
   }
 
@@ -1317,7 +1344,7 @@ async function publishNotesLive() {
     return;
   }
 
-  const notes = toMap(bridge.getSharedSnapshot().notes);
+  const notes = toMap(bridge.getSharedSnapshot({ includeDrawing: false }).notes);
   const notesFp = stable(notes);
   if (notesFp === remoteCache.notes) return;
 
@@ -1367,19 +1394,20 @@ function queueNotesLivePublish() {
   }, delay);
 }
 
+function settleCommittedLiveStroke(strokeId) {
+  const id = String(strokeId || '');
+  if (!id || !pendingLiveCommits.has(id)) return;
+  const timer = pendingLiveCommits.get(id);
+  if (timer) clearTimeout(timer);
+  pendingLiveCommits.delete(id);
+  const committedLiveRef = myLiveStrokeRef(id);
+  setTimeout(() => remove(committedLiveRef).catch(() => {}), 70);
+}
+
 function settleCommittedLiveStrokes(normalizedDrawing) {
   if (!normalizedDrawing || typeof normalizedDrawing !== 'object' || !pendingLiveCommits.size) return;
   for (const strokeId of [...pendingLiveCommits.keys()]) {
-    if (!normalizedDrawing[strokeId]) continue;
-    const timer = pendingLiveCommits.get(strokeId);
-    if (timer) clearTimeout(timer);
-    pendingLiveCommits.delete(strokeId);
-    // Persistent brūkšnys jau atkeliavo į workspace. Gyvą kopiją pašaliname tik
-    // po trumpo dažymo ciklo, kad kitame ekrane nebūtų tuščio kadro / mirktelėjimo.
-    // Ref užfiksuojame dabar, kad perjungus mokinio Room vėluojantis timeris
-    // negalėtų paliesti naujos lentos liveStrokes mazgo.
-    const committedLiveRef = myLiveStrokeRef(strokeId);
-    setTimeout(() => remove(committedLiveRef).catch(() => {}), 70);
+    if (normalizedDrawing[strokeId]) settleCommittedLiveStroke(strokeId);
   }
 }
 
@@ -1394,7 +1422,7 @@ function applyMapPart(part, raw) {
   // Ypač svarbu notes: jo pritaikymas perrenderintų contenteditable / MathLive
   // ir nutrauktų tekstą po pirmos raidės ar formulę po pirmo simbolio.
   if (ownEcho) return;
-  if (stable(toMap(bridge.getSharedSnapshot()[part])) === fp) return;
+  if (stable(toMap(bridge.getSharedSnapshot({ includeDrawing: false })[part])) === fp) return;
   bridge.applySharedPart(part, mapToArray(normalized));
 }
 
@@ -1421,7 +1449,7 @@ function applyNotesPart(raw, meta = {}) {
   }
 
   pendingRemoteNotes = null;
-  if (stable(toMap(bridge.getSharedSnapshot().notes)) === fp) return;
+  if (stable(toMap(bridge.getSharedSnapshot({ includeDrawing: false }).notes)) === fp) return;
   bridge.applySharedPart('notes', mapToArray(normalized));
 }
 
@@ -1429,7 +1457,7 @@ function flushPendingRemoteNotes() {
   if (!pendingRemoteNotes || bridge.isSharedNoteEditing?.()) return;
   const pending = pendingRemoteNotes;
   pendingRemoteNotes = null;
-  if (stable(toMap(bridge.getSharedSnapshot().notes)) === pending.fp) return;
+  if (stable(toMap(bridge.getSharedSnapshot({ includeDrawing: false }).notes)) === pending.fp) return;
   bridge.applySharedPart('notes', mapToArray(pending.normalized));
 }
 
@@ -1439,7 +1467,10 @@ window.addEventListener('p772:shared-note-editing-ended', () => {
 
 function cacheWorkspace(data) {
   const workspace = data && typeof data === 'object' ? data : {};
-  remoteCache.drawing = stable(workspace.drawing || {});
+  // Drawing yra nekintamų brūkšnių rinkinys; jo kelių MB fingerprinto nebesaugome.
+  drawingKnownIds = new Set(Object.keys(workspace.drawing || {}));
+  workspaceMetaCache = workspace.meta && typeof workspace.meta === 'object' ? workspace.meta : {};
+  remoteCache.drawing = '';
   remoteCache.notes = stable(workspace.notes || {});
   remoteCache.boardImages = stable(workspace.boardImages || {});
   remoteCache.boardTasks = stable(workspace.boardTasks || {});
@@ -1467,44 +1498,62 @@ function subscribeWorkspaceParts() {
     const ownEcho = consumeLocalEcho('boardGeometry', fp);
     remoteCache.boardGeometry = fp;
     if (ownEcho) return;
-    if (stable(bridge.getSharedSnapshot().boardGeometry || {}) !== fp) bridge.applySharedPart('boardGeometry', value);
-  });
-  roomOnValue(drawingRef, snapshot => {
-    diagnosticSyncState.drawingPrimarySnapshotAt = Date.now();
-    applyMapPart('drawing', snapshot.val());
-  });
-  // Notes skaitome kartu su jų meta žyma viename atominiame workspace snapshot'e.
-  // M2.5.2: tas pats workspace snapshotas yra ir atsarginis piešimo kanalas. Praktikoje
-  // retkarčiais vienas workspace/drawing listenerio atnaujinimas nepasiekdavo kito
-  // lango iki reload, nors duomenys Firebase jau būdavo išsaugoti. Persistent drawing
-  // brūkšniai po commit yra nekintami, todėl užtenka palyginti jų ID aibę su realia
-  // app.js būsena. Taip išvengiame visos didelės lentos JSON serializavimo kiekvienam
-  // workspace įvykiui ir kartu turime nepriklausomą atsarginį atnaujinimo kelią.
-  roomOnValue(workspaceRef, snapshot => {
-    const workspace = snapshot.val() || {};
-    const fallbackDrawing = workspace.drawing || {};
-    const localDrawing = Array.isArray(bridge.getSharedSnapshot().drawing)
-      ? bridge.getSharedSnapshot().drawing
-      : [];
-    const localIds = new Set(localDrawing.map(item => String(item?.id || '')).filter(Boolean));
-    const fallbackIds = Object.entries(fallbackDrawing).map(([key, item]) => String(item?.id || key));
-    const drawingIdsMatch = fallbackIds.length === localIds.size
-      && fallbackIds.every(id => localIds.has(id));
-    if (!drawingIdsMatch) {
-      diagnosticSyncState.drawingFallbackAt = Date.now();
-      diagnosticSyncState.drawingFallbackCount = Number(diagnosticSyncState.drawingFallbackCount || 0) + 1;
-      diagnosticLog('drawing-workspace-fallback', {
-        count: diagnosticSyncState.drawingFallbackCount,
-        primaryAgeMs: diagnosticSyncState.drawingPrimarySnapshotAt
-          ? Math.max(0, Date.now() - diagnosticSyncState.drawingPrimarySnapshotAt)
-          : null,
-        localStrokeCount: localIds.size,
-        remoteStrokeCount: fallbackIds.length
-      }, { urgent: true });
-      applyMapPart('drawing', fallbackDrawing);
+    if (stable(bridge.getSharedSnapshot({ includeDrawing: false }).boardGeometry || {}) !== fp) {
+      bridge.applySharedPart('boardGeometry', value);
     }
-    applyNotesPart(workspace.notes || {}, workspace.meta || {});
   });
+
+  // 10.11.17.6: po initial workspace užkrovimo nebesiklausome viso drawing mazgo.
+  // Naujas brūkšnys atkeliauja kaip vienas child, todėl jo kaina nepriklauso nuo to,
+  // ar lentoje yra 20, ar 2000 ankstesnių brūkšnių.
+  roomOnChild('added', drawingRef, snapshot => {
+    diagnosticSyncState.drawingPrimarySnapshotAt = Date.now();
+    const key = String(snapshot.key || '');
+    const raw = snapshot.val();
+    const stroke = raw && typeof raw === 'object'
+      ? { ...raw, id: String(raw.id || key) }
+      : null;
+
+    // onChildAdded po subscribe pakartoja jau initial get() matytus vaikus.
+    // Juos praleidžiame be renderio / deepClone.
+    if (drawingKnownIds.has(key)) {
+      settleCommittedLiveStroke(String(stroke?.id || key));
+      return;
+    }
+    drawingKnownIds.add(key);
+    if (stroke) bridge.upsertSharedDrawingStroke?.(stroke);
+    settleCommittedLiveStroke(String(stroke?.id || key));
+  });
+
+  roomOnChild('changed', drawingRef, snapshot => {
+    const key = String(snapshot.key || '');
+    const raw = snapshot.val();
+    const stroke = raw && typeof raw === 'object'
+      ? { ...raw, id: String(raw.id || key) }
+      : null;
+    drawingKnownIds.add(key);
+    if (stroke) bridge.upsertSharedDrawingStroke?.(stroke);
+    settleCommittedLiveStroke(String(stroke?.id || key));
+  });
+
+  roomOnChild('removed', drawingRef, snapshot => {
+    const key = String(snapshot.key || '');
+    const raw = snapshot.val();
+    const strokeId = String(raw?.id || key);
+    drawingKnownIds.delete(key);
+    bridge.removeSharedDrawingStroke?.(strokeId);
+    settleCommittedLiveStroke(strokeId);
+  });
+
+  // Notes ir jų autoriaus metadata klausomi atskirai. Ankstesnis workspaceRef
+  // listeneris po KIEKVIENO drawing commit parsisiųsdavo visą kelių MB workspace.
+  roomOnValue(workspaceMetaRef, snapshot => {
+    workspaceMetaCache = snapshot.val() && typeof snapshot.val() === 'object' ? snapshot.val() : {};
+  });
+  roomOnValue(notesRef, snapshot => {
+    applyNotesPart(snapshot.val() || {}, workspaceMetaCache);
+  });
+
   roomOnValue(boardImagesRef, snapshot => applyMapPart('boardImages', snapshot.val()));
   roomOnValue(boardTasksRef, snapshot => applyMapPart('boardTasks', snapshot.val()));
   roomOnValue(boardPracticesRef, snapshot => applyMapPart('boardPractices', snapshot.val()));
@@ -1514,7 +1563,9 @@ function subscribeWorkspaceParts() {
     const ownEcho = consumeLocalEcho('window', fp);
     remoteCache.window = fp;
     if (ownEcho) return;
-    if (stable(bridge.getSharedSnapshot().window) !== fp) bridge.applySharedPart('window', value);
+    if (stable(bridge.getSharedSnapshot({ includeDrawing: false }).window) !== fp) {
+      bridge.applySharedPart('window', value);
+    }
   });
 }
 
@@ -5658,6 +5709,31 @@ async function writeLiveStroke(stroke) {
   }
 }
 
+async function publishDrawingFullFallback() {
+  if (!bootstrapped || drawingFullFallbackRunning) return;
+  drawingFullFallbackRunning = true;
+  const syncWrite = beginSyncWrite('Piešimo atsarginė sinchronizacija');
+  try {
+    const local = toMap(bridge.getSharedSnapshot({ includeDrawing: true }).drawing);
+    const remoteSnap = await get(drawingRef);
+    const remote = remoteSnap.val() && typeof remoteSnap.val() === 'object' ? remoteSnap.val() : {};
+    const updates = {};
+    diffMap('workspace/drawing', local, remote, updates);
+    if (Object.keys(updates).length) {
+      updates['workspace/meta/updatedAt'] = serverTimestamp();
+      updates['workspace/meta/updatedBy'] = me;
+      await update(roomRef, updates);
+    }
+    drawingKnownIds = new Set(Object.keys(local));
+    syncWrite.ok();
+  } catch (error) {
+    syncWrite.fail(error);
+    console.warn('Pilna piešimo fallback sinchronizacija nepavyko', error);
+  } finally {
+    drawingFullFallbackRunning = false;
+  }
+}
+
 async function commitDrawingStroke(stroke) {
   const payload = drawingStrokePayload(stroke);
   if (!payload) return;
@@ -5676,8 +5752,9 @@ async function commitDrawingStroke(stroke) {
   } catch (error) {
     syncWrite.fail(error);
     console.warn('P2-SPLIT-P2.5-P2 brūkšnio persistavimo klaida', error);
-    // Jei tiesioginis įrašas nepavyktų, paliekame bendrą sinchronizavimo kelią kaip fallback.
-    window.dispatchEvent(new CustomEvent('p772:shared-state-changed'));
+    // Tik realios tiesioginio drawing įrašo klaidos atveju leidžiame vieną brangų
+    // pilnos lentos palyginimą. Įprastame pointer / tekstų kelyje jis niekada nevyksta.
+    publishDrawingFullFallback().catch(() => {});
   }
 }
 

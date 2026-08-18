@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  // P3.2.7.10.9.1 — rašiklio taškų nepraradimas + darbinis 100 % = lapas per plotį.
+  // P3.2.7.10.11.17.6 — coalesced pointer paketų našumas + ankstesnis 10.9.1 fit/stylus elgesys.
   // Modulis sąmoningai uždedamas ant esamų BoardCamera / BoardInput API,
   // kad nereikėtų keisti kitų stabilios lentos modulių.
   const BaseCamera = window.P772BoardCamera;
@@ -103,7 +103,7 @@
       try { options.emitBoardDiagnostic?.(type, detail, throttleMs); } catch (_) { /* diagnostika negali trukdyti lentai */ }
     }
 
-    function pointFromEvent(event) {
+    function pointerCoordinateFrame() {
       if (!refs.board) return null;
       const world = options.getWorldRect();
       const zoom = Math.max(0.001, options.getZoom());
@@ -111,19 +111,34 @@
       const viewportWidth = Math.max(1, refs.board.clientWidth);
       const viewportHeight = Math.max(1, refs.board.clientHeight);
       if (!(boardRect.width > 1 && boardRect.height > 1 && viewportWidth > 1 && viewportHeight > 1)) {
-        emitDiagnostic('pointer-invalid-board-rect', { viewportWidth, viewportHeight, rectWidth: boardRect.width, rectHeight: boardRect.height }, 1500);
+        emitDiagnostic('pointer-invalid-board-rect', {
+          viewportWidth, viewportHeight, rectWidth: boardRect.width, rectHeight: boardRect.height
+        }, 1500);
         return null;
       }
-      const centerOffsetX = options.getHorizontalCenterOffsetScreen(zoom, world);
+      return {
+        world,
+        zoom,
+        boardLeft: boardRect.left + (refs.board.clientLeft || 0),
+        boardTop: boardRect.top + (refs.board.clientTop || 0),
+        scrollLeft: refs.board.scrollLeft,
+        scrollTop: refs.board.scrollTop,
+        centerOffsetX: options.getHorizontalCenterOffsetScreen(zoom, world)
+      };
+    }
+
+    function pointFromEvent(event, frame = null) {
+      const geometry = frame || pointerCoordinateFrame();
+      if (!geometry) return null;
       const clientX = Number(event?.clientX);
       const clientY = Number(event?.clientY);
       if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
-      const viewportX = clientX - boardRect.left - (refs.board.clientLeft || 0);
-      const viewportY = clientY - boardRect.top - (refs.board.clientTop || 0);
-      const worldX = (refs.board.scrollLeft + viewportX - centerOffsetX) / zoom;
-      const worldY = (refs.board.scrollTop + viewportY) / zoom;
-      const normalizedX = worldX / Math.max(1, world.width);
-      const normalizedY = worldY / Math.max(1, world.height);
+      const viewportX = clientX - geometry.boardLeft;
+      const viewportY = clientY - geometry.boardTop;
+      const worldX = (geometry.scrollLeft + viewportX - geometry.centerOffsetX) / geometry.zoom;
+      const worldY = (geometry.scrollTop + viewportY) / geometry.zoom;
+      const normalizedX = worldX / Math.max(1, geometry.world.width);
+      const normalizedY = worldY / Math.max(1, geometry.world.height);
       if (normalizedX < -0.02 || normalizedX > 1.02 || normalizedY < -0.02 || normalizedY > 1.02) {
         emitDiagnostic('pointer-outside-world', {
           pointerType: String(event?.pointerType || ''),
@@ -159,15 +174,20 @@
     function appendPointerSamples(event, { emitLive = true } = {}) {
       if (!drawingActive || !activeStroke) return 0;
       if (activePointerId !== null && event?.pointerId !== undefined && event.pointerId !== activePointerId) return 0;
+      const startedAt = performance.now();
       const samples = pointerSamples(event);
-      let added = 0;
+      const frame = pointerCoordinateFrame();
+      if (!frame) return 0;
+
+      const firstPrevious = activeStroke.points[activeStroke.points.length - 1];
+      const appendedPoints = [];
+      let previousPoint = firstPrevious;
+
       for (const sample of samples) {
         if (activePointerId !== null && sample?.pointerId !== undefined && sample.pointerId !== activePointerId) continue;
-        const previousPoint = activeStroke.points[activeStroke.points.length - 1];
-        const nextPoint = pointFromEvent(sample);
+        const nextPoint = pointFromEvent(sample, frame);
         if (!nextPoint) continue;
         const distance = BoardDrawing.pointerJump(previousPoint, nextPoint);
-        // Coalesced masyvas dažnai kartoja paskutinį dispatch tašką.
         if (distance < 1e-7) continue;
         if (distance > 0.12) {
           emitDiagnostic('pointer-coordinate-jump', {
@@ -180,14 +200,30 @@
           }, 1200);
         }
         activeStroke.points.push(nextPoint);
-        options.drawStrokeSegment(options.getDrawingContext(), activeStroke, previousPoint, nextPoint);
-        added += 1;
+        appendedPoints.push(nextPoint);
+        previousPoint = nextPoint;
       }
+
+      const added = appendedPoints.length;
+      if (added) {
+        const context = options.getDrawingContext();
+        if (typeof options.drawStrokePointsBatch === 'function') {
+          options.drawStrokePointsBatch(context, activeStroke, [firstPrevious, ...appendedPoints]);
+        } else {
+          let from = firstPrevious;
+          for (const point of appendedPoints) {
+            options.drawStrokeSegment(context, activeStroke, from, point);
+            from = point;
+          }
+        }
+      }
+
       if (samples.length > 1) {
         emitDiagnostic('pointer-coalesced-batch', {
           pointerType: String(event?.pointerType || ''),
           samples: samples.length,
-          appended: added
+          appended: added,
+          processingMs: Math.round((performance.now() - startedAt) * 10) / 10
         }, 2500);
       }
       if (added && emitLive) emitLiveStroke('update');
@@ -245,7 +281,7 @@
       try {
         if (pointerId !== null && refs.canvas.hasPointerCapture?.(pointerId)) refs.canvas.releasePointerCapture(pointerId);
       } catch (_) { /* nieko */ }
-      options.scheduleSave({ notifyShared: options.shouldNotifyShared?.() ?? true });
+      options.scheduleSave({ notifyShared: options.shouldNotifyShared?.() ?? true, drawingOnly: true });
     }
 
     function isDrawingActive() { return drawingActive; }
