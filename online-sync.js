@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.4-ATTENDANCE-EVIDENCE-HARDENING';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5.1-SAMANTA-UNWORKED-V1-CLEANUP';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -2091,6 +2091,126 @@ async function applyHistoricalAttendanceBackfillOnce() {
 
 
 
+
+const SAMANTA_UNWORKED_11B_V1_CLEANUP_KEY = 'p32710111751_samanta_unworked_11b_v1_cleanup';
+let samantaUnworked11BV1CleanupRunning = false;
+
+function archivedPracticeHasStudentWork(value) {
+  const record = value && typeof value === 'object' ? value : {};
+  const progress = record.progress && typeof record.progress === 'object'
+    ? record.progress
+    : (record.latestProgress && typeof record.latestProgress === 'object' ? record.latestProgress : {});
+  const summary = record.latestSummary && typeof record.latestSummary === 'object' ? record.latestSummary : {};
+  if (Number(summary.finished || 0) > 0
+      || Number(summary.good || summary.solved || 0) > 0
+      || Number(summary.help || 0) > 0
+      || Number(summary.repeat || 0) > 0) return true;
+
+  const states = progress.taskStates && typeof progress.taskStates === 'object' ? progress.taskStates : {};
+  return Object.values(states).some(state => {
+    const item = state && typeof state === 'object' ? state : {};
+    return Number(item.attempts || 0) > 0
+      || Number(item.wrongAttempts || 0) > 0
+      || Number(item.submittedAt || 0) > 0
+      || Boolean(String(item.lastAnswer ?? '').trim())
+      || Boolean(String(item.liveAnswer ?? '').trim())
+      || Boolean(item.hintUsed)
+      || Boolean(item.solved)
+      || ['good', 'help', 'repeat'].includes(String(item.status || ''));
+  });
+}
+
+async function applySamantaUnworked11BV1CleanupOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== 'T-VDU4BBHJAWNDRHAPPH') return;
+  if (samantaUnworked11BV1CleanupRunning) return;
+
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (['done', 'skipped'].includes(String(migrations[SAMANTA_UNWORKED_11B_V1_CLEANUP_KEY]?.status || ''))) return;
+
+  const studentId = 's_msylnd7c_6r5390m';
+  const roomId = 'NNL993A';
+  const assignmentKey = 'A-msylpkhv-p2-grade11b-review-01-2956c16ca4';
+
+  const student = teacherProfileCache.students?.[studentId];
+  const lesson = student?.lessons?.[roomId];
+  const profileRecord = lesson?.assignments?.[assignmentKey];
+
+  if (!student || normalizedStudentLookupName(student?.name) !== 'samanta' || !lesson) return;
+
+  samantaUnworked11BV1CleanupRunning = true;
+  try {
+    const roomHistoryRef = ref(db, `p772Rooms/${roomId}/p2/history/${assignmentKey}`);
+    const roomSnap = await get(roomHistoryRef);
+    const roomRecord = roomSnap.val();
+
+    // Jei įrašas jau pašalintas vienoje ar abiejose vietose, migracija lieka idempotentiška.
+    const recordsToValidate = [profileRecord, roomRecord].filter(record => record && typeof record === 'object');
+
+    const identityOk = recordsToValidate.every(record => {
+      const assignment = record.assignment && typeof record.assignment === 'object' ? record.assignment : record;
+      const snapshot = assignment.contentSnapshot && typeof assignment.contentSnapshot === 'object'
+        ? assignment.contentSnapshot : {};
+      const recordKey = safeAssignmentKey(assignment.assignmentKey || record.assignmentKey);
+      return recordKey === assignmentKey
+        && String(assignment.lessonId || snapshot.lessonId || '') === 'p2-grade11b-review-01'
+        && Math.max(1, Number(assignment.contentVersion || snapshot.contentVersion || 1)) === 1;
+    });
+
+    const hasWork = recordsToValidate.some(archivedPracticeHasStudentWork);
+
+    if (!identityOk || hasWork) {
+      await update(teacherProfileRef, {
+        [`meta/migrations/${SAMANTA_UNWORKED_11B_V1_CLEANUP_KEY}`]: {
+          status: 'skipped',
+          appliedAt: Date.now(),
+          studentId,
+          roomId,
+          assignmentKey,
+          reason: !identityOk ? 'identity-check-failed' : 'student-work-detected'
+        }
+      });
+      console.warn('Samantos 11 B V1 įrašas nepašalintas: saugos patikra neleido.', {
+        identityOk, hasWork
+      });
+      return;
+    }
+
+    const profileAssignmentRef = ref(
+      db,
+      `p772TeacherProfiles/${teacherProfileId}/students/${studentId}/lessons/${roomId}/assignments/${assignmentKey}`
+    );
+
+    // Triname tik dvi tikslias archyvinio įrašo kopijas. Dabartinio priskyrimo,
+    // V2 progreso, lentos, attendance ir kitų Room duomenų neliečiame.
+    await Promise.all([
+      remove(profileAssignmentRef),
+      remove(roomHistoryRef)
+    ]);
+
+    await update(teacherProfileRef, {
+      [`meta/migrations/${SAMANTA_UNWORKED_11B_V1_CLEANUP_KEY}`]: {
+        status: 'done',
+        appliedAt: Date.now(),
+        studentId,
+        roomId,
+        assignmentKey,
+        deleted: [
+          `students/${studentId}/lessons/${roomId}/assignments/${assignmentKey}`,
+          `p772Rooms/${roomId}/p2/history/${assignmentKey}`
+        ],
+        reason: 'confirmed-unworked-obsolete-content-v1'
+      }
+    });
+
+    bridge.showToast?.('Pašalintas nespręstas Samantos 11 B kartojimo V1 istorijos įrašas.');
+  } catch (error) {
+    console.error('Samantos nespręsto 11 B V1 įrašo valymo klaida', error);
+  } finally {
+    samantaUnworked11BV1CleanupRunning = false;
+  }
+}
+
 const AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY = 'p3271011174_aug18_attendance_diagnostic_repair_v1';
 let aug18AttendanceDiagnosticRepairRunning = false;
 
@@ -2099,7 +2219,7 @@ async function applyAug18AttendanceDiagnosticRepairOnce() {
   if (aug18AttendanceDiagnosticRepairRunning) return;
   const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
     ? teacherProfileCache.meta.migrations : {};
-  if (migrations[AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY]?.status === 'done') return;
+  if (['done', 'skipped'].includes(String(migrations[AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY]?.status || ''))) return;
 
   const scheduleId = 'w_msylmwya_h8mibm7v';
   const dateKey = '2026-08-18';
@@ -2997,6 +3117,7 @@ if (teacherProfileRef) {
     applyHistoricalAttendanceBackfillOnce().catch(error => console.warn('P3.2.7.10.11.11 istorinio lankomumo migracija neįvykdyta', error));
     applyAdomas0813AttendanceRepairOnce().catch(error => console.warn('P3.2.7.10.11.12 Adomo 08-13 lankomumo pataisa neįvykdyta', error));
     applyAug18AttendanceDiagnosticRepairOnce().catch(error => console.warn('P3.2.7.10.11.17.4 08-18 lankomumo diagnostinė pataisa neįvykdyta', error));
+    applySamantaUnworked11BV1CleanupOnce().catch(error => console.warn('P3.2.7.10.11.17.5.1 Samantos nespręsto 11 B V1 įrašo valymas neįvykdytas', error));
     applyMondayAssignmentsRestoreOnce().catch(error => console.warn('P3.2.7.10.11.14 pirmadienio priskyrimų atkūrimas neįvykdytas', error));
     applyMarkasIntroCorrectionOnce().catch(error => console.warn('P3.2.7.10.11.15 Marko pažintinių pamokų pataisa neįvykdyta', error));
   }, error => {
