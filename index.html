@@ -4,7 +4,45 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f8fb" />
-  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION</title>
+  <title>Virtuali lenta + interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL</title>
+
+  <script id="p2OfflineShellBootstrap">
+    (() => {
+      if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+      const markReady = actualBuild => {
+        const build = String(actualBuild || "").trim();
+        if (!build) return;
+        try { localStorage.setItem("p2OfflineShellReadyBuild", build); } catch (_) {}
+        document.documentElement.dataset.offlineShellReady = "true";
+        document.documentElement.dataset.offlineShellBuild = build;
+        window.dispatchEvent(new CustomEvent("p2:offline-shell-ready", { detail: { build } }));
+      };
+      const askStatus = worker => {
+        try { worker?.postMessage?.({ type: "P2_GET_OFFLINE_SHELL_STATUS" }); } catch (_) {}
+      };
+      navigator.serviceWorker.addEventListener("message", event => {
+        if (event.data?.type === "P2_OFFLINE_SHELL_STATUS") markReady(event.data.build);
+      });
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        askStatus(navigator.serviceWorker.controller);
+      });
+      try {
+        navigator.serviceWorker.register("./service-worker.js", { scope: "./", updateViaCache: "none" })
+          .then(registration => {
+            window.__P2_SERVICE_WORKER_REGISTRATION__ = registration;
+            return navigator.serviceWorker.ready;
+          })
+          .then(registration => {
+            askStatus(registration.active || navigator.serviceWorker.controller);
+          })
+          .catch(error => {
+            console.warn("[P2 offline shell] Service Worker registracija nepavyko:", error);
+          });
+      } catch (error) {
+        console.warn("[P2 offline shell] Service Worker nepalaikomas:", error);
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.9.1-BOARD-STYLUS-FIT-WIDTH-GEOMETRY-HARDENING" />
 
   <style id="p2PracticeHistoryOverviewStyles">
@@ -111,7 +149,7 @@
         <span class="brand-mark" aria-hidden="true">VL</span>
         <div>
           <strong>Virtuali lenta</strong>
-          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION</span>
+          <span>Interaktyvios pratybos P7.7.2 · P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL</span>
         </div>
       </div>
 
@@ -816,7 +854,7 @@
   <script src="board-camera.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-drawing.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
-  <script src="board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION"></script>
+  <script src="board-stylus-fit-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
   <script src="board-objects.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-object-factory.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-text-editor.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
@@ -824,7 +862,7 @@
   <script src="board-math-toolbar.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="board-practice-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="math-semantic-input.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.9.1-BOARD-STYLUS-FIT-WIDTH-GEOMETRY-HARDENING"></script>
-  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION"></script>
+  <script src="app.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
   <script src="p2-lessons.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK"></script>
   <script src="grade10-review-v6-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.16-FIRST-LESSON-LOCK-TEST-CLOCK"></script>
   <script src="grade11b-review-v2-patch.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.3-GRADE11B-REVIEW-V2-LATEX"></script>
@@ -837,6 +875,6 @@
   <script src="p2-schedule-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="p2-progress-draft.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.2"></script>
   <script src="p2-ui.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5.1-SAMANTA-UNWORKED-V1-CLEANUP"></script>
-  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.11-MULTI-STUDENT-HOTPATH-OPTIMIZATION"></script>
+  <script type="module" src="online-sync.js?v=P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.12-GITHUB-OUTAGE-OFFLINE-SHELL"></script>
 </body>
 </html>
