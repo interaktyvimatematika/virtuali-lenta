@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.4-ATTENDANCE-EVIDENCE-HARDENING';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.5-PRACTICE-HISTORY-OVERVIEW';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -148,6 +148,7 @@
   let studentCreateOpen = false;
   let studentEditOpen = false;
   let expandedStudentHistoryRoomId = '';
+  let teacherPracticeHistoryExpandedKey = '';
   const studentRoomHistoryCache = new Map();
   const studentRoomHistoryRequestTimers = new Map();
   const STUDENT_HISTORY_TIMEOUT_MS = 6500;
@@ -1692,6 +1693,166 @@
     hydrateStudentExpressionEditor();
   }
 
+
+  function historicalRunSnapshot(run) {
+    const assignmentRecord = run?.assignment && typeof run.assignment === 'object' ? run.assignment : {};
+    return assignmentRecord.contentSnapshot && typeof assignmentRecord.contentSnapshot === 'object'
+      ? assignmentRecord.contentSnapshot
+      : null;
+  }
+
+  function historicalRunStats(run, lesson) {
+    const assignmentRecord = run?.assignment && typeof run.assignment === 'object' ? run.assignment : {};
+    const snapshot = historicalRunSnapshot(run);
+    const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
+    const latestSummary = assignmentRecord.latestSummary && typeof assignmentRecord.latestSummary === 'object'
+      ? assignmentRecord.latestSummary
+      : {};
+    if (run?.progress && typeof run.progress === 'object') {
+      if (tasks.length) return historicalProgressStats(run.progress, tasks);
+      const states = run.progress.taskStates && typeof run.progress.taskStates === 'object' ? run.progress.taskStates : {};
+      const taskIds = Array.isArray(assignmentRecord.taskIds) && assignmentRecord.taskIds.length
+        ? assignmentRecord.taskIds
+        : Object.keys(states);
+      const pseudoTasks = taskIds.map(id => ({ id }));
+      if (pseudoTasks.length) return historicalProgressStats(run.progress, pseudoTasks);
+    }
+    return {
+      good: Math.max(0, Number(latestSummary.good || latestSummary.solved || 0)),
+      help: Math.max(0, Number(latestSummary.help || 0)),
+      repeat: Math.max(0, Number(latestSummary.repeat || 0)),
+      started: 0,
+      finished: Math.max(0, Number(latestSummary.finished || 0)),
+      taskCount: tasks.length || Math.max(
+        0,
+        Number(latestSummary.taskCount || assignmentRecord.taskCount || lesson?.taskCount || 0)
+      )
+    };
+  }
+
+  function historicalRunHasMeaningfulActivity(run, lesson) {
+    if (run?.current) return true;
+    const stats = historicalRunStats(run, lesson);
+    if (stats.finished > 0 || stats.good > 0 || stats.help > 0 || stats.repeat > 0) return true;
+    const progressValue = run?.progress && typeof run.progress === 'object' ? run.progress : {};
+    const states = progressValue.taskStates && typeof progressValue.taskStates === 'object' ? progressValue.taskStates : {};
+    return Object.values(states).some(state => {
+      const item = state && typeof state === 'object' ? state : {};
+      return Number(item.attempts || 0) > 0
+        || Boolean(String(item.lastAnswer ?? '').trim())
+        || Boolean(item.hintUsed)
+        || Boolean(item.solved)
+        || item.status === 'repeat'
+        || item.status === 'good'
+        || item.status === 'help';
+    });
+  }
+
+  function currentTeacherPracticeHistoryContext() {
+    if (role() !== 'teacher') return null;
+    const roomId = String(currentRoomId() || '').trim().toUpperCase();
+    if (!roomId) return null;
+    const studentId = linkedStudentIdForRoom(roomId);
+    if (!studentId) return null;
+    const student = teacherStudentDb.students?.[studentId];
+    const lesson = student?.lessons?.[roomId];
+    if (!student || !lesson || typeof lesson !== 'object') return null;
+
+    const storedPayload = storedStudentRoomHistoryPayload(lesson);
+    const currentKey = String(currentAssignmentKey() || lesson.currentAssignmentKey || lesson.assignmentKey || '').trim();
+    const currentStored = currentKey && lesson.assignments?.[currentKey] && typeof lesson.assignments[currentKey] === 'object'
+      ? lesson.assignments[currentKey]
+      : storedPayload.assignment;
+
+    const payload = {
+      ...storedPayload,
+      assignment: assignment && typeof assignment === 'object'
+        ? { ...(currentStored || {}), ...assignment, assignmentKey: currentKey || assignment.assignmentKey || '' }
+        : currentStored,
+      progress: progress && typeof progress === 'object' ? progress : storedPayload.progress
+    };
+
+    const runs = studentRoomPracticeRuns(lesson, payload)
+      .filter(run => historicalRunHasMeaningfulActivity(run, lesson));
+
+    return { roomId, studentId, student, lesson, runs };
+  }
+
+  function teacherPracticeHistoryRunLabel(run, lesson) {
+    const assignmentRecord = run?.assignment && typeof run.assignment === 'object' ? run.assignment : {};
+    const snapshot = historicalRunSnapshot(run);
+    const title = String(
+      assignmentRecord.title
+      || snapshot?.shortTitle
+      || snapshot?.title
+      || lesson?.title
+      || 'Pratybos'
+    ).trim();
+    const version = Math.max(1, Number(
+      assignmentRecord.contentVersion
+      || snapshot?.contentVersion
+      || 1
+    ));
+    return { title, version };
+  }
+
+  function renderTeacherPracticeHistoryOverview() {
+    const context = currentTeacherPracticeHistoryContext();
+    if (!context || !context.runs.length) return '';
+
+    const cards = context.runs.map(run => {
+      const labels = teacherPracticeHistoryRunLabel(run, context.lesson);
+      const stats = historicalRunStats(run, context.lesson);
+      const taskCount = Math.max(0, Number(stats.taskCount || 0));
+      const percent = taskCount ? Math.max(0, Math.min(100, Math.round((stats.finished / taskCount) * 100))) : 0;
+      const key = String(run.assignmentKey || `${labels.title}-${labels.version}`).trim();
+      const expanded = teacherPracticeHistoryExpandedKey === key;
+      const assignedAt = Math.max(0, Number(run.assignment?.assignedAt || 0));
+      const meta = [
+        `turinio v${labels.version}`,
+        assignedAt ? formatStudentDate(assignedAt) : '',
+        run.current ? 'dabartinės' : 'ankstesnės'
+      ].filter(Boolean).join(' · ');
+
+      return `<article class="p2-teacher-history-run ${run.current ? 'is-current' : ''}">
+        <div class="p2-teacher-history-run-main">
+          <div class="p2-teacher-history-run-copy">
+            <div class="p2-teacher-history-title-row">
+              <strong>${escapeHtml(labels.title)}</strong>
+              ${run.current ? '<span class="p2-teacher-history-current">Dabartinės</span>' : ''}
+            </div>
+            <small>${escapeHtml(meta)}</small>
+          </div>
+          <div class="p2-teacher-history-progress">
+            <strong>${taskCount ? `${stats.finished} / ${taskCount}` : '— / —'}</strong>
+            <span>${taskCount ? `${percent} %` : 'Progresas neišsaugotas'}</span>
+          </div>
+        </div>
+        <div class="p2-teacher-history-metrics">
+          <span><b>${stats.good}</b> savarankiškai</span>
+          <span><b>${stats.help}</b> su pagalba</span>
+          <span><b>${stats.repeat}</b> kartoti</span>
+        </div>
+        <button type="button" class="p2-teacher-history-toggle" data-teacher-history-key="${escapeHtml(key)}">
+          ${expanded ? 'Slėpti užduotis' : 'Rodyti užduotis ir atsakymus'}
+        </button>
+        ${expanded ? `<div class="p2-teacher-history-detail">${renderHistoricalPracticeRun(run, context.lesson, 0)}</div>` : ''}
+      </article>`;
+    }).join('');
+
+    return `<section class="p2-teacher-practice-history">
+      <div class="p2-teacher-practice-history-head">
+        <div>
+          <span class="p2-label">Šios pamokos pratybų istorija</span>
+          <h3>Visi realiai spręsti rinkiniai</h3>
+          <p>Keičiant pratybas senas progresas lieka istorijoje ir čia rodomas atskirai.</p>
+        </div>
+        <span class="p2-soft-pill">${context.runs.length} ${context.runs.length === 1 ? 'rinkinys' : 'rinkiniai'}</span>
+      </div>
+      <div class="p2-teacher-practice-history-list">${cards}</div>
+    </section>`;
+  }
+
   function renderTeacherPanel() {
     const count = Math.max(0, Number(userCount?.textContent || 0));
     const studentOnline = count >= 2;
@@ -1741,6 +1902,7 @@
           </div>
         </div>
       </div>
+      ${renderTeacherPracticeHistoryOverview()}
       <div class="p2-insight-card ${started ? '' : 'p2-insight-empty'}">
         <div class="p2-insight-icon" aria-hidden="true">✦</div>
         <div><span class="p2-label">${escapeHtml(learnerName)} · įžvalgos</span><h3>${started ? 'Tarpinė pamokos būsena' : 'Įžvalgos atsiras pradėjus spręsti'}</h3><p>${started ? `Savarankiškai: ${stats.good} · Su pagalba / taisant: ${stats.help} · Kartoti: ${stats.repeat}.` : 'Čia matysi, kuriuos gebėjimus mokinys atlieka savarankiškai, kur naudoja pagalbą ir ką verta pakartoti.'}</p></div>
@@ -1748,6 +1910,11 @@
     `;
 
     teacherPanel.querySelector('[data-action="teacher-open"]')?.addEventListener('click', openTeacherPreview);
+    teacherPanel.querySelectorAll('[data-teacher-history-key]').forEach(button => button.addEventListener('click', () => {
+      const key = String(button.dataset.teacherHistoryKey || '').trim();
+      teacherPracticeHistoryExpandedKey = teacherPracticeHistoryExpandedKey === key ? '' : key;
+      renderTeacherPanel();
+    }));
   }
 
   function renderPanels() {
@@ -2729,10 +2896,10 @@
         const answer = historicalTaskAnswer(state);
         const attempts = Math.max(0, Number(state.attempts || 0));
         const taskTitle = task?.title || task?.label || `Užduotis ${index + 1}`;
-        const prompt = String(task?.prompt || '').trim();
+        const prompt = String(taskDisplayPrompt(task) || '').trim();
         return `<article class="p2-history-task-row is-${escapeHtml(status.key)}">
           <span class="p2-history-task-number">${index + 1}</span>
-          <div class="p2-history-task-copy"><strong>${escapeHtml(taskTitle)}</strong>${prompt ? `<small>${escapeHtml(prompt)}</small>` : ''}${answer ? `<p><span>Mokinio atsakymas</span>${escapeHtml(answer)}</p>` : ''}</div>
+          <div class="p2-history-task-copy"><strong>${escapeHtml(taskTitle)}</strong>${prompt ? `<small>${renderRichMathText(prompt)}</small>` : ''}${answer ? `<p><span>Mokinio atsakymas</span>${escapeHtml(answer)}</p>` : ''}</div>
           <div class="p2-history-task-result"><span class="p2-history-task-status is-${escapeHtml(status.key)}">${escapeHtml(status.label)}</span><small>${attempts ? `${attempts} ${attempts === 1 ? 'bandymas' : 'bandymai'}` : 'Be bandymų'}${state.hintUsed ? ' · naudota pagalba' : ''}</small></div>
         </article>`;
       }).join('')}</div>`;
@@ -5635,6 +5802,7 @@
 
   window.addEventListener('p2:room-switch-start', () => {
     roomSwitching = true;
+    teacherPracticeHistoryExpandedKey = '';
     clearTimeout(studentDbSnapshotTimer);
     studentDbSnapshotTimer = null;
     // Senos Room pedagoginę būseną atjungiame lokaliai, bet sąmoningai
@@ -5691,6 +5859,9 @@
       studentRoomHistoryCache.set(key, { loading: false, fetching: false, provisional: false, error: '', data: detail.data && typeof detail.data === 'object' ? detail.data : {} });
     }
     if (selectedStudentId === studentId && expandedStudentHistoryRoomId === roomId) renderStudentsModal();
+    if (role() === 'teacher' && roomId === String(currentRoomId() || '').trim().toUpperCase() && studentId === linkedStudentIdForRoom(roomId)) {
+      renderTeacherPanel();
+    }
   });
 
   window.addEventListener('p2:students-state', event => {
