@@ -9027,14 +9027,13 @@ KOKYBĖS REIKALAVIMAI:
     return BoardCamera.horizontalCenterOffsetScreen(state?.camera || {}, refs, zoom, world, BOARD_CAMERA_CONFIG);
   }
 
-  // 10.11.17.8: pradinis board-shell HTML yra visibility:hidden, kad prieš
-  // galutinį 720 px lapo fit'ą vartotojui nesumirksėtų nepritaikyta kamera su
-  // pilkais šonais. visibility nekeičia išdėstymo, todėl clientWidth matavimai
-  // ir boardInitialFitZoom() veikia lygiai taip pat kaip anksčiau.
+  // 10.11.17.10: pradinio fit metu board-shell lieka normaliai išmatuojamas,
+  // tačiau jo .board turinį uždengia lengvas neutralus loading mask. Taip prieš
+  // pirmą teisingą kameros pritaikymą nesumirksi nei siauras baltas lapas su
+  // pilkais šonais, nei vientisa balta darbinė sritis.
   function revealInitialBoardShell() {
     const shell = document.getElementById('boardShell');
     if (!shell || shell.dataset.initialCameraPending !== 'true') return;
-    shell.style.visibility = '';
     delete shell.dataset.initialCameraPending;
   }
 
