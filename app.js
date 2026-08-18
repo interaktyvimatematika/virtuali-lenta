@@ -9027,6 +9027,17 @@ KOKYBĖS REIKALAVIMAI:
     return BoardCamera.horizontalCenterOffsetScreen(state?.camera || {}, refs, zoom, world, BOARD_CAMERA_CONFIG);
   }
 
+  // 10.11.17.8: pradinis board-shell HTML yra visibility:hidden, kad prieš
+  // galutinį 720 px lapo fit'ą vartotojui nesumirksėtų nepritaikyta kamera su
+  // pilkais šonais. visibility nekeičia išdėstymo, todėl clientWidth matavimai
+  // ir boardInitialFitZoom() veikia lygiai taip pat kaip anksčiau.
+  function revealInitialBoardShell() {
+    const shell = document.getElementById('boardShell');
+    if (!shell || shell.dataset.initialCameraPending !== 'true') return;
+    shell.style.visibility = '';
+    delete shell.dataset.initialCameraPending;
+  }
+
   function applyBoardCamera(options = {}) {
     BoardCamera.applyCamera({
       getState: () => state,
@@ -9155,6 +9166,10 @@ KOKYBĖS REIKALAVIMAI:
 
         // workspace-ready gali įvykti anksčiau už Firebase drawing snapshot'ą.
         // Kol realaus turinio ribų dar nėra, kelis kartus tyliai pakartojame.
+        // Kamera jau pritaikyta pagal realų lentos plotį ir pradinis scroll
+        // sulygiuotas. Tik dabar leidžiame naršyklei pirmą kartą parodyti lentą.
+        revealInitialBoardShell();
+
         if (legacyReadable && !aligned && attempt < retryDelays.length) {
           setTimeout(applyFitAndAlign, retryDelays[attempt]);
           return;
