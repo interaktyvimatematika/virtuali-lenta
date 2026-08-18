@@ -38,7 +38,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.8-BOARD-INITIAL-CAMERA-REVEAL';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.9-INCOGNITO-AUTH-BOOTSTRAP';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -655,8 +655,15 @@ onAuthStateChanged(auth, async user => {
   teacherAuthUser = user || null;
   teacherAuthBinding = null;
   renderTeacherAuthUi();
-  if (onlineRole !== 'teacher' || !user) return;
+  if (onlineRole !== 'teacher') return;
+  if (!user || user.isAnonymous) {
+    requestWorkspaceBootstrap('teacher-auth-required');
+    return;
+  }
   await reconcileSignedInTeacher(user);
+  if (teacherAuthReloading) return;
+  subscribeTeacherProfileIfReady();
+  requestWorkspaceBootstrap('teacher-auth-ready');
   ensureKnownTeacherRoomAccess().catch(error => console.warn('P1.7.9.33 Room teisių migracija po prisijungimo nepavyko', error));
 });
 
@@ -1712,8 +1719,33 @@ async function initializeWorkspace({ startsBlank = false, generation = roomGener
   }
 }
 
-beginDiagnosticSession('room-open');
-initializeWorkspace({ startsBlank: roomInfo.startsBlank, generation: roomGeneration });
+// P3.2.7.10.11.17.9: mokytojo Room nebandome krauti tol, kol Firebase Auth
+// nepatvirtino tikros (ne anoniminės) mokytojo paskyros. Švariame / inkognito
+// naršyklės lange anksčiau initializeWorkspace() iškart atsitrenkdavo į
+// ensureTeacherRoomAccess() ir rodydavo Firebase Rules klaidą. Dabar vietoje
+// klaidos atveriame prisijungimą, o tą patį Room pradedame krauti tik po auth.
+let workspaceBootstrapStarted = false;
+let teacherAuthGateShown = false;
+function requestWorkspaceBootstrap(reason = 'initial') {
+  if (workspaceBootstrapStarted) return;
+  if (onlineRole === 'teacher' && !activeNonAnonymousTeacherUser()) {
+    syncWorkspaceReady = false;
+    setUi('loading', 'Prisijunk prie mokytojo paskyros');
+    renderP2SyncIndicator();
+    if (!teacherAuthGateShown) {
+      teacherAuthGateShown = true;
+      setTeacherAuthStatus('Prisijunk prie savo mokytojo paskyros – tada bus atkurtas tavo profilis ir lenta.');
+      setTimeout(() => openTeacherAuthModal(), 0);
+    }
+    diagnosticLog('teacher-auth-gate', { reason }, { urgent: true });
+    return;
+  }
+  workspaceBootstrapStarted = true;
+  beginDiagnosticSession('room-open');
+  diagnosticLog('workspace-bootstrap', { reason }, { urgent: true });
+  initializeWorkspace({ startsBlank: roomInfo.startsBlank, generation: roomGeneration });
+}
+requestWorkspaceBootstrap('initial');
 
 
 // P2-SPLIT-P2.5-P2: ilgalaikė mokinių bazė / pamokų indeksas.
@@ -3151,8 +3183,13 @@ async function applyMarkasIntroCorrectionOnce() {
   }
 }
 
-if (teacherProfileRef) {
-  onValue(teacherProfileRef, snapshot => {
+let teacherProfileUnsubscribe = null;
+function subscribeTeacherProfileIfReady() {
+  if (!teacherProfileRef || teacherProfileUnsubscribe) return;
+  // Mokytojo profilio duomenų neklausome prieš tikrą prisijungimą. Tai svarbu
+  // inkognito / naujoje naršyklėje ir būsimoms uždaroms Firebase taisyklėms.
+  if (onlineRole === 'teacher' && !activeNonAnonymousTeacherUser()) return;
+  teacherProfileUnsubscribe = onValue(teacherProfileRef, snapshot => {
     const value = snapshot.val() || {};
     teacherProfileCache = {
       meta: value.meta && typeof value.meta === 'object' ? value.meta : {},
@@ -3197,6 +3234,7 @@ if (teacherProfileRef) {
     emitTeacherProfile();
   });
 }
+subscribeTeacherProfileIfReady();
 
 function backupRoomIdsFromProfile(profile) {
   const ids = new Set();
