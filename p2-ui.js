@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.2.1-STUDENT-ID-CONTEXT-FIX';
+  const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.4-ATTENDANCE-EVIDENCE-HARDENING';
   const P2_DATA_SCHEMA_VERSION = 1;
   const STORAGE_KEY = 'p772-p2-split-ui-v1';
   const body = document.body;
@@ -3497,10 +3497,14 @@
     const modelKnown = Number(run?.attendanceModelVersion || 0) >= 1;
 
     // Pamokos faktas ir lankomumo užbaigtumas yra dvi atskiros būsenos.
+    // 10.11.17.4: tuščias / nepilnas attendance įrašas NEGALI pats savaime
+    // sukurti istorinio fakto „Pamoka neįvyko“. Neįvykusia laikome tik tada,
+    // kai visi konkrečiai tai datai priskirti mokiniai aiškiai patvirtinti kaip
+    // nedalyvavę. Jei automatinis fiksavimas nesuveikė, paliekame „nepatvirtinta“.
     let lessonState = occurrenceState?.state || '';
     if (lessonState === 'past') {
       if (presentCount > 0) lessonState = 'occurred';
-      else if (modelKnown || !run) lessonState = 'not-occurred';
+      else if (totalCount > 0 && absentCount === totalCount && unknownCount === 0) lessonState = 'not-occurred';
       else lessonState = 'unconfirmed';
     }
     return {

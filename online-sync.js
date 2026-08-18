@@ -35,7 +35,7 @@ const firebaseConfig = {
   appId: "1:101736426636:web:4c6c8da5417e4a8d06dfa9"
 };
 
-const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17-ASSIGNMENT-TYPE-CORRECTION';
+const BUILD = 'P2-SPLIT-P2.5-P4-P1.7.9.49-P3.2.7.10.11.17.4-ATTENDANCE-EVIDENCE-HARDENING';
 const P2_DATA_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const BOARD_STRIP_DEFAULT_WIDTH = 720;
@@ -918,7 +918,7 @@ async function flushDiagnostics(options = {}) {
   const sessionId = diagnosticSessionId;
   const payload = {
     schemaVersion: DIAGNOSTIC_SCHEMA_VERSION, appBuild: BUILD, roomId: targetRoom,
-    role: onlineRole, clientId: String(me).slice(0, 80), sessionId,
+    role: onlineRole, preview: Boolean(teacherStudentPreview), clientId: String(me).slice(0, 80), sessionId,
     startedAt: diagnosticSessionStartedAt, updatedAt: Date.now(),
     device: diagnosticDeviceSnapshot(), snapshot: diagnosticCurrentSnapshot(),
     events: Object.fromEntries(diagnosticEvents.map(item => [`e${String(item.seq).padStart(4, '0')}`, item]))
@@ -2090,6 +2090,111 @@ async function applyHistoricalAttendanceBackfillOnce() {
 }
 
 
+
+const AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY = 'p3271011174_aug18_attendance_diagnostic_repair_v1';
+let aug18AttendanceDiagnosticRepairRunning = false;
+
+async function applyAug18AttendanceDiagnosticRepairOnce() {
+  if (onlineRole !== 'teacher' || !teacherProfileRef || teacherProfileId !== 'T-VDU4BBHJAWNDRHAPPH') return;
+  if (aug18AttendanceDiagnosticRepairRunning) return;
+  const migrations = teacherProfileCache.meta?.migrations && typeof teacherProfileCache.meta.migrations === 'object'
+    ? teacherProfileCache.meta.migrations : {};
+  if (migrations[AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY]?.status === 'done') return;
+
+  const scheduleId = 'w_msylmwya_h8mibm7v';
+  const dateKey = '2026-08-18';
+  const entry = teacherProfileCache.scheduleEntries?.[scheduleId];
+  const run = teacherProfileCache.scheduleRuns?.[scheduleId]?.[dateKey];
+  if (!entry || !run) return;
+
+  const targets = [
+    { studentId: 's_msylnd7c_6r5390m', expectedName: 'samanta', roomId: 'NNL993A' },
+    { studentId: 's_msylnrke_dafucg1', expectedName: 'naglis', roomId: 'W43K6JA' }
+  ];
+
+  if (safeScheduleTime(run.scheduledStart || entry.start) !== '15:00'
+      || safeScheduleDuration(run.durationMinutes || entry.durationMinutes) !== 80) return;
+
+  aug18AttendanceDiagnosticRepairRunning = true;
+  try {
+    const updates = {};
+    const repaired = [];
+    const skipped = [];
+
+    for (const target of targets) {
+      const student = teacherProfileCache.students?.[target.studentId];
+      const linkedRoom = safeRoom(run?.rooms?.[target.studentId]);
+      if (!student || normalizedStudentLookupName(student?.name) !== target.expectedName || linkedRoom !== target.roomId) {
+        skipped.push(`${target.studentId}: profilio/Room neatitikimas`);
+        continue;
+      }
+
+      const current = run?.attendance?.[target.studentId] && typeof run.attendance[target.studentId] === 'object'
+        ? run.attendance[target.studentId] : {};
+      if (String(current.manualStatus || '') === 'present' || String(current.manualStatus || '') === 'absent') {
+        skipped.push(`${target.studentId}: jau yra rankinis lankomumas`);
+        continue;
+      }
+      if (current.autoDetected === true) {
+        repaired.push({ studentId: target.studentId, roomId: target.roomId, alreadyDetected: true });
+        continue;
+      }
+
+      const sessionsSnap = await get(ref(db, `p772Rooms/${target.roomId}/diagnostics/sessions`));
+      const sessions = sessionsSnap.val() && typeof sessionsSnap.val() === 'object' ? sessionsSnap.val() : {};
+      const bounds = scheduleOccurrenceBounds(entry, dateKey);
+      const startMs = bounds?.startAt?.getTime?.() || 0;
+      const endMs = bounds?.endAt?.getTime?.() || 0;
+      const realStudentSessions = Object.values(sessions)
+        .filter(session => session && typeof session === 'object' && String(session.role || '') === 'student')
+        .map(session => ({
+          startedAt: Math.max(0, Number(session.startedAt || 0)),
+          updatedAt: Math.max(0, Number(session.updatedAt || session.startedAt || 0))
+        }))
+        .filter(session =>
+          session.startedAt >= startMs - 5 * 60000
+          && session.startedAt <= endMs + 5 * 60000
+          && session.updatedAt >= startMs
+        )
+        .sort((a, b) => a.startedAt - b.startedAt);
+
+      if (!realStudentSessions.length) {
+        skipped.push(`${target.studentId}: mokinio diagnostikos sesija nerasta`);
+        continue;
+      }
+
+      const firstSeenAt = realStudentSessions[0].startedAt;
+      const lastSeenAt = Math.max(...realStudentSessions.map(session => session.updatedAt || session.startedAt));
+
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendanceModelVersion`] = 1;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/schemaVersion`] = 1;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/autoDetected`] = true;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/firstSeenAt`] = firstSeenAt;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/lastSeenAt`] = lastSeenAt;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/roomId`] = target.roomId;
+      updates[`scheduleRuns/${scheduleId}/${dateKey}/attendance/${target.studentId}/source`] = 'diagnostic-session-repair';
+
+      repaired.push({ studentId: target.studentId, roomId: target.roomId, firstSeenAt, lastSeenAt });
+    }
+
+    updates[`meta/migrations/${AUG18_ATTENDANCE_DIAGNOSTIC_REPAIR_KEY}`] = {
+      status: repaired.length ? 'done' : 'skipped',
+      appliedAt: Date.now(),
+      scheduleId,
+      dateKey,
+      repaired,
+      skipped
+    };
+
+    await update(teacherProfileRef, updates);
+    if (repaired.length) bridge.showToast?.(`08-18 lankomumas atkurtas iš realios mokinių veiklos: ${repaired.length}/2.`);
+  } catch (error) {
+    console.error('08-18 lankomumo diagnostinės pataisos klaida', error);
+  } finally {
+    aug18AttendanceDiagnosticRepairRunning = false;
+  }
+}
+
 const ADOMAS_0813_ATTENDANCE_REPAIR_KEY = 'p327101112_adomas_20260813_attendance_v1';
 let adomas0813AttendanceRepairRunning = false;
 
@@ -2891,6 +2996,7 @@ if (teacherProfileRef) {
     applyRecurringFirstLessonMigrationOnce().catch(error => console.warn('P3.2.7.10.11.10 pirmų pamokų datų migracija neįvykdyta', error));
     applyHistoricalAttendanceBackfillOnce().catch(error => console.warn('P3.2.7.10.11.11 istorinio lankomumo migracija neįvykdyta', error));
     applyAdomas0813AttendanceRepairOnce().catch(error => console.warn('P3.2.7.10.11.12 Adomo 08-13 lankomumo pataisa neįvykdyta', error));
+    applyAug18AttendanceDiagnosticRepairOnce().catch(error => console.warn('P3.2.7.10.11.17.4 08-18 lankomumo diagnostinė pataisa neįvykdyta', error));
     applyMondayAssignmentsRestoreOnce().catch(error => console.warn('P3.2.7.10.11.14 pirmadienio priskyrimų atkūrimas neįvykdytas', error));
     applyMarkasIntroCorrectionOnce().catch(error => console.warn('P3.2.7.10.11.15 Marko pažintinių pamokų pataisa neįvykdyta', error));
   }, error => {
@@ -3546,6 +3652,101 @@ function scheduleAttendanceBoundsFromRoomProfile(profile) {
   return { dateKey, start, durationMinutes, startAt, endAt };
 }
 
+
+function cleanAutoAttendanceEvidence(value, fallbackRoomId = '') {
+  const source = value && typeof value === 'object' ? value : {};
+  if (source.autoDetected !== true) return null;
+  const firstSeenAt = Math.max(0, Number(source.firstSeenAt || 0));
+  const lastSeenAt = Math.max(firstSeenAt, Number(source.lastSeenAt || 0));
+  const evidenceRoomId = safeRoom(source.roomId || fallbackRoomId);
+  if (!firstSeenAt || !lastSeenAt || !evidenceRoomId) return null;
+  return {
+    schemaVersion: 1,
+    autoDetected: true,
+    firstSeenAt,
+    lastSeenAt,
+    roomId: evidenceRoomId,
+    source: String(source.source || 'student-presence').slice(0, 40),
+    preview: source.preview === true
+  };
+}
+
+function attendanceEvidenceFitsOccurrence(evidence, entry, dateKey, expectedRoomId = '') {
+  const clean = cleanAutoAttendanceEvidence(evidence, expectedRoomId);
+  if (!clean || clean.preview === true) return null;
+  if (expectedRoomId && clean.roomId !== safeRoom(expectedRoomId)) return null;
+  const bounds = scheduleOccurrenceBounds(entry, dateKey);
+  if (!bounds) return null;
+  const startMs = bounds.startAt.getTime();
+  const endMs = bounds.endAt.getTime();
+  const tolerance = 5 * 60 * 1000;
+  if (clean.lastSeenAt < startMs - tolerance || clean.firstSeenAt > endMs + tolerance) return null;
+  return clean;
+}
+
+async function readRoomAttendanceEvidence(roomIdValue, studentIdValue) {
+  const targetRoom = safeRoom(roomIdValue);
+  const studentId = safeStudentId(studentIdValue);
+  if (!targetRoom || !studentId) return null;
+
+  try {
+    const snap = await get(ref(db, `p772Rooms/${targetRoom}/p2/attendance/${studentId}`));
+    const clean = cleanAutoAttendanceEvidence(snap.val(), targetRoom);
+    if (clean) return { ...clean, evidencePath: 'p2/attendance' };
+  } catch (_) {}
+
+  try {
+    const snap = await get(ref(db, `p772Rooms/${targetRoom}/p2/student/progress/attendanceEvidence`));
+    const clean = cleanAutoAttendanceEvidence(snap.val(), targetRoom);
+    if (clean) return { ...clean, evidencePath: 'p2/student/progress/attendanceEvidence' };
+  } catch (_) {}
+
+  return null;
+}
+
+async function diagnosticStudentAttendanceEvidence(roomIdValue, entry, dateKey) {
+  const targetRoom = safeRoom(roomIdValue);
+  if (!targetRoom || !entry || !validScheduleDateKey(dateKey)) return null;
+  const bounds = scheduleOccurrenceBounds(entry, dateKey);
+  if (!bounds) return null;
+  try {
+    const snap = await get(ref(db, `p772Rooms/${targetRoom}/diagnostics/sessions`));
+    const sessions = snap.val() && typeof snap.val() === 'object' ? snap.val() : {};
+    const startMs = bounds.startAt.getTime();
+    const endMs = bounds.endAt.getTime();
+    const tolerance = 5 * 60 * 1000;
+    const candidates = Object.values(sessions)
+      .filter(session =>
+        session && typeof session === 'object'
+        && String(session.role || '') === 'student'
+        && session.preview === false
+      )
+      .map(session => ({
+        firstSeenAt: Math.max(0, Number(session.startedAt || 0)),
+        lastSeenAt: Math.max(0, Number(session.updatedAt || session.startedAt || 0))
+      }))
+      .filter(item =>
+        item.firstSeenAt > 0
+        && item.lastSeenAt >= startMs - tolerance
+        && item.firstSeenAt <= endMs + tolerance
+      )
+      .sort((a, b) => a.firstSeenAt - b.firstSeenAt);
+    if (!candidates.length) return null;
+    return {
+      schemaVersion: 1,
+      autoDetected: true,
+      firstSeenAt: candidates[0].firstSeenAt,
+      lastSeenAt: Math.max(...candidates.map(item => item.lastSeenAt || item.firstSeenAt)),
+      roomId: targetRoom,
+      source: 'diagnostic-student-session',
+      preview: false,
+      evidencePath: 'diagnostics/sessions'
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 async function writeStudentAttendanceEvidence(reason = 'presence') {
   if (onlineRole !== 'student' || teacherStudentPreview || !connectedNow) return;
   const profile = currentRoomStudentProfile;
@@ -3562,10 +3763,19 @@ async function writeStudentAttendanceEvidence(reason = 'presence') {
   if (attendanceEvidenceKey !== evidenceKey) {
     attendanceEvidenceKey = evidenceKey;
     attendanceEvidenceFirstSeenAt = 0;
+
+    const existingCandidates = [];
     try {
       const existing = (await get(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`))).val() || {};
-      attendanceEvidenceFirstSeenAt = Math.max(0, Number(existing.firstSeenAt || 0));
+      const first = Math.max(0, Number(existing.firstSeenAt || 0));
+      if (first) existingCandidates.push(first);
     } catch (_) {}
+    try {
+      const existing = (await get(ref(db, `p772Rooms/${roomId}/p2/student/progress/attendanceEvidence`))).val() || {};
+      const first = Math.max(0, Number(existing.firstSeenAt || 0));
+      if (first) existingCandidates.push(first);
+    } catch (_) {}
+    if (existingCandidates.length) attendanceEvidenceFirstSeenAt = Math.min(...existingCandidates);
   }
   if (!attendanceEvidenceFirstSeenAt) attendanceEvidenceFirstSeenAt = now;
 
@@ -3579,15 +3789,29 @@ async function writeStudentAttendanceEvidence(reason = 'presence') {
     preview: false
   };
 
-  // Room yra pirminis automatinio lankomumo įrodymo šaltinis.
-  try {
-    await update(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`), record);
-  } catch (error) {
-    console.warn('Nepavyko įrašyti Room lankomumo įrodymo', error);
+  const roomWrites = await Promise.allSettled([
+    update(ref(db, `p772Rooms/${roomId}/p2/attendance/${studentId}`), record),
+    update(ref(db, `p772Rooms/${roomId}/p2/student/progress/attendanceEvidence`), record)
+  ]);
+  const roomWriteOk = roomWrites.some(result => result.status === 'fulfilled');
+
+  if (roomWriteOk) {
+    diagnosticSyncState.attendanceWriteAt = now;
+    diagnosticSyncState.attendanceWriteErrorAt = 0;
+    diagnosticLog('attendance-write-ok', {
+      reason: String(reason || 'presence').slice(0, 40),
+      primary: roomWrites[0].status,
+      progressFallback: roomWrites[1].status
+    });
+  } else {
+    diagnosticSyncState.attendanceWriteErrorAt = now;
+    const messages = roomWrites.map(result =>
+      result.status === 'rejected' ? String(result.reason?.message || result.reason || '').slice(0, 120) : ''
+    );
+    diagnosticLog('attendance-write-error', { messages }, { urgent: true });
+    console.warn('Nepavyko įrašyti automatinio lankomumo nė vienu Room keliu', messages);
   }
 
-  // Greitam mokytojo UI atsinaujinimui bandome atspindėti ir profilyje.
-  // Jei saugumo taisyklės to neleis, Room įrašą vėliau pasiims refresh mechanizmas.
   try {
     await update(ref(db, `p772TeacherProfiles/${profileId}/scheduleRuns/${scheduleId}/${bounds.dateKey}`), {
       attendanceModelVersion: 1,
@@ -4249,22 +4473,33 @@ window.addEventListener('p2:schedule-attendance-refresh', async event => {
   const changes = {};
   for (const item of candidates.slice(0, 80)) {
     try {
-      const snapshot = await get(ref(db, `p772Rooms/${item.roomId}/p2/attendance/${item.studentId}`));
-      const evidence = snapshot.val();
+      const entry = teacherProfileCache.scheduleEntries?.[item.scheduleId];
+      if (!entry) continue;
+
+      let evidence = await readRoomAttendanceEvidence(item.roomId, item.studentId);
+      evidence = attendanceEvidenceFitsOccurrence(evidence, entry, item.dateKey, item.roomId);
+
+      if (!evidence) {
+        const diagnosticEvidence = await diagnosticStudentAttendanceEvidence(item.roomId, entry, item.dateKey);
+        evidence = attendanceEvidenceFitsOccurrence(diagnosticEvidence, entry, item.dateKey, item.roomId);
+      }
+
       if (!evidence || evidence.autoDetected !== true) continue;
       const current = item.run?.attendance?.[item.studentId] && typeof item.run.attendance[item.studentId] === 'object'
         ? item.run.attendance[item.studentId]
         : {};
       const firstSeenAt = Math.max(0, Number(evidence.firstSeenAt || 0));
-      const lastSeenAt = Math.max(0, Number(evidence.lastSeenAt || 0));
+      const lastSeenAt = Math.max(firstSeenAt, Number(evidence.lastSeenAt || 0));
       if (current.autoDetected === true && Number(current.lastSeenAt || 0) >= lastSeenAt && Number(item.run.attendanceModelVersion || 0) >= 1) continue;
+
       changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendanceModelVersion`] = 1;
       changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/schemaVersion`] = 1;
       changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/autoDetected`] = true;
-      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/firstSeenAt`] = firstSeenAt || Date.now();
-      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/lastSeenAt`] = lastSeenAt || Date.now();
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/firstSeenAt`] = firstSeenAt;
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/lastSeenAt`] = lastSeenAt;
       changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/roomId`] = item.roomId;
-      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/source`] = 'room-attendance-refresh';
+      changes[`scheduleRuns/${item.scheduleId}/${item.dateKey}/attendance/${item.studentId}/source`] =
+        String(evidence.evidencePath || evidence.source || 'room-attendance-refresh').slice(0, 40);
     } catch (_) {}
   }
   if (!Object.keys(changes).length) return;
